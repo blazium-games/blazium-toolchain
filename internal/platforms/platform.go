@@ -58,6 +58,7 @@ type BuildOptions struct {
 	Src    string
 	Out    string
 	Sample string // template | gte; used when Src is empty
+	Tim    string // optional cooked TIM to embed (P3+)
 }
 
 // RunOptions boot the emulator.

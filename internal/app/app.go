@@ -190,10 +190,11 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	src := fs.String("src", "", "guest CMake source dir")
 	out := fs.String("out", "", "output PS-X EXE path")
 	sample := fs.String("sample", "", "official SDK sample: template or gte (when --src is empty)")
+	tim := fs.String("tim", "", "optional cooked TIM to embed in the guest")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim})
 }
 
 func runRun(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
