@@ -62,6 +62,15 @@ func TestListJSONHasPS1(t *testing.T) {
 	for _, info := range list {
 		if info.ID == "ps1" && info.Status == platforms.StatusSupported {
 			ps1 = true
+			var fmv bool
+			for _, c := range info.Commands {
+				if c == "fmv" {
+					fmv = true
+				}
+			}
+			if !fmv {
+				t.Fatalf("ps1 commands missing fmv: %v", info.Commands)
+			}
 		}
 	}
 	if !ps1 {
@@ -163,6 +172,21 @@ func TestHelp(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "ps1") {
 		t.Fatal(out.String())
+	}
+}
+
+func TestPS1FMVJSON(t *testing.T) {
+	var out bytes.Buffer
+	code := Run(context.Background(), []string{"--json", "ps1", "fmv"}, &out, &bytes.Buffer{})
+	if code != ExitOK {
+		t.Fatalf("exit %d body %s", code, out.String())
+	}
+	var m map[string]any
+	if err := json.Unmarshal(out.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["encoder"] != "psxpress" || m["in_editor"] != false {
+		t.Fatalf("%v", m)
 	}
 }
 

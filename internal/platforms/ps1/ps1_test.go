@@ -332,10 +332,15 @@ func TestBuildWritesPSXEXE(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "hello.exe")
+	sprite := filepath.Join(dir, "SPRITE00.bin")
+	if err := os.WriteFile(sprite, []byte{2, 0, 1, 0}, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	err := tool.Build(context.Background(), platforms.BuildOptions{
 		CommonOptions: platforms.CommonOptions{Prefix: dir},
 		Sample:        "template",
 		Out:           out,
+		Sprite:        sprite,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -343,7 +348,7 @@ func TestBuildWritesPSXEXE(t *testing.T) {
 	if err := verifyPSXEXE(out); err != nil {
 		t.Fatal(err)
 	}
-	var sawNinja, sawTarget bool
+	var sawNinja, sawTarget, sawSprite bool
 	for _, c := range rec.calls {
 		joined := strings.Join(c, " ")
 		if strings.Contains(joined, "-G Ninja") {
@@ -352,8 +357,11 @@ func TestBuildWritesPSXEXE(t *testing.T) {
 		if strings.Contains(joined, "--target template") {
 			sawTarget = true
 		}
+		if strings.Contains(joined, "BLAZIUM_PS1_SPRITE=") {
+			sawSprite = true
+		}
 	}
-	if !sawNinja || !sawTarget {
+	if !sawNinja || !sawTarget || !sawSprite {
 		t.Fatalf("cmake calls: %v", rec.calls)
 	}
 }

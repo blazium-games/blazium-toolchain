@@ -87,7 +87,7 @@ func Run(ctx context.Context, argv []string, stdout, stderr io.Writer) int {
 		return ExitFail
 	}
 	if len(rest) == 0 {
-		fmt.Fprintf(stderr, "usage: blazium-toolchain %s <setup|env|status|build|run|iso>\n", platID)
+		fmt.Fprintf(stderr, "usage: blazium-toolchain %s <setup|env|status|build|run|iso|fmv>\n", platID)
 		return ExitUsage
 	}
 	return dispatch(ctx, p, rest, common(*prefix, *jsonOut, stdout, stderr), stdout, stderr)
@@ -139,6 +139,8 @@ func dispatch(ctx context.Context, p platforms.Platform, args []string, base pla
 		err = runRun(ctx, p, rest, base)
 	case "iso":
 		err = runISO(ctx, p, rest, base)
+	case "fmv":
+		err = runFMV(p, rest, base, stdout)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q for platform %s\n", cmd, p.Info().ID)
 		return ExitUsage
@@ -193,10 +195,11 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	tim := fs.String("tim", "", "optional cooked TIM to embed in the guest")
 	mesh := fs.String("mesh", "", "optional cooked SVECTOR mesh to embed in the guest")
 	vag := fs.String("vag", "", "optional cooked VAG to embed in the guest")
+	sprite := fs.String("sprite", "", "optional cooked SPRITE table to embed in the guest")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh, Vag: *vag})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh, Vag: *vag, Sprite: *sprite})
 }
 
 func runRun(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
@@ -213,6 +216,29 @@ func runRun(ctx context.Context, p platforms.Platform, args []string, base platf
 		exe = fs.Arg(0)
 	}
 	return p.Run(ctx, platforms.RunOptions{CommonOptions: base, Exe: exe, ISO: *iso, Timeout: *timeout, Pcdrv: *pcdrv})
+}
+
+func runFMV(p platforms.Platform, args []string, base platforms.CommonOptions, stdout io.Writer) error {
+	_ = p
+	_ = args
+	// #region agent log
+	if lf, err := os.OpenFile(`D:\projects\ps1_blazium\debug-9aa74d.log`, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		fmt.Fprintf(lf, "{\"sessionId\":\"9aa74d\",\"hypothesisId\":\"P8C\",\"location\":\"app.go:runFMV\",\"message\":\"ps1 fmv\",\"data\":{\"json\":%t},\"timestamp\":%d}\n", base.JSON, time.Now().UnixMilli())
+		_ = lf.Close()
+	}
+	// #endregion
+	if base.JSON {
+		return json.NewEncoder(stdout).Encode(map[string]any{
+			"encoder":   "psxpress",
+			"guest":     "DecDCTReset + libpsxpress (MDEC)",
+			"spawn":     true,
+			"in_editor": false,
+			"note":      "Encode STR/XA on the host; editor never links psxpress.",
+		})
+	}
+	fmt.Fprintln(stdout, "ps1 fmv: guest uses psxpress/MDEC (DecDCTReset). Host encode is spawn-only.")
+	fmt.Fprintln(stdout, "No encoder is bundled in the Blazium editor. DuckStation/Sony BIOS/hardware are out of scope.")
+	return nil
 }
 
 func runISO(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
@@ -265,6 +291,7 @@ PS1 commands:
   build --out FILE [--src DIR | --sample template|gte]
   run [--iso CUE] [--timeout 120s] [GAME.EXE]
   iso --xml FILE [--out PATH]
+  fmv
 
 License: GPL-3.0-or-later (this repo may contain GCC, PSn00bSDK, mkpsxiso, pcsx-redux).
 The 3rd-party installer should invoke this binary (not the Blazium editor).
