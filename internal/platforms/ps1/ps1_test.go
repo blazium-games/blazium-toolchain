@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/blazium-games/blazium-toolchain/internal/platforms"
 )
@@ -132,21 +133,54 @@ func (memFetch) FetchZip(_ context.Context, url, _ string, dest string, _ io.Wri
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err
 	}
-	if filepath.Base(dest) == "gcc" {
+	switch filepath.Base(dest) {
+	case "gcc":
 		p := filepath.Join(dest, "bin", "mipsel-none-elf-gcc")
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return err
 		}
 		return os.WriteFile(p, []byte("gcc"), 0o644)
+	case "pcsx-redux":
+		for _, n := range []string{"pcsx-redux", "pcsx-redux.exe"} {
+			if err := os.WriteFile(filepath.Join(dest, n), []byte("pcsx"), 0o644); err != nil {
+				return err
+			}
+		}
+		bios := filepath.Join(dest, "resources", "openbios.bin")
+		if err := os.MkdirAll(filepath.Dir(bios), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(bios, []byte("OB"), 0o644)
+	default:
+		elf := filepath.Join(dest, "bin", "elf2x")
+		if err := os.MkdirAll(filepath.Dir(elf), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(elf, []byte("elf2x"), 0o644); err != nil {
+			return err
+		}
+		return os.MkdirAll(filepath.Join(dest, "lib", "libpsn00b"), 0o755)
 	}
-	elf := filepath.Join(dest, "bin", "elf2x")
-	if err := os.MkdirAll(filepath.Dir(elf), 0o755); err != nil {
-		return err
+}
+
+func plantDevTools(t *testing.T, prefix string) {
+	t.Helper()
+	dir := filepath.Join(prefix, "ps1", "pcsx-redux")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
 	}
-	if err := os.WriteFile(elf, []byte("elf2x"), 0o644); err != nil {
-		return err
+	for _, n := range hostNames("pcsx-redux") {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("pcsx"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
-	return os.MkdirAll(filepath.Join(dest, "lib", "libpsn00b"), 0o755)
+	bios := filepath.Join(prefix, "ps1", "openbios", "openbios.bin")
+	if err := os.MkdirAll(filepath.Dir(bios), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bios, []byte("OB"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestSetupFetchesWhenMissing(t *testing.T) {
@@ -390,5 +424,86 @@ func TestFindLibpsn00bPrefersLib(t *testing.T) {
 func TestGCCPinIs123(t *testing.T) {
 	if GCCSeries != "12.3.0" {
 		t.Fatalf("GCC pin %s", GCCSeries)
+	}
+}
+
+func TestSetupDevFetchesCLIAndOpenBIOS(t *testing.T) {
+	t.Setenv("MIPS_GCC", "")
+	t.Setenv("ELF2X", "")
+	t.Setenv("PSN00BSDK_LIBS", "")
+	t.Setenv("PSN00BSDK_TC", "")
+	t.Setenv("PCSX_EXE", "")
+	t.Setenv("OPENBIOS", "")
+	t.Setenv("PATH", t.TempDir())
+	dir := t.TempDir()
+	plantCompileTools(t, dir)
+	tool := &Tool{Fetcher: memFetch{}, CLIURL: "http://example.test/pcsx.zip"}
+	err := tool.Setup(context.Background(), platforms.SetupOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir},
+		Profile:       "dev",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := tool.Env(platforms.CommonOptions{Prefix: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !destReady(env) {
+		t.Fatalf("dev not ready: %+v", env)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "ps1", "openbios", "openbios.bin")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOfflineDevFailsWithoutEmu(t *testing.T) {
+	t.Setenv("PCSX_EXE", "")
+	t.Setenv("OPENBIOS", "")
+	t.Setenv("PATH", t.TempDir())
+	dir := t.TempDir()
+	plantCompileTools(t, dir)
+	tool := New()
+	err := tool.Setup(context.Background(), platforms.SetupOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir},
+		Profile:       "dev",
+		Offline:       true,
+	})
+	if err == nil {
+		t.Fatal("expected offline dest error")
+	}
+}
+
+func TestRunUsesSetupEnv(t *testing.T) {
+	dir := t.TempDir()
+	plantCompileTools(t, dir)
+	plantDevTools(t, dir)
+	rec := &recRunner{}
+	tool := &Tool{Runner: rec}
+	if err := tool.Setup(context.Background(), platforms.SetupOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir},
+		Profile:       "dev",
+		Offline:       true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(dir, "hello.exe")
+	if err := os.WriteFile(exe, []byte("PS-X EXE"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := tool.Run(context.Background(), platforms.RunOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir},
+		Exe:           exe,
+		Timeout:       time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.calls) != 1 {
+		t.Fatalf("calls %v", rec.calls)
+	}
+	joined := strings.Join(rec.calls[0], " ")
+	if !strings.Contains(joined, "-testmode") || !strings.Contains(joined, "-loadexe") || !strings.Contains(joined, "-bios") {
+		t.Fatalf("args %s", joined)
 	}
 }

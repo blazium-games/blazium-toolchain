@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // vendorRoots are directories this GPL project may use to contain toolchain bits.
@@ -69,14 +70,14 @@ func walkNamed(root string, names ...string) string {
 	}
 	want := make(map[string]bool, len(names))
 	for _, n := range names {
-		want[n] = true
+		want[nameKey(n)] = true
 	}
 	var found string
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}
-		if want[d.Name()] {
+		if want[nameKey(d.Name())] {
 			found = path
 			return filepath.SkipAll
 		}
@@ -171,6 +172,13 @@ func siblingSDKRoots() []string {
 		filepath.Join(wd, "..", "PSn00bSDK"),
 		filepath.Join(wd, "..", "..", "PSn00bSDK"),
 	}
+}
+
+func nameKey(n string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(n)
+	}
+	return n
 }
 
 func findVendorDir(prefix string, rels ...string) string {

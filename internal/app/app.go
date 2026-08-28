@@ -10,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/blazium-games/blazium-toolchain/internal/cache"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms"
@@ -199,6 +200,7 @@ func runRun(ctx context.Context, p platforms.Platform, args []string, base platf
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(base.Stderr)
 	iso := fs.String("iso", "", "optional cue/bin path")
+	timeout := fs.Duration("timeout", 120*time.Second, "stop the emulator after this duration (smoke)")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
@@ -206,7 +208,7 @@ func runRun(ctx context.Context, p platforms.Platform, args []string, base platf
 	if fs.NArg() > 0 {
 		exe = fs.Arg(0)
 	}
-	return p.Run(ctx, platforms.RunOptions{CommonOptions: base, Exe: exe, ISO: *iso})
+	return p.Run(ctx, platforms.RunOptions{CommonOptions: base, Exe: exe, ISO: *iso, Timeout: *timeout})
 }
 
 func runISO(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
@@ -257,10 +259,10 @@ PS1 commands:
   env
   status
   build --out FILE [--src DIR | --sample template|gte]
-  run [--iso CUE] [GAME.EXE]
+  run [--iso CUE] [--timeout 120s] [GAME.EXE]
   iso --xml FILE [--out PATH]
 
 License: GPL-3.0-or-later (this repo may contain GCC, PSn00bSDK, mkpsxiso, pcsx-redux).
 The 3rd-party installer should invoke this binary (not the Blazium editor).
-`) + "\n")
+`)+"\n")
 }

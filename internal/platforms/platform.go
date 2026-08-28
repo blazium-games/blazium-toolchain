@@ -3,6 +3,7 @@ package platforms
 import (
 	"context"
 	"io"
+	"time"
 )
 
 // Status is the public lifecycle of a console target.
@@ -62,8 +63,9 @@ type BuildOptions struct {
 // RunOptions boot the emulator.
 type RunOptions struct {
 	CommonOptions
-	Exe string
-	ISO string
+	Exe     string
+	ISO     string
+	Timeout time.Duration // 0 means default 120s smoke watchdog
 }
 
 // ISOOptions spawn an ISO packer (GPL tools must stay external).

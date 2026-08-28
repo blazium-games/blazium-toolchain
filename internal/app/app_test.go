@@ -91,9 +91,32 @@ func TestPS2IsPlanned(t *testing.T) {
 	}
 }
 
+func plantDev(t *testing.T, prefix string) {
+	t.Helper()
+	dir := filepath.Join(prefix, "ps1", "pcsx-redux")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"pcsx-redux", "pcsx-redux.exe"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("pcsx"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bios := filepath.Join(prefix, "ps1", "openbios", "openbios.bin")
+	if err := os.MkdirAll(filepath.Dir(bios), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bios, []byte("OB"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPS1SetupThenEnv(t *testing.T) {
+	t.Setenv("PCSX_EXE", "")
+	t.Setenv("OPENBIOS", "")
 	dir := t.TempDir()
 	plantCompile(t, dir)
+	plantDev(t, dir)
 	var out, errb bytes.Buffer
 	code := Run(context.Background(), []string{"--prefix", dir, "ps1", "setup", "--profile", "dev", "--offline"}, &out, &errb)
 	if code != ExitOK {

@@ -3,11 +3,13 @@ package ps1
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/blazium-games/blazium-toolchain/internal/cache"
 	"github.com/blazium-games/blazium-toolchain/internal/execx"
@@ -22,6 +24,8 @@ type Tool struct {
 	Runner  execx.Runner
 	Fetcher ZipFetcher
 	Assets  []ZipAsset
+	JSON    jsonGetter
+	CLIURL  string // tests pin a zip URL and skip AppDistrib
 }
 
 func New() *Tool {
@@ -82,6 +86,18 @@ func (t *Tool) Setup(ctx context.Context, opts platforms.SetupOptions) error {
 	if !opts.Offline && !compileReady(env) {
 		return fmt.Errorf("%w: compile profile needs mipsel-none-elf-gcc, elf2x, and PSN00BSDK_LIBS", platforms.ErrMissingTool)
 	}
+	if needsDev(profile) && !opts.Offline {
+		if err := t.ensureDev(ctx, opts.Prefix, opts.Stdout); err != nil {
+			return err
+		}
+		env, notes = t.discover(opts.Prefix)
+	}
+	if needsDev(profile) && !destReady(env) {
+		if opts.Offline {
+			return fmt.Errorf("%w: dev profile needs OPENBIOS and PCSX_EXE (vendor or drop --offline)", platforms.ErrOffline)
+		}
+		return fmt.Errorf("%w: dev profile needs OPENBIOS and PCSX_EXE after fetch", platforms.ErrMissingTool)
+	}
 
 	st := cache.State{
 		Platform: ID,
@@ -109,7 +125,9 @@ func (t *Tool) Setup(ctx context.Context, opts platforms.SetupOptions) error {
 				fmt.Fprintf(opts.Stdout, "  %s=%s\n", k, v)
 			}
 		}
-		if compileReady(env) {
+		if destReady(env) {
+			fmt.Fprintln(opts.Stdout, "dev toolchain ready (OpenBIOS + pcsx-redux CLI)")
+		} else if compileReady(env) {
 			fmt.Fprintln(opts.Stdout, "compile toolchain ready")
 		} else if !opts.Offline {
 			fmt.Fprintln(opts.Stdout, "note: compile tools incomplete after fetch")
@@ -139,40 +157,60 @@ func (t *Tool) Status(opts platforms.CommonOptions) (map[string]any, error) {
 		return nil, err
 	}
 	st, _ := cache.ReadState(opts.Prefix, ID)
+	profile := or(st.Profile, "compile")
 	out := map[string]any{
-		"platform":   ID,
-		"profile":    st.Profile,
-		"env":        env,
-		"components": componentsForProfile(or(st.Profile, "compile")),
-		"ready":      compileReady(env),
+		"platform":      ID,
+		"profile":       st.Profile,
+		"env":           env,
+		"components":    componentsForProfile(profile),
+		"compile_ready": compileReady(env),
+		"dev_ready":     destReady(env),
+		"ready":         profileReady(profile, env),
 	}
 	return out, nil
 }
 
-
 func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
-	r := t.runner()
-	pcsx, err := execx.LookPrefersEnv(r, "PCSX_EXE", "pcsx-redux")
+	env, err := t.Env(opts.CommonOptions)
 	if err != nil {
-		return fmt.Errorf("%w: pcsx-redux (set PCSX_EXE)", platforms.ErrMissingTool)
+		return err
 	}
-	bios := os.Getenv("OPENBIOS")
-	if bios == "" {
-		env, _ := t.Env(opts.CommonOptions)
-		bios = env["OPENBIOS"]
+	if !fileExists(env["PCSX_EXE"]) || !fileExists(env["OPENBIOS"]) {
+		env, _ = t.discover(opts.Prefix)
 	}
-	args := []string{"-no-ui", "-run", "-noupdate", "-safe", "-interpreter", "-softgpu"}
-	if bios != "" {
-		args = append(args, "-bios", bios)
+	pcsx := env["PCSX_EXE"]
+	bios := env["OPENBIOS"]
+	if !fileExists(pcsx) {
+		return fmt.Errorf("%w: pcsx-redux CLI (run blazium-toolchain ps1 setup --profile dev)", platforms.ErrMissingTool)
 	}
-	if opts.ISO != "" {
-		args = append(args, "-iso", opts.ISO, "-fastboot")
-	} else if opts.Exe != "" {
-		args = append(args, "-loadexe", opts.Exe)
-	} else {
+	if !fileExists(bios) {
+		return fmt.Errorf("%w: OpenBIOS (run blazium-toolchain ps1 setup --profile dev)", platforms.ErrMissingTool)
+	}
+	if opts.ISO == "" && opts.Exe == "" {
 		return fmt.Errorf("%w: run requires an exe or --iso", platforms.ErrUsage)
 	}
-	return r.Run(ctx, pcsx, args, writerOrDiscard(opts.Stdout), writerOrDiscard(opts.Stderr))
+	timeout := opts.Timeout
+	if timeout <= 0 {
+		timeout = 120 * time.Second
+	}
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	args := []string{"-no-ui", "-run", "-noupdate", "-safe", "-testmode", "-interpreter", "-softgpu", "-bios", bios, "-stdout"}
+	if opts.ISO != "" {
+		args = append(args, "-iso", opts.ISO, "-fastboot")
+	} else {
+		args = append(args, "-loadexe", opts.Exe)
+	}
+	extraPath := []string{filepath.Dir(pcsx)}
+	err = t.runEnv(runCtx, pcsx, args, extraPath, map[string]string{"PCSX_EXE": pcsx, "OPENBIOS": bios}, opts.Stdout, opts.Stderr)
+	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+		if opts.Stdout != nil {
+			fmt.Fprintf(opts.Stdout, "pcsx-redux smoke timeout after %s (process stopped)\n", timeout)
+		}
+		return nil
+	}
+	return err
 }
 
 func (t *Tool) ISO(ctx context.Context, opts platforms.ISOOptions) error {
@@ -265,7 +303,10 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 		env["PSN00BSDK_TC"] = filepath.Dir(filepath.Dir(env["MIPS_GCC"]))
 	}
 	if env["PCSX_EXE"] == "" {
-		if p := findVendorFile(prefix, filepath.Join("pcsx-redux", "pcsx-redux")); p != "" {
+		if p := findPCSX(filepath.Join(plat, "pcsx-redux"), plat); p != "" {
+			env["PCSX_EXE"] = p
+			notes = append(notes, "found pcsx-redux under prefix")
+		} else if p := findVendorFile(prefix, filepath.Join("pcsx-redux", "pcsx-redux")); p != "" {
 			env["PCSX_EXE"] = p
 			notes = append(notes, "vendored pcsx-redux")
 		} else if p := lookFile("pcsx-redux"); p != "" {
@@ -273,7 +314,14 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 		}
 	}
 	if env["OPENBIOS"] == "" {
-		if cand := findVendorFile(prefix, filepath.Join("openbios", "openbios.bin")); cand != "" {
+		canon := filepath.Join(plat, "openbios", "openbios.bin")
+		if fileExists(canon) {
+			env["OPENBIOS"] = absOr(canon)
+			notes = append(notes, "cached OpenBIOS")
+		} else if cand := findOpenBIOSFile(filepath.Join(plat, "openbios"), filepath.Join(plat, "pcsx-redux"), plat); cand != "" {
+			env["OPENBIOS"] = cand
+			notes = append(notes, "found OpenBIOS under prefix")
+		} else if cand := findVendorFile(prefix, filepath.Join("openbios", "openbios.bin")); cand != "" {
 			env["OPENBIOS"] = cand
 			notes = append(notes, "vendored OpenBIOS")
 		} else if cand := discoverOpenBIOS(); cand != "" {
@@ -343,18 +391,19 @@ func dirExists(p string) bool {
 }
 
 func discoverOpenBIOS() string {
-	wd, _ := os.Getwd()
-	cands := []string{
-		filepath.Join(wd, "pcsx-redux", "src", "mips", "openbios", "openbios.bin"),
-		filepath.Join(wd, "..", "pcsx-redux", "src", "mips", "openbios", "openbios.bin"),
+	rel := filepath.Join("pcsx-redux", "src", "mips", "openbios", "openbios.bin")
+	var roots []string
+	if wd, err := os.Getwd(); err == nil {
+		roots = append(roots, wd, filepath.Join(wd, ".."), filepath.Join(wd, "..", ".."))
 	}
-	for _, c := range cands {
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		roots = append(roots, dir, filepath.Join(dir, ".."), filepath.Join(dir, "..", ".."))
+	}
+	for _, root := range roots {
+		c := filepath.Join(root, rel)
 		if st, err := os.Stat(c); err == nil && !st.IsDir() {
-			abs, err := filepath.Abs(c)
-			if err == nil {
-				return abs
-			}
-			return c
+			return absOr(c)
 		}
 	}
 	return ""
