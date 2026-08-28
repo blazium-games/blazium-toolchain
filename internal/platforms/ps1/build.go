@@ -227,7 +227,14 @@ func cmakeTarget(sample, src string) string {
 	if sample == "gte" || strings.EqualFold(filepath.Base(src), "gte") {
 		return "gte"
 	}
-	return "template"
+	if sample == "template" || strings.EqualFold(filepath.Base(src), "template") {
+		return "template"
+	}
+	base := filepath.Base(src)
+	if base == "" || base == "." || base == string(filepath.Separator) {
+		return "template"
+	}
+	return base
 }
 
 func findPSXEXE(buildDir, target string) (string, error) {

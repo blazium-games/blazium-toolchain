@@ -421,6 +421,18 @@ func TestFindLibpsn00bPrefersLib(t *testing.T) {
 	}
 }
 
+func TestCMakeTargetUsesSrcBasename(t *testing.T) {
+	if cmakeTarget("", filepath.Join("blazium", "platform", "ps1", "runtime")) != "runtime" {
+		t.Fatal(cmakeTarget("", "runtime"))
+	}
+	if cmakeTarget("template", "") != "template" {
+		t.Fatal("template")
+	}
+	if cmakeTarget("gte", "") != "gte" {
+		t.Fatal("gte")
+	}
+}
+
 func TestGCCPinIs123(t *testing.T) {
 	if GCCSeries != "12.3.0" {
 		t.Fatalf("GCC pin %s", GCCSeries)
