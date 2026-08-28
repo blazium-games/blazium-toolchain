@@ -191,10 +191,11 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	out := fs.String("out", "", "output PS-X EXE path")
 	sample := fs.String("sample", "", "official SDK sample: template or gte (when --src is empty)")
 	tim := fs.String("tim", "", "optional cooked TIM to embed in the guest")
+	mesh := fs.String("mesh", "", "optional cooked SVECTOR mesh to embed in the guest")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh})
 }
 
 func runRun(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {

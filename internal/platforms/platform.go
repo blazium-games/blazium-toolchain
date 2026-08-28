@@ -59,6 +59,7 @@ type BuildOptions struct {
 	Out    string
 	Sample string // template | gte; used when Src is empty
 	Tim    string // optional cooked TIM to embed (P3+)
+	Mesh   string // optional cooked SVECTOR mesh to embed (P4+)
 }
 
 // RunOptions boot the emulator.
