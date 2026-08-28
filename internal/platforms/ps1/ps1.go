@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	guest "github.com/blazium-games/blazium-toolchain/guest/ps1"
 	"github.com/blazium-games/blazium-toolchain/internal/cache"
 	"github.com/blazium-games/blazium-toolchain/internal/execx"
 	"github.com/blazium-games/blazium-toolchain/internal/fetch"
@@ -92,6 +93,10 @@ func (t *Tool) Setup(ctx context.Context, opts platforms.SetupOptions) error {
 		}
 		env, notes = t.discover(opts.Prefix)
 	}
+	if err := installGuestRuntime(opts.Prefix); err != nil {
+		return err
+	}
+
 	if needsDev(profile) && !destReady(env) {
 		if opts.Offline {
 			return fmt.Errorf("%w: dev profile needs OPENBIOS and PCSX_EXE (vendor or drop --offline)", platforms.ErrOffline)
@@ -166,6 +171,8 @@ func (t *Tool) Status(opts platforms.CommonOptions) (map[string]any, error) {
 		"compile_ready": compileReady(env),
 		"dev_ready":     destReady(env),
 		"ready":         profileReady(profile, env),
+		"guest_abi":     guest.CookABI,
+		"guest_dir":     GuestDir(opts.Prefix),
 	}
 	return out, nil
 }

@@ -288,7 +288,7 @@ PS1 commands:
   setup [--profile compile|dev|iso] [--offline]
   env
   status
-  build --out FILE [--src DIR | --sample template|gte]
+  build --out FILE [--src DIR | --sample template|gte]  # --src optional; bundled guest is default
   run [--iso CUE] [--timeout 120s] [GAME.EXE]
   iso --xml FILE [--out PATH]
   fmv

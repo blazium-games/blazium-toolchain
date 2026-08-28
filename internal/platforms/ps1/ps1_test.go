@@ -56,6 +56,12 @@ func TestSetupWritesState(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "ps1", "components.json")); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := os.Stat(filepath.Join(dir, "ps1", "guest", "runtime", "CMakeLists.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "ps1", "guest", "runtime", "main.cpp")); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestSetupRejectsBadProfile(t *testing.T) {
@@ -260,9 +266,15 @@ func (r *recRunner) Run(ctx context.Context, name string, args []string, stdout,
 
 func (r *recRunner) RunEnv(_ context.Context, name string, args []string, _ []string, _ map[string]string, _ io.Writer, _ io.Writer) error {
 	r.calls = append(r.calls, append([]string{name}, args...))
+	target := "template"
+	for i, a := range args {
+		if a == "--target" && i+1 < len(args) {
+			target = args[i+1]
+		}
+	}
 	for i, a := range args {
 		if a == "--build" && i+1 < len(args) {
-			out := filepath.Join(args[i+1], "template.exe")
+			out := filepath.Join(args[i+1], target+".exe")
 			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 				return err
 			}
@@ -363,6 +375,74 @@ func TestBuildWritesPSXEXE(t *testing.T) {
 	}
 	if !sawNinja || !sawTarget || !sawSprite {
 		t.Fatalf("cmake calls: %v", rec.calls)
+	}
+}
+
+func TestBuildInstallsGuestWithoutSetup(t *testing.T) {
+	dir := t.TempDir()
+	plantCompileTools(t, dir)
+	plantSDKCMake(t, dir)
+	plantHostTools(t, dir)
+	rec := &recRunner{}
+	tool := &Tool{Runner: rec, Fetcher: memFetch{}}
+	out := filepath.Join(dir, "game.exe")
+	err := tool.Build(context.Background(), platforms.BuildOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir},
+		Out:           out,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(GuestDir(dir), "CMakeLists.txt")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBuildUsesBundledGuest(t *testing.T) {
+	dir := t.TempDir()
+	plantCompileTools(t, dir)
+	plantSDKCMake(t, dir)
+	plantHostTools(t, dir)
+	rec := &recRunner{}
+	tool := &Tool{Runner: rec, Fetcher: memFetch{}}
+	if err := tool.Setup(context.Background(), platforms.SetupOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir},
+		Profile:       "compile",
+		Offline:       true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "game.exe")
+	err := tool.Build(context.Background(), platforms.BuildOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir},
+		Out:           out,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyPSXEXE(out); err != nil {
+		t.Fatal(err)
+	}
+	guest := GuestDir(dir)
+	var sawSrc, sawTarget bool
+	for _, c := range rec.calls {
+		joined := strings.Join(c, " ")
+		if strings.Contains(joined, guest) {
+			sawSrc = true
+		}
+		if strings.Contains(joined, "--target runtime") {
+			sawTarget = true
+		}
+	}
+	var sawWork bool
+	for _, c := range rec.calls {
+		joined := strings.Join(c, " ")
+		if strings.Contains(joined, "blazium-guest") {
+			sawWork = true
+		}
+	}
+	if !sawSrc || !sawTarget || !sawWork {
+		t.Fatalf("expected bundled guest %s, --target runtime, work/blazium-guest; cmake calls: %v", guest, rec.calls)
 	}
 }
 

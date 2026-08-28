@@ -9,9 +9,19 @@ import (
 	"path/filepath"
 	"strings"
 
+	guest "github.com/blazium-games/blazium-toolchain/guest/ps1"
 	"github.com/blazium-games/blazium-toolchain/internal/cache"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms"
 )
+
+// GuestDir is <prefix>/ps1/guest/runtime — the bundled MIT stub.
+func GuestDir(prefix string) string {
+	return filepath.Join(cache.PlatformDir(prefix, ID), "guest", "runtime")
+}
+
+func installGuestRuntime(prefix string) error {
+	return guest.Install(GuestDir(prefix))
+}
 
 const psxMagic = "PS-X EXE"
 
@@ -36,8 +46,14 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 			return err
 		}
 	}
+	if src == "" {
+		if err := installGuestRuntime(opts.Prefix); err != nil {
+			return err
+		}
+		src = GuestDir(opts.Prefix)
+	}
 	if src == "" || opts.Out == "" {
-		return fmt.Errorf("%w: build requires --out and either --src or --sample", platforms.ErrUsage)
+		return fmt.Errorf("%w: build requires --out (bundled guest is used when --src and --sample are omitted)", platforms.ErrUsage)
 	}
 
 	target := cmakeTarget(sample, src)
@@ -53,6 +69,9 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	}
 
 	workName := or(sample, filepath.Base(src))
+	if opts.Src == "" && sample == "" {
+		workName = "blazium-guest"
+	}
 	buildDir := filepath.Join(cache.PlatformDir(opts.Prefix, ID), "work", workName)
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		return err
