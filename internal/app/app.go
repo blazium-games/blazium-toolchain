@@ -188,10 +188,11 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	fs.SetOutput(base.Stderr)
 	src := fs.String("src", "", "guest CMake source dir")
 	out := fs.String("out", "", "output PS-X EXE path")
+	sample := fs.String("sample", "", "official SDK sample: template or gte (when --src is empty)")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample})
 }
 
 func runRun(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
@@ -255,7 +256,7 @@ PS1 commands:
   setup [--profile compile|dev|iso] [--offline]
   env
   status
-  build --src DIR --out FILE
+  build --out FILE [--src DIR | --sample template|gte]
   run [--iso CUE] [GAME.EXE]
   iso --xml FILE [--out PATH]
 

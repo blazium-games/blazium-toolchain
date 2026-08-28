@@ -23,10 +23,53 @@ func (Host) LookPath(name string) (string, error) {
 }
 
 func (Host) Run(ctx context.Context, name string, args []string, stdout, stderr io.Writer) error {
+	return Host{}.RunEnv(ctx, name, args, nil, nil, stdout, stderr)
+}
+
+// RunEnv runs name with extra PATH entries and env vars prepended.
+func (Host) RunEnv(ctx context.Context, name string, args []string, extraPath []string, extraEnv map[string]string, stdout, stderr io.Writer) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
+	cmd.Env = mergeEnv(os.Environ(), extraPath, extraEnv)
 	return cmd.Run()
+}
+
+func mergeEnv(base []string, extraPath []string, extraEnv map[string]string) []string {
+	out := append([]string{}, base...)
+	if len(extraPath) > 0 {
+		joined := strings.Join(extraPath, string(os.PathListSeparator))
+		replaced := false
+		for i, kv := range out {
+			eq := strings.IndexByte(kv, '=')
+			if eq > 0 && strings.EqualFold(kv[:eq], "PATH") {
+				out[i] = kv[:eq+1] + joined + string(os.PathListSeparator) + kv[eq+1:]
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			out = append(out, "PATH="+joined)
+		}
+	}
+	for k, v := range extraEnv {
+		if k == "" {
+			continue
+		}
+		prefix := k + "="
+		found := false
+		for i, kv := range out {
+			if strings.HasPrefix(kv, prefix) {
+				out[i] = prefix + v
+				found = true
+				break
+			}
+		}
+		if !found {
+			out = append(out, prefix+v)
+		}
+	}
+	return out
 }
 
 // LookPrefersEnv returns envPath if set and exists, else LookPath.

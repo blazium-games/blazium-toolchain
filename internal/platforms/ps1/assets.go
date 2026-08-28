@@ -63,4 +63,19 @@ const (
 	windowsSDKSHA256 = "13a355afa89ecb2505882388841c42d9d231d40bbbe9ae22eb5e16abe19b2ea7"
 	linuxGCCSHA256   = ""
 	linuxSDKSHA256   = ""
+
+	windowsCMakeURL    = "https://github.com/Kitware/CMake/releases/download/v3.28.6/cmake-3.28.6-windows-x86_64.zip"
+	windowsCMakeSHA256 = ""
+	windowsNinjaURL    = "https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip"
+	windowsNinjaSHA256 = ""
 )
+
+func hostBuildAssets() []ZipAsset {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	return []ZipAsset{
+		{ID: "cmake", URL: windowsCMakeURL, SHA256: windowsCMakeSHA256, Dest: "cmake"},
+		{ID: "ninja", URL: windowsNinjaURL, SHA256: windowsNinjaSHA256, Dest: "ninja"},
+	}
+}

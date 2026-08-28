@@ -54,8 +54,9 @@ type SetupOptions struct {
 // BuildOptions compile a guest with the platform SDK (spawn only).
 type BuildOptions struct {
 	CommonOptions
-	Src string
-	Out string
+	Src    string
+	Out    string
+	Sample string // template | gte; used when Src is empty
 }
 
 // RunOptions boot the emulator.

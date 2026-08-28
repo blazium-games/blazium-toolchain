@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/blazium-games/blazium-toolchain/internal/platforms"
@@ -176,10 +177,173 @@ func TestSetupFetchesWhenMissing(t *testing.T) {
 }
 
 func TestBuildRequiresFlags(t *testing.T) {
+	dir := t.TempDir()
+	plantCompileTools(t, dir)
+	plantSDKCMake(t, dir)
 	tool := New()
-	err := tool.Build(context.Background(), platforms.BuildOptions{})
+	if err := tool.Setup(context.Background(), platforms.SetupOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir},
+		Profile:       "compile",
+		Offline:       true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	err := tool.Build(context.Background(), platforms.BuildOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir},
+	})
 	if err == nil {
 		t.Fatal("expected usage")
+	}
+}
+
+func TestBuildRequiresSetup(t *testing.T) {
+	t.Setenv("MIPS_GCC", "")
+	t.Setenv("ELF2X", "")
+	t.Setenv("PSN00BSDK_LIBS", "")
+	t.Setenv("PATH", t.TempDir())
+	tool := New()
+	err := tool.Build(context.Background(), platforms.BuildOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: t.TempDir()},
+		Sample:        "template",
+		Out:           filepath.Join(t.TempDir(), "hello.exe"),
+	})
+	if err == nil {
+		t.Fatal("expected missing setup")
+	}
+}
+
+type recRunner struct {
+	calls [][]string
+}
+
+func (r *recRunner) LookPath(name string) (string, error) {
+	return name, nil
+}
+
+func (r *recRunner) Run(ctx context.Context, name string, args []string, stdout, stderr io.Writer) error {
+	return r.RunEnv(ctx, name, args, nil, nil, stdout, stderr)
+}
+
+func (r *recRunner) RunEnv(_ context.Context, name string, args []string, _ []string, _ map[string]string, _ io.Writer, _ io.Writer) error {
+	r.calls = append(r.calls, append([]string{name}, args...))
+	for i, a := range args {
+		if a == "--build" && i+1 < len(args) {
+			out := filepath.Join(args[i+1], "template.exe")
+			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(out, []byte("PS-X EXE\x00payload"), 0o644)
+		}
+	}
+	return nil
+}
+
+func plantSDKCMake(t *testing.T, prefix string) {
+	t.Helper()
+	sdk := filepath.Join(prefix, "ps1", "psn00bsdk", "lib", "libpsn00b", "cmake")
+	if err := os.MkdirAll(sdk, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sdk, "sdk.cmake"), []byte("# test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func plantSample(t *testing.T, prefix, sample string) {
+	t.Helper()
+	rel := filepath.Join("ps1", "psn00bsdk", "share", "psn00bsdk", "template")
+	if sample == "gte" {
+		rel = filepath.Join("ps1", "psn00bsdk", "share", "psn00bsdk", "examples", "graphics", "gte")
+	}
+	dir := filepath.Join(prefix, rel)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "CMakeLists.txt"), []byte("project(test)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func plantHostTools(t *testing.T, prefix string) {
+	t.Helper()
+	cmake := filepath.Join(prefix, "ps1", "cmake", "bin", "cmake")
+	ninja := filepath.Join(prefix, "ps1", "ninja", "ninja")
+	if err := os.MkdirAll(filepath.Dir(cmake), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(ninja), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cmake, []byte("c"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ninja, []byte("n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBuildWritesPSXEXE(t *testing.T) {
+	dir := t.TempDir()
+	plantCompileTools(t, dir)
+	plantSDKCMake(t, dir)
+	plantSample(t, dir, "template")
+	plantHostTools(t, dir)
+	rec := &recRunner{}
+	tool := &Tool{Runner: rec, Fetcher: memFetch{}}
+	if err := tool.Setup(context.Background(), platforms.SetupOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir},
+		Profile:       "compile",
+		Offline:       true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "hello.exe")
+	err := tool.Build(context.Background(), platforms.BuildOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir},
+		Sample:        "template",
+		Out:           out,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyPSXEXE(out); err != nil {
+		t.Fatal(err)
+	}
+	var sawNinja, sawTarget bool
+	for _, c := range rec.calls {
+		joined := strings.Join(c, " ")
+		if strings.Contains(joined, "-G Ninja") {
+			sawNinja = true
+		}
+		if strings.Contains(joined, "--target template") {
+			sawTarget = true
+		}
+	}
+	if !sawNinja || !sawTarget {
+		t.Fatalf("cmake calls: %v", rec.calls)
+	}
+}
+
+func TestGTEMissingTim(t *testing.T) {
+	dir := t.TempDir()
+	plantCompileTools(t, dir)
+	plantSDKCMake(t, dir)
+	plantSample(t, dir, "gte")
+	tool := New()
+	if err := tool.Setup(context.Background(), platforms.SetupOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir},
+		Profile:       "compile",
+		Offline:       true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	err := tool.Build(context.Background(), platforms.BuildOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir},
+		Sample:        "gte",
+		Out:           filepath.Join(dir, "gte.exe"),
+	})
+	if err == nil {
+		t.Fatal("expected missing texture.tim")
 	}
 }
 

@@ -13,6 +13,8 @@ Each component keeps its **upstream** license. Shipping them together is an aggr
 | mkpsxiso | GPLv2 or later | `third_party/ps1/mkpsxiso/`, cache | Spawned by `ps1 iso` |
 | pcsx-redux | GPLv2 | `third_party/ps1/pcsx-redux/`, cache | Spawned by `ps1 run` |
 | OpenBIOS | pcsx-redux tree | `third_party/ps1/openbios/`, cache | No Sony BIOS |
+| CMake | BSD-3 | `third_party/ps1/cmake/`, cache | Spawned at `ps1 build` if not on PATH |
+| Ninja | Apache-2.0 | `third_party/ps1/ninja/`, cache | Spawned at `ps1 build` if not on PATH |
 
 Do **not** copy any of these trees into `blazium/` or link them into the editor binary.
 
@@ -33,3 +35,5 @@ Official compile-profile downloads (unmodified):
 
 - `https://github.com/Lameguy64/PSn00bSDK/releases/download/v0.24/gcc-mipsel-none-elf-12.3.0-windows.zip`
 - `https://github.com/Lameguy64/PSn00bSDK/releases/download/v0.24/PSn00bSDK-0.24-win32.zip`
+- `https://github.com/Kitware/CMake/releases/download/v3.28.6/cmake-3.28.6-windows-x86_64.zip` (if cmake is not on PATH)
+- `https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip` (if ninja is not on PATH)

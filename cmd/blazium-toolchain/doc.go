@@ -10,7 +10,7 @@
 //	blazium-toolchain [--json] [--prefix DIR] ps1 setup [--profile compile|dev|iso] [--offline]
 //	blazium-toolchain [--json] [--prefix DIR] ps1 env
 //	blazium-toolchain [--json] [--prefix DIR] ps1 status
-//	blazium-toolchain [--prefix DIR] ps1 build --src DIR --out FILE
+//	blazium-toolchain [--prefix DIR] ps1 build --out FILE [--src DIR | --sample template|gte]
 //	blazium-toolchain [--prefix DIR] ps1 run [--iso CUE] GAME.EXE
 //	blazium-toolchain [--prefix DIR] ps1 iso --xml FILE [--out PATH]
 //

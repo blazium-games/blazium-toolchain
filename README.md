@@ -11,7 +11,7 @@ blazium-toolchain [--json] list
 blazium-toolchain [--json] [--prefix DIR] ps1 setup [--profile compile|dev|iso] [--offline]
 blazium-toolchain [--json] [--prefix DIR] ps1 env
 blazium-toolchain [--json] [--prefix DIR] ps1 status
-blazium-toolchain [--prefix DIR] ps1 build --src DIR --out FILE
+blazium-toolchain [--prefix DIR] ps1 build --out FILE [--src DIR | --sample template|gte]
 blazium-toolchain [--prefix DIR] ps1 run [--iso CUE] GAME.EXE
 blazium-toolchain [--prefix DIR] ps1 iso --xml FILE [--out PATH]
 ```
@@ -38,6 +38,8 @@ Default cache: `%LOCALAPPDATA%\Blazium\blazium-toolchain` (Windows).
 | `iso` | dev + mkpsxiso (GPLv2+, spawn) |
 
 `ps1 setup --profile compile` fetches official PSn00bSDK **v0.24** zips (GCC **12.3.0** + SDK/`elf2x`) into the cache when they are missing. It reuses `third_party/ps1/`, the prefix, PATH, or env (`PSN00BSDK_*`, `MIPS_GCC`, `ELF2X`) so it will not download twice. `--offline` never hits the network. `dev` / `iso` still only record pins for OpenBIOS, pcsx-redux, and mkpsxiso.
+
+`ps1 build --sample template` configures the official zip template with Ninja, builds only the EXE target (not ISO), and writes a `PS-X EXE`. CMake and Ninja are looked up on PATH or fetched on Windows into the cache.
 
 ## License
 

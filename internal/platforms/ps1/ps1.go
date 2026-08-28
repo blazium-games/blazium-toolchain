@@ -149,41 +149,6 @@ func (t *Tool) Status(opts platforms.CommonOptions) (map[string]any, error) {
 	return out, nil
 }
 
-func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
-	if opts.Src == "" || opts.Out == "" {
-		return fmt.Errorf("%w: build requires --src and --out", platforms.ErrUsage)
-	}
-	r := t.runner()
-	cmake, err := r.LookPath("cmake")
-	if err != nil {
-		return fmt.Errorf("%w: cmake", platforms.ErrMissingTool)
-	}
-	buildDir := filepath.Join(opts.Src, "build")
-	if err := os.MkdirAll(buildDir, 0o755); err != nil {
-		return err
-	}
-	args := []string{"-S", opts.Src, "-B", buildDir}
-	if sdk := os.Getenv("PSN00BSDK_LIBS"); sdk != "" {
-		tc := filepath.Join(sdk, "cmake", "sdk.cmake")
-		if _, err := os.Stat(tc); err == nil {
-			args = append(args, "-DCMAKE_TOOLCHAIN_FILE="+tc)
-		}
-	}
-	if err := r.Run(ctx, cmake, args, writerOrDiscard(opts.Stdout), writerOrDiscard(opts.Stderr)); err != nil {
-		return fmt.Errorf("cmake configure: %w", err)
-	}
-	if err := r.Run(ctx, cmake, []string{"--build", buildDir}, writerOrDiscard(opts.Stdout), writerOrDiscard(opts.Stderr)); err != nil {
-		return fmt.Errorf("cmake build: %w", err)
-	}
-	if elf2x, err := execx.LookPrefersEnv(r, "", "elf2x"); err == nil {
-		// Best-effort: convert first ELF in build dir if out is not already PS-X EXE.
-		_ = elf2x
-	}
-	if opts.Stdout != nil {
-		fmt.Fprintf(opts.Stdout, "build finished; copy or elf2x the guest to %s\n", opts.Out)
-	}
-	return nil
-}
 
 func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
 	r := t.runner()
@@ -348,6 +313,10 @@ func compilePiecePresent(dest, id string) bool {
 		return walkNamed(dest, hostNames("mipsel-none-elf-gcc")...) != ""
 	case "psn00bsdk":
 		return walkNamed(dest, hostNames("elf2x")...) != "" || walkDirNamed(dest, "libpsn00b") != ""
+	case "cmake":
+		return walkNamed(dest, hostNames("cmake")...) != ""
+	case "ninja":
+		return walkNamed(dest, hostNames("ninja")...) != ""
 	default:
 		return false
 	}
