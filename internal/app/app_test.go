@@ -167,6 +167,12 @@ func TestPS1StatusReadyJSON(t *testing.T) {
 	if int(abi) != 1 {
 		t.Fatalf("guest_abi %v in %s", st["guest_abi"], out.String())
 	}
+	if supported, _ := st["host_supported"].(bool); !supported {
+		t.Fatalf("host_supported %s", out.String())
+	}
+	if _, ok := st["host_os"].(string); !ok {
+		t.Fatalf("host_os %s", out.String())
+	}
 }
 
 func TestHelp(t *testing.T) {
@@ -175,6 +181,9 @@ func TestHelp(t *testing.T) {
 		t.Fatal("help")
 	}
 	if !strings.Contains(out.String(), "ps1") {
+		t.Fatal(out.String())
+	}
+	if !strings.Contains(out.String(), "Windows and Linux") {
 		t.Fatal(out.String())
 	}
 }

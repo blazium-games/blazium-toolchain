@@ -16,6 +16,7 @@
 //	blazium-toolchain [--prefix DIR] ps1 iso --xml FILE [--out PATH]
 //	blazium-toolchain [--json] [--prefix DIR] ps1 fmv
 //
-// Only the ps1 platform is implemented. ps2, ps3, and ps4 are reserved
-// and exit with code 2.
+// Only the ps1 platform is implemented. PS1 host tools (setup/build/run)
+// are Windows and Linux only; other hosts exit with code 2.
+// ps2, ps3, and ps4 are reserved and exit with code 2.
 package main

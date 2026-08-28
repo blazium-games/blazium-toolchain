@@ -284,6 +284,8 @@ Platforms:
   ps3     planned
   ps4     planned
 
+PS1 host tools: Windows and Linux only.
+
 PS1 commands:
   setup [--profile compile|dev|iso] [--offline]
   env

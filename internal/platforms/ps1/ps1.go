@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -60,11 +61,14 @@ func (t *Tool) Info() platforms.Info {
 		Name:        "PlayStation 1",
 		Status:      platforms.StatusSupported,
 		Commands:    []string{"setup", "env", "status", "build", "run", "iso", "fmv"},
-		Description: "PSn00bSDK guest build + pcsx-redux. Official Blazium PS1 toolchain.",
+		Description: "PSn00bSDK guest build + pcsx-redux. Official Blazium PS1 toolchain (host: Windows and Linux).",
 	}
 }
 
 func (t *Tool) Setup(ctx context.Context, opts platforms.SetupOptions) error {
+	if err := requireHost(); err != nil {
+		return err
+	}
 	_ = ctx
 	profile := opts.Profile
 	if profile == "" {
@@ -163,21 +167,27 @@ func (t *Tool) Status(opts platforms.CommonOptions) (map[string]any, error) {
 	}
 	st, _ := cache.ReadState(opts.Prefix, ID)
 	profile := or(st.Profile, "compile")
+	supported := HostSupported()
 	out := map[string]any{
-		"platform":      ID,
-		"profile":       st.Profile,
-		"env":           env,
-		"components":    componentsForProfile(profile),
-		"compile_ready": compileReady(env),
-		"dev_ready":     destReady(env),
-		"ready":         profileReady(profile, env),
-		"guest_abi":     guest.CookABI,
-		"guest_dir":     GuestDir(opts.Prefix),
+		"platform":       ID,
+		"profile":        st.Profile,
+		"env":            env,
+		"components":     componentsForProfile(profile),
+		"compile_ready":  compileReady(env) && supported,
+		"dev_ready":      destReady(env) && supported,
+		"ready":          supported && profileReady(profile, env),
+		"guest_abi":      guest.CookABI,
+		"guest_dir":      GuestDir(opts.Prefix),
+		"host_os":        runtime.GOOS,
+		"host_supported": supported,
 	}
 	return out, nil
 }
 
 func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
+	if err := requireHost(); err != nil {
+		return err
+	}
 	env, err := t.Env(opts.CommonOptions)
 	if err != nil {
 		return err
@@ -228,6 +238,9 @@ func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
 }
 
 func (t *Tool) ISO(ctx context.Context, opts platforms.ISOOptions) error {
+	if err := requireHost(); err != nil {
+		return err
+	}
 	if opts.XML == "" {
 		return fmt.Errorf("%w: iso requires --xml", platforms.ErrUsage)
 	}

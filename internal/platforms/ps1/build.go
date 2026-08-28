@@ -30,6 +30,9 @@ type envRunner interface {
 }
 
 func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
+	if err := requireHost(); err != nil {
+		return err
+	}
 	env, err := t.compileEnv(opts.CommonOptions)
 	if err != nil {
 		return err

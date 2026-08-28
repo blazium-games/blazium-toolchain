@@ -21,8 +21,8 @@ type ZipFetcher interface {
 	FetchZip(ctx context.Context, url, sha256, destDir string, log io.Writer) error
 }
 
-func defaultCompileAssets() []ZipAsset {
-	switch runtime.GOOS {
+func compileAssetsFor(goos string) []ZipAsset {
+	switch goos {
 	case "windows":
 		return []ZipAsset{
 			{
@@ -38,7 +38,7 @@ func defaultCompileAssets() []ZipAsset {
 				Dest:   "psn00bsdk",
 			},
 		}
-	default:
+	case "linux":
 		return []ZipAsset{
 			{
 				ID:     "mipsel-none-elf-gcc",
@@ -53,7 +53,13 @@ func defaultCompileAssets() []ZipAsset {
 				Dest:   "psn00bsdk",
 			},
 		}
+	default:
+		return nil
 	}
+}
+
+func defaultCompileAssets() []ZipAsset {
+	return compileAssetsFor(runtime.GOOS)
 }
 
 // SHA-256 of the official v0.24 zips (unmodified). Empty means verify is skipped
