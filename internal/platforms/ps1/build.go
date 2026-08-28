@@ -119,6 +119,9 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	if opts.Sprite != "" {
 		cfg = append(cfg, "-DBLAZIUM_PS1_SPRITE="+filepath.ToSlash(opts.Sprite))
 	}
+	if opts.Script != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS1_SCRIPT="+filepath.ToSlash(opts.Script))
+	}
 	if err := t.runEnv(ctx, cmake, cfg, extraPath, extraEnv, opts.Stdout, opts.Stderr); err != nil {
 		return fmt.Errorf("cmake configure: %w", err)
 	}

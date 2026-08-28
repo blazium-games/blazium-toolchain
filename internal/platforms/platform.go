@@ -62,6 +62,7 @@ type BuildOptions struct {
 	Mesh   string // optional cooked SVECTOR mesh to embed (P4+)
 	Vag    string // optional cooked VAG to embed (P5+)
 	Sprite string // optional cooked SPRITE table to embed (P8+)
+	Script string // optional cooked SCRIPT.IR (ABI 2+)
 }
 
 // RunOptions boot the emulator.

@@ -67,6 +67,11 @@ extern const uint8_t cooked_sprite[];
 extern const size_t cooked_sprite_size;
 #endif
 
+#ifdef BLAZIUM_PS1_HAS_SCRIPT
+extern const uint8_t cooked_script[];
+extern const size_t cooked_script_size;
+#endif
+
 static MATRIX g_color_mtx = {
 	ONE * 3 / 4, ONE / 2, ONE / 4,
 	ONE * 3 / 4, ONE / 2, ONE / 4,
@@ -198,6 +203,8 @@ typedef struct {
 	uint16_t pad;
 } CookedSprite;
 
+static uint16_t g_spr_flags = 1;
+
 static void aabb_step() {
 	g_spr_x += g_spr_vx;
 	g_spr_y += g_spr_vy;
@@ -216,6 +223,7 @@ static void draw_cooked_sprites(uint16_t clut) {
 		return;
 	}
 	const uint16_t n = uint16_t(cooked_sprite[0] | (cooked_sprite[1] << 8));
+	g_spr_flags = uint16_t(cooked_sprite[2] | (cooked_sprite[3] << 8));
 	const CookedSprite *spr = (const CookedSprite *)(cooked_sprite + 4);
 	SPRT *p = (SPRT *)g_pri;
 	for (uint16_t i = 0; i < n; i++) {
@@ -226,7 +234,7 @@ static void draw_cooked_sprites(uint16_t clut) {
 		setRGB0(p, 255, 255, 255);
 		int16_t x = spr[i].x;
 		int16_t y = spr[i].y;
-		if (i == 1) {
+		if (i == 1 && (g_spr_flags & 1)) {
 			x = g_spr_x;
 			y = g_spr_y;
 		}
@@ -330,7 +338,35 @@ int main(int argc, const char **argv) {
 	DecDCTReset(0);
 	InitGeom();
 	gte_SetGeomOffset(SCREEN_W / 2, SCREEN_H / 2);
-	gte_SetGeomScreen(SCREEN_W / 2);
+	int16_t geom_screen = SCREEN_W / 2;
+	int16_t rot_step = 12;
+	SVECTOR rot = { 0, 0, 0, 0 };
+	VECTOR pos = { 0, 0, 512 };
+#ifdef BLAZIUM_PS1_HAS_SCRIPT
+	if (cooked_script_size >= 14) {
+		union {
+			float f;
+			uint32_t u;
+		} ry;
+		ry.u = uint32_t(cooked_script[0]) | (uint32_t(cooked_script[1]) << 8) | (uint32_t(cooked_script[2]) << 16) | (uint32_t(cooked_script[3]) << 24);
+		pos.vx = int16_t(cooked_script[4] | (cooked_script[5] << 8));
+		pos.vy = int16_t(cooked_script[6] | (cooked_script[7] << 8));
+		pos.vz = int16_t(cooked_script[8] | (cooked_script[9] << 8));
+		geom_screen = int16_t(cooked_script[10] | (cooked_script[11] << 8));
+		if (geom_screen < 80) {
+			geom_screen = 80;
+		}
+		if (geom_screen > 256) {
+			geom_screen = 256;
+		}
+		int step = int(ry.f * 4096.0f / (2.0f * 3.14159265f) / 60.0f);
+		if (step == 0 && ry.f != 0.0f) {
+			step = ry.f > 0.0f ? 1 : -1;
+		}
+		rot_step = int16_t(step);
+	}
+#endif
+	gte_SetGeomScreen(geom_screen);
 	gte_SetBackColor(32, 32, 32);
 	gte_SetFarColor(32, 0, 48);
 	gte_SetColorMatrix(&g_color_mtx);
@@ -363,8 +399,6 @@ int main(int argc, const char **argv) {
 	const uint16_t tpage = getTPage(0, 0, 640, 0);
 	const uint16_t clut = getClut(0, 480);
 
-	SVECTOR rot = { 0, 0, 0, 0 };
-	VECTOR pos = { 0, 0, 512 };
 	int frames = 0;
 
 	for (;;) {
@@ -378,7 +412,7 @@ int main(int argc, const char **argv) {
 			MulMatrix0(&g_light_mtx, &mtx, &lmtx);
 			gte_SetLightMatrix(&lmtx);
 		}
-		rot.vy += 12;
+		rot.vy += rot_step;
 		{
 			const PADTYPE *pad = (const PADTYPE *)g_pad[0];
 			if (pad->stat == 0) {
@@ -401,7 +435,9 @@ int main(int argc, const char **argv) {
 		draw_cooked_mesh(tpage, clut);
 #endif
 #ifdef BLAZIUM_PS1_HAS_SPRITE
-		aabb_step();
+		if (g_spr_flags & 1) {
+			aabb_step();
+		}
 		draw_cooked_sprites(clut);
 #endif
 		g_pri = (uint8_t *)FntSort(&g_fb[g_active].ot[1], g_pri, 8, 200, "HUD SPRT AABB L3 FOG MDEC");

@@ -348,11 +348,16 @@ func TestBuildWritesPSXEXE(t *testing.T) {
 	if err := os.WriteFile(sprite, []byte{2, 0, 1, 0}, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	script := filepath.Join(dir, "SCRIPT.IR")
+	if err := os.WriteFile(script, []byte{0, 0, 0xcd, 0xcc, 0xcc, 0x3e, 0, 0, 0, 2, 160, 0, 0, 0}, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	err := tool.Build(context.Background(), platforms.BuildOptions{
 		CommonOptions: platforms.CommonOptions{Prefix: dir},
 		Sample:        "template",
 		Out:           out,
 		Sprite:        sprite,
+		Script:        script,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -360,7 +365,7 @@ func TestBuildWritesPSXEXE(t *testing.T) {
 	if err := verifyPSXEXE(out); err != nil {
 		t.Fatal(err)
 	}
-	var sawNinja, sawTarget, sawSprite bool
+	var sawNinja, sawTarget, sawSprite, sawScript bool
 	for _, c := range rec.calls {
 		joined := strings.Join(c, " ")
 		if strings.Contains(joined, "-G Ninja") {
@@ -372,8 +377,11 @@ func TestBuildWritesPSXEXE(t *testing.T) {
 		if strings.Contains(joined, "BLAZIUM_PS1_SPRITE=") {
 			sawSprite = true
 		}
+		if strings.Contains(joined, "BLAZIUM_PS1_SCRIPT=") {
+			sawScript = true
+		}
 	}
-	if !sawNinja || !sawTarget || !sawSprite {
+	if !sawNinja || !sawTarget || !sawSprite || !sawScript {
 		t.Fatalf("cmake calls: %v", rec.calls)
 	}
 }

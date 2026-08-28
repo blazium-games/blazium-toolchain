@@ -12,7 +12,7 @@ import (
 )
 
 // CookABI is the cooked blob layout version. Bump together with the editor cooker.
-const CookABI = 1
+const CookABI = 2
 
 //go:embed runtime/CMakeLists.txt runtime/main.cpp
 var files embed.FS

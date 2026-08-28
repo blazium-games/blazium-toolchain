@@ -17,7 +17,7 @@ func TestInstallWritesRuntime(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "main.cpp")); err != nil {
 		t.Fatal(err)
 	}
-	if CookABI != 1 {
+	if CookABI != 2 {
 		t.Fatalf("CookABI %d", CookABI)
 	}
 }

@@ -196,10 +196,11 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	mesh := fs.String("mesh", "", "optional cooked SVECTOR mesh to embed in the guest")
 	vag := fs.String("vag", "", "optional cooked VAG to embed in the guest")
 	sprite := fs.String("sprite", "", "optional cooked SPRITE table to embed in the guest")
+	script := fs.String("script", "", "optional cooked SCRIPT.IR to embed in the guest")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh, Vag: *vag, Sprite: *sprite})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh, Vag: *vag, Sprite: *sprite, Script: *script})
 }
 
 func runRun(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
@@ -221,17 +222,11 @@ func runRun(ctx context.Context, p platforms.Platform, args []string, base platf
 func runFMV(p platforms.Platform, args []string, base platforms.CommonOptions, stdout io.Writer) error {
 	_ = p
 	_ = args
-	// #region agent log
-	if lf, err := os.OpenFile(`D:\projects\ps1_blazium\debug-9aa74d.log`, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
-		fmt.Fprintf(lf, "{\"sessionId\":\"9aa74d\",\"hypothesisId\":\"P8C\",\"location\":\"app.go:runFMV\",\"message\":\"ps1 fmv\",\"data\":{\"json\":%t},\"timestamp\":%d}\n", base.JSON, time.Now().UnixMilli())
-		_ = lf.Close()
-	}
-	// #endregion
 	if base.JSON {
 		return json.NewEncoder(stdout).Encode(map[string]any{
 			"encoder":   "psxpress",
 			"guest":     "DecDCTReset + libpsxpress (MDEC)",
-			"spawn":     true,
+			"spawn":     false,
 			"in_editor": false,
 			"note":      "Encode STR/XA on the host; editor never links psxpress.",
 		})

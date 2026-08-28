@@ -12,7 +12,7 @@ project(
 
 psn00bsdk_add_executable(runtime GPREL main.cpp)
 target_compile_options(runtime PRIVATE -fno-exceptions -fno-rtti)
-target_compile_definitions(runtime PRIVATE BLAZIUM_PS1_COOK_ABI=1)
+target_compile_definitions(runtime PRIVATE BLAZIUM_PS1_COOK_ABI=2)
 
 set(BLAZIUM_PS1_TIM "" CACHE FILEPATH "Optional cooked TIM to embed")
 if(BLAZIUM_PS1_TIM)
@@ -40,4 +40,11 @@ if(BLAZIUM_PS1_SPRITE)
 	configure_file("${BLAZIUM_PS1_SPRITE}" "${CMAKE_CURRENT_BINARY_DIR}/SPRITE00.BIN" COPYONLY)
 	psn00bsdk_target_incbin(runtime PRIVATE cooked_sprite "${CMAKE_CURRENT_BINARY_DIR}/SPRITE00.BIN")
 	target_compile_definitions(runtime PRIVATE BLAZIUM_PS1_HAS_SPRITE=1)
+endif()
+
+set(BLAZIUM_PS1_SCRIPT "" CACHE FILEPATH "Optional cooked SCRIPT.IR to embed")
+if(BLAZIUM_PS1_SCRIPT)
+	configure_file("${BLAZIUM_PS1_SCRIPT}" "${CMAKE_CURRENT_BINARY_DIR}/SCRIPT.IR" COPYONLY)
+	psn00bsdk_target_incbin(runtime PRIVATE cooked_script "${CMAKE_CURRENT_BINARY_DIR}/SCRIPT.IR")
+	target_compile_definitions(runtime PRIVATE BLAZIUM_PS1_HAS_SCRIPT=1)
 endif()
