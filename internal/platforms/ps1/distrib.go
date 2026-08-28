@@ -36,7 +36,7 @@ func (t *Tool) pcsxZipURL(ctx context.Context) (string, error) {
 		return t.CLIURL, nil
 	}
 	if runtime.GOOS != "windows" {
-		return "", fmt.Errorf("%w: pcsx-redux CLI zip fetch is Windows-only; vendor the CLI under prefix/ps1/pcsx-redux", platforms.ErrMissingTool)
+		return "", fmt.Errorf("%w: pcsx-redux AppDistrib is Windows-only. Install pcsx-redux or pcsx-redux-cli, put it on PATH, or set PCSX_EXE", platforms.ErrMissingTool)
 	}
 	url, err := t.resolveAppDistribZip(ctx, pcsxWinCLICatalog, pcsxWinCLIInfoBase)
 	if err == nil && url != "" {

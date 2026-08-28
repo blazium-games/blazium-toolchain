@@ -24,8 +24,14 @@ func TestCompileAssetsForOS(t *testing.T) {
 	if n := len(compileAssetsFor("windows")); n == 0 {
 		t.Fatal("windows assets empty")
 	}
-	if n := len(compileAssetsFor("linux")); n == 0 {
+	linux := compileAssetsFor("linux")
+	if len(linux) == 0 {
 		t.Fatal("linux assets empty")
+	}
+	for _, a := range linux {
+		if a.SHA256 == "" {
+			t.Fatalf("linux %s missing SHA256", a.ID)
+		}
 	}
 	if n := len(compileAssetsFor("darwin")); n != 0 {
 		t.Fatalf("darwin must not get Linux zips, got %d", n)
