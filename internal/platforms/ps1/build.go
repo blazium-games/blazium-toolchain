@@ -91,6 +91,9 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	if opts.Mesh != "" {
 		cfg = append(cfg, "-DBLAZIUM_PS1_MESH="+filepath.ToSlash(opts.Mesh))
 	}
+	if opts.Vag != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS1_VAG="+filepath.ToSlash(opts.Vag))
+	}
 	if err := t.runEnv(ctx, cmake, cfg, extraPath, extraEnv, opts.Stdout, opts.Stderr); err != nil {
 		return fmt.Errorf("cmake configure: %w", err)
 	}

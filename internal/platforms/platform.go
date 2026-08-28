@@ -60,6 +60,7 @@ type BuildOptions struct {
 	Sample string // template | gte; used when Src is empty
 	Tim    string // optional cooked TIM to embed (P3+)
 	Mesh   string // optional cooked SVECTOR mesh to embed (P4+)
+	Vag    string // optional cooked VAG to embed (P5+)
 }
 
 // RunOptions boot the emulator.
@@ -68,6 +69,7 @@ type RunOptions struct {
 	Exe     string
 	ISO     string
 	Timeout time.Duration // 0 means default 120s smoke watchdog
+	Pcdrv   string        // host dir for -pcdrvbase; empty uses the EXE directory
 }
 
 // ISOOptions spawn an ISO packer (GPL tools must stay external).

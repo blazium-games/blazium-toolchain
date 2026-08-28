@@ -192,10 +192,11 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	sample := fs.String("sample", "", "official SDK sample: template or gte (when --src is empty)")
 	tim := fs.String("tim", "", "optional cooked TIM to embed in the guest")
 	mesh := fs.String("mesh", "", "optional cooked SVECTOR mesh to embed in the guest")
+	vag := fs.String("vag", "", "optional cooked VAG to embed in the guest")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh, Vag: *vag})
 }
 
 func runRun(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
@@ -203,6 +204,7 @@ func runRun(ctx context.Context, p platforms.Platform, args []string, base platf
 	fs.SetOutput(base.Stderr)
 	iso := fs.String("iso", "", "optional cue/bin path")
 	timeout := fs.Duration("timeout", 120*time.Second, "stop the emulator after this duration (smoke)")
+	pcdrv := fs.String("pcdrv", "", "host directory for pcsx-redux -pcdrvbase (default: EXE dir)")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
@@ -210,7 +212,7 @@ func runRun(ctx context.Context, p platforms.Platform, args []string, base platf
 	if fs.NArg() > 0 {
 		exe = fs.Arg(0)
 	}
-	return p.Run(ctx, platforms.RunOptions{CommonOptions: base, Exe: exe, ISO: *iso, Timeout: *timeout})
+	return p.Run(ctx, platforms.RunOptions{CommonOptions: base, Exe: exe, ISO: *iso, Timeout: *timeout, Pcdrv: *pcdrv})
 }
 
 func runISO(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {

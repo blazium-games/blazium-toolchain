@@ -197,6 +197,13 @@ func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
 	defer cancel()
 
 	args := []string{"-no-ui", "-run", "-noupdate", "-safe", "-testmode", "-interpreter", "-softgpu", "-webserver", "-webserver-port", "8080", "-bios", bios, "-stdout"}
+	pcdrv := opts.Pcdrv
+	if pcdrv == "" && opts.Exe != "" {
+		pcdrv = filepath.Dir(opts.Exe)
+	}
+	if pcdrv != "" {
+		args = append(args, "-pcdrv", "-pcdrvbase", pcdrv)
+	}
 	if opts.ISO != "" {
 		args = append(args, "-iso", opts.ISO, "-fastboot")
 	} else {
