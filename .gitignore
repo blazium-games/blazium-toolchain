@@ -1,0 +1,14 @@
+/blazium-toolchain
+/blazium-toolchain.exe
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+.idea/
+.vscode/
+*.user
+.DS_Store
+Thumbs.db
+# local toolchain cache if someone runs setup here
+/.cache/

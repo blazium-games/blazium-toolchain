@@ -1,0 +1,104 @@
+package app
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/blazium-games/blazium-toolchain/internal/platforms"
+)
+
+func TestVersionJSON(t *testing.T) {
+	var out bytes.Buffer
+	code := Run(context.Background(), []string{"--json", "version"}, &out, &bytes.Buffer{})
+	if code != ExitOK {
+		t.Fatalf("exit %d", code)
+	}
+	var m map[string]string
+	if err := json.Unmarshal(out.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["name"] != "blazium-toolchain" || m["version"] != Version {
+		t.Fatalf("%v", m)
+	}
+}
+
+func TestListJSONHasPS1(t *testing.T) {
+	var out bytes.Buffer
+	code := Run(context.Background(), []string{"--json", "list"}, &out, &bytes.Buffer{})
+	if code != ExitOK {
+		t.Fatalf("exit %d", code)
+	}
+	var list []platforms.Info
+	if err := json.Unmarshal(out.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	var ps1 bool
+	for _, info := range list {
+		if info.ID == "ps1" && info.Status == platforms.StatusSupported {
+			ps1 = true
+		}
+	}
+	if !ps1 {
+		t.Fatalf("list: %s", out.String())
+	}
+	for _, want := range []string{"ps2", "ps3", "ps4"} {
+		var found bool
+		for _, info := range list {
+			if info.ID == want && info.Status == platforms.StatusPlanned {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("missing planned %s in %s", want, out.String())
+		}
+	}
+}
+
+func TestPS2IsPlanned(t *testing.T) {
+	var errBuf bytes.Buffer
+	code := Run(context.Background(), []string{"ps2", "setup"}, &bytes.Buffer{}, &errBuf)
+	if code != ExitPlanned {
+		t.Fatalf("exit %d body %s", code, errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "ps2") {
+		t.Fatalf("stderr %s", errBuf.String())
+	}
+}
+
+func TestPS1SetupThenEnv(t *testing.T) {
+	dir := t.TempDir()
+	var out, errb bytes.Buffer
+	code := Run(context.Background(), []string{"--prefix", dir, "ps1", "setup", "--profile", "dev"}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("setup %d %s", code, errb.String())
+	}
+	out.Reset()
+	code = Run(context.Background(), []string{"--prefix", dir, "--json", "ps1", "env"}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("env %d %s", code, errb.String())
+	}
+	var env map[string]string
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHelp(t *testing.T) {
+	var out bytes.Buffer
+	if Run(context.Background(), []string{"help"}, &out, &bytes.Buffer{}) != ExitOK {
+		t.Fatal("help")
+	}
+	if !strings.Contains(out.String(), "ps1") {
+		t.Fatal(out.String())
+	}
+}
+
+func TestUnknownCommand(t *testing.T) {
+	code := Run(context.Background(), []string{"ps1", "frobnicate"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if code != ExitUsage {
+		t.Fatalf("exit %d", code)
+	}
+}
