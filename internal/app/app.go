@@ -197,10 +197,14 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	vag := fs.String("vag", "", "optional cooked VAG to embed in the guest")
 	sprite := fs.String("sprite", "", "optional cooked SPRITE table to embed in the guest")
 	script := fs.String("script", "", "optional cooked SCRIPT.IR to embed in the guest")
+	gdbc := fs.String("gdbc", "", "optional cooked SCRIPT.GD.BC to embed in the guest")
+	luau := fs.String("luau", "", "optional cooked SCRIPT.LU.BC to embed in the guest")
+	str := fs.String("str", "", "optional cooked FMV00.STR to embed in the guest")
+	xa := fs.String("xa", "", "optional cooked FMV00.XA to embed in the guest")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh, Vag: *vag, Sprite: *sprite, Script: *script})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa})
 }
 
 func runRun(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
@@ -224,15 +228,15 @@ func runFMV(p platforms.Platform, args []string, base platforms.CommonOptions, s
 	_ = args
 	if base.JSON {
 		return json.NewEncoder(stdout).Encode(map[string]any{
-			"encoder":   "psxpress",
-			"guest":     "DecDCTReset + libpsxpress (MDEC)",
+			"encoder":   "blazium-mit",
+			"guest":     "DecDCTReset + libpsxpress (MDEC decode) + MIT STR blit",
 			"spawn":     false,
-			"in_editor": false,
-			"note":      "Encode STR/XA on the host; editor never links psxpress.",
+			"in_editor": true,
+			"note":      "Editor encodes STR/XA with MIT writers; guest decodes only.",
 		})
 	}
-	fmt.Fprintln(stdout, "ps1 fmv: guest uses psxpress/MDEC (DecDCTReset). Host encode is spawn-only.")
-	fmt.Fprintln(stdout, "No encoder is bundled in the Blazium editor. DuckStation/Sony BIOS/hardware are out of scope.")
+	fmt.Fprintln(stdout, "ps1 fmv: in-editor MIT STR/XA encode (encoder=blazium-mit). Guest decodes via libpsxpress/MDEC.")
+	fmt.Fprintln(stdout, "No psxpress encode spawn. DuckStation/Sony BIOS/hardware are out of scope.")
 	return nil
 }
 
@@ -285,7 +289,7 @@ PS1 commands:
   setup [--profile compile|dev|iso] [--offline]
   env
   status
-  build --out FILE [--src DIR | --sample template|gte]  # --src optional; bundled guest is default
+  build --out FILE [--src DIR | --sample template|gte] [--tim|--mesh|--vag|--sprite|--script|--gdbc|--luau|--str|--xa]
   run [--iso CUE] [--timeout 120s] [GAME.EXE]
   iso --xml FILE [--out PATH]
   fmv

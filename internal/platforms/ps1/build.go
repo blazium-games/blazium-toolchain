@@ -122,6 +122,18 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	if opts.Script != "" {
 		cfg = append(cfg, "-DBLAZIUM_PS1_SCRIPT="+filepath.ToSlash(opts.Script))
 	}
+	if opts.Gdbc != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS1_GDBC="+filepath.ToSlash(opts.Gdbc))
+	}
+	if opts.Luau != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS1_LUAU="+filepath.ToSlash(opts.Luau))
+	}
+	if opts.Str != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS1_STR="+filepath.ToSlash(opts.Str))
+	}
+	if opts.Xa != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS1_XA="+filepath.ToSlash(opts.Xa))
+	}
 	if err := t.runEnv(ctx, cmake, cfg, extraPath, extraEnv, opts.Stdout, opts.Stderr); err != nil {
 		return fmt.Errorf("cmake configure: %w", err)
 	}

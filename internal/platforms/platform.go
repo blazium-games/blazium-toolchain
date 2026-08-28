@@ -63,6 +63,10 @@ type BuildOptions struct {
 	Vag    string // optional cooked VAG to embed (P5+)
 	Sprite string // optional cooked SPRITE table to embed (P8+)
 	Script string // optional cooked SCRIPT.IR (ABI 2+)
+	Gdbc   string // optional cooked SCRIPT.GD.BC
+	Luau   string // optional cooked SCRIPT.LU.BC
+	Str    string // optional cooked FMV00.STR
+	Xa     string // optional cooked FMV00.XA
 }
 
 // RunOptions boot the emulator.

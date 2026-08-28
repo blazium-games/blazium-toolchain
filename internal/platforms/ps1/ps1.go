@@ -247,6 +247,16 @@ func (t *Tool) ISO(ctx context.Context, opts platforms.ISOOptions) error {
 	r := t.runner()
 	mk, err := execx.LookPrefersEnv(r, "MKPSXISO", "mkpsxiso")
 	if err != nil {
+		env, _ := t.discover(opts.Prefix)
+		if env["MKPSXISO"] != "" && fileExists(env["MKPSXISO"]) {
+			mk = env["MKPSXISO"]
+			err = nil
+		} else if p := walkNamed(cache.PlatformDir(opts.Prefix, ID), hostNames("mkpsxiso")...); p != "" {
+			mk = p
+			err = nil
+		}
+	}
+	if err != nil || mk == "" {
 		return fmt.Errorf("%w: mkpsxiso (GPL — install separately, spawn only)", platforms.ErrMissingTool)
 	}
 	args := []string{opts.XML}
@@ -360,6 +370,9 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 		if p := findVendorFile(prefix, filepath.Join("mkpsxiso", "mkpsxiso")); p != "" {
 			env["MKPSXISO"] = p
 			notes = append(notes, "vendored mkpsxiso")
+		} else if p := walkNamed(plat, hostNames("mkpsxiso")...); p != "" {
+			env["MKPSXISO"] = p
+			notes = append(notes, "found mkpsxiso under prefix")
 		}
 	}
 	return env, notes

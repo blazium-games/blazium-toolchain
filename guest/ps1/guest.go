@@ -12,9 +12,9 @@ import (
 )
 
 // CookABI is the cooked blob layout version. Bump together with the editor cooker.
-const CookABI = 3
+const CookABI = 4
 
-//go:embed runtime/CMakeLists.txt runtime/main.cpp
+//go:embed runtime
 var files embed.FS
 
 // Install writes the guest stub into destDir (prefix/ps1/guest/runtime).

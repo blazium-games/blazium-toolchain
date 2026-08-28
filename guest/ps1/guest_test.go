@@ -19,8 +19,13 @@ func TestInstallWritesRuntime(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "main.cpp")); err != nil {
 		t.Fatal(err)
 	}
-	if CookABI != 3 {
+	if CookABI != 4 {
 		t.Fatalf("CookABI %d", CookABI)
+	}
+	for _, name := range []string{"script_vm.cpp", "script_vm.h", "fmv_play.cpp", "fmv_play.h"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("missing %s: %v", name, err)
+		}
 	}
 }
 
@@ -35,7 +40,7 @@ func TestLockstepWithEditorRuntime(t *testing.T) {
 		t.Skip("editor runtime tree absent")
 	}
 	embedded := filepath.Join(filepath.Dir(thisFile), "runtime")
-	for _, name := range []string{"main.cpp", "CMakeLists.txt"} {
+	for _, name := range []string{"main.cpp", "CMakeLists.txt", "script_vm.cpp", "script_vm.h", "fmv_play.cpp", "fmv_play.h"} {
 		want, err := os.ReadFile(filepath.Join(editor, name))
 		if err != nil {
 			t.Fatal(err)

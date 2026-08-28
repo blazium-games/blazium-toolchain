@@ -164,7 +164,7 @@ func TestPS1StatusReadyJSON(t *testing.T) {
 		t.Fatalf("status %s", out.String())
 	}
 	abi, _ := st["guest_abi"].(float64)
-	if int(abi) != 3 {
+	if int(abi) != 4 {
 		t.Fatalf("guest_abi %v in %s", st["guest_abi"], out.String())
 	}
 	if supported, _ := st["host_supported"].(bool); !supported {
@@ -198,7 +198,7 @@ func TestPS1FMVJSON(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &m); err != nil {
 		t.Fatal(err)
 	}
-	if m["encoder"] != "psxpress" || m["in_editor"] != false {
+	if m["encoder"] != "blazium-mit" || m["in_editor"] != true || m["spawn"] != false {
 		t.Fatalf("%v", m)
 	}
 }
