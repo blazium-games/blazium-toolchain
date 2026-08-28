@@ -11,6 +11,7 @@ import (
 
 	"github.com/blazium-games/blazium-toolchain/internal/cache"
 	"github.com/blazium-games/blazium-toolchain/internal/execx"
+	"github.com/blazium-games/blazium-toolchain/internal/fetch"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms"
 )
 
@@ -18,11 +19,27 @@ const ID = "ps1"
 
 // Tool is the PS1 implementation of platforms.Platform.
 type Tool struct {
-	Runner execx.Runner
+	Runner  execx.Runner
+	Fetcher ZipFetcher
+	Assets  []ZipAsset
 }
 
 func New() *Tool {
-	return &Tool{Runner: execx.Host{}}
+	return &Tool{Runner: execx.Host{}, Fetcher: fetch.HTTP{}}
+}
+
+func (t *Tool) fetcher() ZipFetcher {
+	if t.Fetcher != nil {
+		return t.Fetcher
+	}
+	return fetch.HTTP{}
+}
+
+func (t *Tool) compileAssets() []ZipAsset {
+	if len(t.Assets) > 0 {
+		return t.Assets
+	}
+	return defaultCompileAssets()
 }
 
 func (t *Tool) runner() execx.Runner {
@@ -53,10 +70,17 @@ func (t *Tool) Setup(ctx context.Context, opts platforms.SetupOptions) error {
 	}
 
 	env, notes := t.discover(opts.Prefix)
-	if opts.Offline {
-		if env["MIPS_GCC"] == "" && lookFile("mipsel-none-elf-gcc") == "" {
-			return fmt.Errorf("%w: no mipsel-none-elf-gcc in vendor tree, env, or PATH and --offline set", platforms.ErrOffline)
+	if !compileReady(env) && !opts.Offline {
+		if err := t.ensureCompile(ctx, opts.Prefix, opts.Stdout); err != nil {
+			return err
 		}
+		env, notes = t.discover(opts.Prefix)
+	}
+	if opts.Offline && env["MIPS_GCC"] == "" && lookFile("mipsel-none-elf-gcc") == "" {
+		return fmt.Errorf("%w: no mipsel-none-elf-gcc in vendor tree, env, or PATH and --offline set", platforms.ErrOffline)
+	}
+	if !opts.Offline && !compileReady(env) {
+		return fmt.Errorf("%w: compile profile needs mipsel-none-elf-gcc, elf2x, and PSN00BSDK_LIBS", platforms.ErrMissingTool)
 	}
 
 	st := cache.State{
@@ -85,8 +109,10 @@ func (t *Tool) Setup(ctx context.Context, opts platforms.SetupOptions) error {
 				fmt.Fprintf(opts.Stdout, "  %s=%s\n", k, v)
 			}
 		}
-		if !opts.Offline {
-			fmt.Fprintln(opts.Stdout, "note: download pins are recorded; fetch from official mirrors when published. discovered local tools were reused.")
+		if compileReady(env) {
+			fmt.Fprintln(opts.Stdout, "compile toolchain ready")
+		} else if !opts.Offline {
+			fmt.Fprintln(opts.Stdout, "note: compile tools incomplete after fetch")
 		}
 	}
 	return nil
@@ -118,7 +144,7 @@ func (t *Tool) Status(opts platforms.CommonOptions) (map[string]any, error) {
 		"profile":    st.Profile,
 		"env":        env,
 		"components": componentsForProfile(or(st.Profile, "compile")),
-		"ready":      env["MIPS_GCC"] != "" || lookFile("mipsel-none-elf-gcc") != "",
+		"ready":      compileReady(env),
 	}
 	return out, nil
 }
@@ -212,23 +238,62 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 	copyEnv("PSN00BSDK_LIBS")
 	copyEnv("PSN00BSDK_TC")
 	copyEnv("MIPS_GCC")
+	copyEnv("ELF2X")
 	copyEnv("OPENBIOS")
 	copyEnv("PCSX_EXE")
 	copyEnv("MKPSXISO")
+
+	plat := cache.PlatformDir(prefix, ID)
 
 	if env["MIPS_GCC"] == "" {
 		if p := findVendorFile(prefix, filepath.Join("gcc", "bin", "mipsel-none-elf-gcc")); p != "" {
 			env["MIPS_GCC"] = p
 			notes = append(notes, "vendored mipsel-none-elf-gcc")
+		} else if p := walkNamed(plat, append(hostNames("mipsel-none-elf-gcc"))...); p != "" {
+			env["MIPS_GCC"] = p
+			notes = append(notes, "found mipsel-none-elf-gcc under prefix")
 		} else if p := lookFile("mipsel-none-elf-gcc"); p != "" {
 			env["MIPS_GCC"] = p
 			notes = append(notes, "discovered mipsel-none-elf-gcc on PATH")
 		}
 	}
+	if env["ELF2X"] == "" {
+		if p := findVendorFile(prefix, filepath.Join("elf2x", "elf2x")); p != "" {
+			env["ELF2X"] = p
+			notes = append(notes, "vendored elf2x")
+		} else if p := walkNamed(plat, append(hostNames("elf2x"))...); p != "" {
+			env["ELF2X"] = p
+			notes = append(notes, "found elf2x under prefix")
+		} else {
+			for _, sib := range siblingSDKRoots() {
+				if p := walkNamed(sib, append(hostNames("elf2x"))...); p != "" {
+					env["ELF2X"] = p
+					notes = append(notes, "found elf2x in sibling PSn00bSDK")
+					break
+				}
+			}
+		}
+		if env["ELF2X"] == "" {
+			if p := lookFile("elf2x"); p != "" {
+				env["ELF2X"] = p
+				notes = append(notes, "discovered elf2x on PATH")
+			}
+		}
+	}
 	if env["PSN00BSDK_LIBS"] == "" {
-		if p := findVendorDir(prefix, "psn00bsdk"); p != "" {
+		if p := findLibpsn00b(plat); p != "" {
 			env["PSN00BSDK_LIBS"] = p
+			notes = append(notes, "found libpsn00b under prefix")
+		} else if p := findVendorDir(prefix, "psn00bsdk"); p != "" {
+			if lib := filepath.Join(p, "lib", "libpsn00b"); dirExists(lib) {
+				env["PSN00BSDK_LIBS"] = lib
+			} else {
+				env["PSN00BSDK_LIBS"] = p
+			}
 			notes = append(notes, "vendored psn00bsdk")
+		} else if p := findLibpsn00b(siblingSDKRoots()...); p != "" {
+			env["PSN00BSDK_LIBS"] = p
+			notes = append(notes, "found libpsn00b in sibling PSn00bSDK")
 		}
 	}
 	if env["PSN00BSDK_TC"] == "" && env["MIPS_GCC"] != "" {
@@ -257,11 +322,55 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 			notes = append(notes, "vendored mkpsxiso")
 		}
 	}
-	if elf := findVendorFile(prefix, filepath.Join("elf2x", "elf2x")); elf != "" {
-		env["ELF2X"] = elf
-		notes = append(notes, "vendored elf2x")
-	}
 	return env, notes
+}
+
+func (t *Tool) ensureCompile(ctx context.Context, prefix string, log io.Writer) error {
+	root := cache.PlatformDir(prefix, ID)
+	for _, a := range t.compileAssets() {
+		dest := filepath.Join(root, a.Dest)
+		if compilePiecePresent(dest, a.ID) {
+			continue
+		}
+		if log != nil {
+			fmt.Fprintf(log, "fetching %s from %s\n", a.ID, a.URL)
+		}
+		if err := t.fetcher().FetchZip(ctx, a.URL, a.SHA256, dest, log); err != nil {
+			return fmt.Errorf("%w: %s: %v", platforms.ErrMissingTool, a.ID, err)
+		}
+	}
+	return nil
+}
+
+func compilePiecePresent(dest, id string) bool {
+	switch id {
+	case "mipsel-none-elf-gcc":
+		return walkNamed(dest, hostNames("mipsel-none-elf-gcc")...) != ""
+	case "psn00bsdk":
+		return walkNamed(dest, hostNames("elf2x")...) != "" || walkDirNamed(dest, "libpsn00b") != ""
+	default:
+		return false
+	}
+}
+
+func compileReady(env map[string]string) bool {
+	return fileExists(env["MIPS_GCC"]) && fileExists(env["ELF2X"]) && dirExists(env["PSN00BSDK_LIBS"]) && dirExists(env["PSN00BSDK_TC"])
+}
+
+func fileExists(p string) bool {
+	if p == "" {
+		return false
+	}
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
+}
+
+func dirExists(p string) bool {
+	if p == "" {
+		return false
+	}
+	st, err := os.Stat(p)
+	return err == nil && st.IsDir()
 }
 
 func discoverOpenBIOS() string {

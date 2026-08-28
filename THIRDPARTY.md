@@ -28,3 +28,8 @@ third_party/ps1/openbios/openbios.bin
 ```
 
 The same layout is accepted under `--prefix` / `BLAZIUM_TOOLCHAIN_PREFIX` (`<prefix>/ps1/…` or `<prefix>/third_party/ps1/…`). Discovery order: environment variables, then these vendor trees, then PATH.
+
+Official compile-profile downloads (unmodified):
+
+- `https://github.com/Lameguy64/PSn00bSDK/releases/download/v0.24/gcc-mipsel-none-elf-12.3.0-windows.zip`
+- `https://github.com/Lameguy64/PSn00bSDK/releases/download/v0.24/PSn00bSDK-0.24-win32.zip`

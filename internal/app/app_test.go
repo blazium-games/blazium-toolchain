@@ -4,11 +4,34 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/blazium-games/blazium-toolchain/internal/platforms"
 )
+
+func plantCompile(t *testing.T, prefix string) {
+	t.Helper()
+	gcc := filepath.Join(prefix, "ps1", "gcc", "bin", "mipsel-none-elf-gcc")
+	if err := os.MkdirAll(filepath.Dir(gcc), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(gcc, []byte("gcc"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	elf := filepath.Join(prefix, "ps1", "elf2x", "elf2x")
+	if err := os.MkdirAll(filepath.Dir(elf), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(elf, []byte("elf2x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(prefix, "ps1", "psn00bsdk", "lib", "libpsn00b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestVersionJSON(t *testing.T) {
 	var out bytes.Buffer
@@ -70,8 +93,9 @@ func TestPS2IsPlanned(t *testing.T) {
 
 func TestPS1SetupThenEnv(t *testing.T) {
 	dir := t.TempDir()
+	plantCompile(t, dir)
 	var out, errb bytes.Buffer
-	code := Run(context.Background(), []string{"--prefix", dir, "ps1", "setup", "--profile", "dev"}, &out, &errb)
+	code := Run(context.Background(), []string{"--prefix", dir, "ps1", "setup", "--profile", "dev", "--offline"}, &out, &errb)
 	if code != ExitOK {
 		t.Fatalf("setup %d %s", code, errb.String())
 	}
@@ -83,6 +107,29 @@ func TestPS1SetupThenEnv(t *testing.T) {
 	var env map[string]string
 	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPS1StatusReadyJSON(t *testing.T) {
+	dir := t.TempDir()
+	plantCompile(t, dir)
+	var out, errb bytes.Buffer
+	code := Run(context.Background(), []string{"--prefix", dir, "ps1", "setup", "--profile", "compile", "--offline"}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("setup %d %s", code, errb.String())
+	}
+	out.Reset()
+	code = Run(context.Background(), []string{"--prefix", dir, "--json", "ps1", "status"}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("status %d %s", code, errb.String())
+	}
+	var st map[string]any
+	if err := json.Unmarshal(out.Bytes(), &st); err != nil {
+		t.Fatal(err)
+	}
+	ready, _ := st["ready"].(bool)
+	if !ready {
+		t.Fatalf("status %s", out.String())
 	}
 }
 

@@ -5,7 +5,7 @@ package ps1
 
 const (
 	SDKVersion     = "0.24"
-	GCCSeries      = "12.2"
+	GCCSeries      = "12.3.0"
 	RecommendedISA = "-march=r3000 -msoft-float"
 )
 
@@ -20,7 +20,7 @@ type Component struct {
 
 func componentsForProfile(profile string) []Component {
 	compile := []Component{
-		{ID: "mipsel-none-elf-gcc", License: "GPLv3 (unmodified binaries)", Required: true, Contained: true, Notes: "This repo may vendor pin " + GCCSeries},
+		{ID: "mipsel-none-elf-gcc", License: "GPLv3 (unmodified binaries)", Required: true, Contained: true, Notes: "Official PSn00b v0.24 pin " + GCCSeries},
 		{ID: "psn00bsdk", License: "MPL 2.0", Required: true, Contained: true, Notes: "libpsn00b linked into guest only, version " + SDKVersion},
 		{ID: "elf2x", License: "MPL 2.0", Required: true, Contained: true, Notes: "ELF to PS-X EXE"},
 	}

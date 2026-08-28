@@ -37,7 +37,7 @@ Default cache: `%LOCALAPPDATA%\Blazium\blazium-toolchain` (Windows).
 | `dev` | compile + OpenBIOS + pcsx-redux CLI |
 | `iso` | dev + mkpsxiso (GPLv2+, spawn) |
 
-`setup` records pins and **reuses** tools already vendored under `third_party/ps1/`, the cache prefix, PATH, or env (`PSN00BSDK_*`, `MIPS_GCC`, `PCSX_EXE`, `OPENBIOS`). Full HTTP fetch of official mirrors can be added without changing the CLI.
+`ps1 setup --profile compile` fetches official PSn00bSDK **v0.24** zips (GCC **12.3.0** + SDK/`elf2x`) into the cache when they are missing. It reuses `third_party/ps1/`, the prefix, PATH, or env (`PSN00BSDK_*`, `MIPS_GCC`, `ELF2X`) so it will not download twice. `--offline` never hits the network. `dev` / `iso` still only record pins for OpenBIOS, pcsx-redux, and mkpsxiso.
 
 ## License
 

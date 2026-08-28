@@ -60,6 +60,119 @@ func findVendorFile(prefix string, rels ...string) string {
 	return ""
 }
 
+func walkNamed(root string, names ...string) string {
+	if root == "" {
+		return ""
+	}
+	if st, err := os.Stat(root); err != nil || !st.IsDir() {
+		return ""
+	}
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		want[n] = true
+	}
+	var found string
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if want[d.Name()] {
+			found = path
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if found == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(found); err == nil {
+		return abs
+	}
+	return found
+}
+
+func findLibpsn00b(roots ...string) string {
+	var fallback string
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		if st, err := os.Stat(root); err != nil || !st.IsDir() {
+			continue
+		}
+		var preferred string
+		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil || !d.IsDir() || d.Name() != "libpsn00b" {
+				return nil
+			}
+			if filepath.Base(filepath.Dir(path)) == "lib" {
+				preferred = path
+				return filepath.SkipAll
+			}
+			if fallback == "" {
+				fallback = path
+			}
+			return nil
+		})
+		if preferred != "" {
+			if abs, err := filepath.Abs(preferred); err == nil {
+				return abs
+			}
+			return preferred
+		}
+	}
+	if fallback == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(fallback); err == nil {
+		return abs
+	}
+	return fallback
+}
+
+func walkDirNamed(root string, names ...string) string {
+	if root == "" {
+		return ""
+	}
+	if st, err := os.Stat(root); err != nil || !st.IsDir() {
+		return ""
+	}
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		want[n] = true
+	}
+	var found string
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || !d.IsDir() {
+			return nil
+		}
+		if want[d.Name()] {
+			found = path
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if found == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(found); err == nil {
+		return abs
+	}
+	return found
+}
+
+func siblingSDKRoots() []string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return nil
+	}
+	return []string{
+		filepath.Join(wd, "PSn00bSDK"),
+		filepath.Join(wd, "..", "PSn00bSDK"),
+		filepath.Join(wd, "..", "..", "PSn00bSDK"),
+	}
+}
+
 func findVendorDir(prefix string, rels ...string) string {
 	for _, root := range vendorRoots(prefix) {
 		for _, rel := range rels {
