@@ -1,7 +1,9 @@
 // blazium-toolchain is the official Blazium console toolchain manager.
 //
-// It is a separate project from the MIT Blazium editor. A 3rd-party
-// application downloads this binary; the editor only spawns it.
+// It is GPL-3.0-or-later so it can contain and manage toolchain
+// components (GCC, PSn00bSDK, mkpsxiso, pcsx-redux). A 3rd-party
+// application downloads this binary; the MIT Blazium editor only
+// spawns it.
 //
 //	blazium-toolchain [--json] [--prefix DIR] version
 //	blazium-toolchain [--json] list

@@ -1,6 +1,6 @@
 # blazium-toolchain
 
-Official **Blazium console toolchain manager**. This is a **separate project** from the MIT Blazium engine. A 3rd-party application already in use downloads this CLI; the editor **spawns** it. It does not live inside `blazium.git`.
+Official **Blazium console toolchain manager**. This is a **separate GPLv3 project** from the MIT Blazium engine so it can **contain, cache, and redistribute** compilers, SDKs, packers, and emulators. A 3rd-party application already in use downloads this CLI; the editor **spawns** it. It does not live inside `blazium.git`.
 
 **Now:** `ps1` only.  
 **Later:** `ps2`, `ps3`, `ps4` (ids reserved; commands exit `2`).
@@ -35,13 +35,15 @@ Default cache: `%LOCALAPPDATA%\Blazium\blazium-toolchain` (Windows).
 |---------|----------|
 | `compile` | gcc + PSn00bSDK 0.24 + elf2x |
 | `dev` | compile + OpenBIOS + pcsx-redux CLI |
-| `iso` | dev + mkpsxiso (**spawn only**, GPLv2+) |
+| `iso` | dev + mkpsxiso (GPLv2+, spawn) |
 
-`setup` records pins and **reuses** tools already on PATH / env (`PSN00BSDK_*`, `MIPS_GCC`, `PCSX_EXE`, `OPENBIOS`). Full HTTP fetch of official mirrors can be added without changing the CLI.
+`setup` records pins and **reuses** tools already vendored under `third_party/ps1/`, the cache prefix, PATH, or env (`PSN00BSDK_*`, `MIPS_GCC`, `PCSX_EXE`, `OPENBIOS`). Full HTTP fetch of official mirrors can be added without changing the CLI.
 
 ## License
 
-[MIT](LICENSE) for this repo. Fetched compilers and SDKs stay in the cache and are spawned or linked only into the **exported guest**. See [THIRDPARTY.md](THIRDPARTY.md). Never merge those trees into Blazium.
+This CLI is **[GPL-3.0-or-later](LICENSE)** ([NOTICE](NOTICE)). That is intentional: this repo may vendor GCC, PSn00bSDK, mkpsxiso, pcsx-redux, and OpenBIOS. Each tree keeps its upstream license — see [THIRDPARTY.md](THIRDPARTY.md).
+
+**Blazium stays MIT.** Never merge these components into `blazium.git`. The editor only spawns this binary. `libpsn00b` links into the **exported guest** only.
 
 ## Build
 

@@ -2,6 +2,7 @@
   "name": "blazium-toolchain",
   "version": "0.1.0",
   "description": "Official Blazium console toolchain manager.",
+  "license": "GPL-3.0-or-later",
   "cli": "blazium-toolchain",
   "json_flag": "--json",
   "platforms": [

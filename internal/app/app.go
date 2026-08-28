@@ -17,7 +17,10 @@ import (
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/ps1"
 )
 
-const Version = "0.1.0"
+const (
+	Version = "0.1.0"
+	License = "GPL-3.0-or-later"
+)
 
 const (
 	ExitOK      = 0
@@ -95,7 +98,11 @@ func common(prefix string, jsonOut bool, stdout, stderr io.Writer) platforms.Com
 
 func cmdVersion(jsonOut bool, w io.Writer) int {
 	if jsonOut {
-		_ = json.NewEncoder(w).Encode(map[string]string{"name": "blazium-toolchain", "version": Version})
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"name":    "blazium-toolchain",
+			"version": Version,
+			"license": License,
+		})
 		return ExitOK
 	}
 	fmt.Fprintf(w, "blazium-toolchain %s\n", Version)
@@ -252,6 +259,7 @@ PS1 commands:
   run [--iso CUE] [GAME.EXE]
   iso --xml FILE [--out PATH]
 
+License: GPL-3.0-or-later (this repo may contain GCC, PSn00bSDK, mkpsxiso, pcsx-redux).
 The 3rd-party installer should invoke this binary (not the Blazium editor).
 `) + "\n")
 }

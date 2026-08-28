@@ -20,7 +20,7 @@ func TestVersionJSON(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &m); err != nil {
 		t.Fatal(err)
 	}
-	if m["name"] != "blazium-toolchain" || m["version"] != Version {
+	if m["name"] != "blazium-toolchain" || m["version"] != Version || m["license"] != License {
 		t.Fatalf("%v", m)
 	}
 }

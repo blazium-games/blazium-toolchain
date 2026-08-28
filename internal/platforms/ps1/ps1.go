@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/blazium-games/blazium-toolchain/internal/cache"
@@ -53,10 +52,10 @@ func (t *Tool) Setup(ctx context.Context, opts platforms.SetupOptions) error {
 		return fmt.Errorf("%w: profile must be compile, dev, or iso", platforms.ErrUsage)
 	}
 
-	env, notes := t.discover()
+	env, notes := t.discover(opts.Prefix)
 	if opts.Offline {
 		if env["MIPS_GCC"] == "" && lookFile("mipsel-none-elf-gcc") == "" {
-			return fmt.Errorf("%w: no mipsel-none-elf-gcc on PATH and --offline set", platforms.ErrOffline)
+			return fmt.Errorf("%w: no mipsel-none-elf-gcc in vendor tree, env, or PATH and --offline set", platforms.ErrOffline)
 		}
 	}
 
@@ -97,7 +96,7 @@ func (t *Tool) Env(opts platforms.CommonOptions) (platforms.EnvMap, error) {
 	st, err := cache.ReadState(opts.Prefix, ID)
 	if err != nil {
 		if os.IsNotExist(err) {
-			env, _ := t.discover()
+			env, _ := t.discover(opts.Prefix)
 			return env, nil
 		}
 		return nil, err
@@ -201,7 +200,7 @@ func (t *Tool) ISO(ctx context.Context, opts platforms.ISOOptions) error {
 	return r.Run(ctx, mk, args, writerOrDiscard(opts.Stdout), writerOrDiscard(opts.Stderr))
 }
 
-func (t *Tool) discover() (map[string]string, []string) {
+func (t *Tool) discover(prefix string) (map[string]string, []string) {
 	env := map[string]string{}
 	var notes []string
 
@@ -218,32 +217,54 @@ func (t *Tool) discover() (map[string]string, []string) {
 	copyEnv("MKPSXISO")
 
 	if env["MIPS_GCC"] == "" {
-		if p := lookFile("mipsel-none-elf-gcc"); p != "" {
+		if p := findVendorFile(prefix, filepath.Join("gcc", "bin", "mipsel-none-elf-gcc")); p != "" {
+			env["MIPS_GCC"] = p
+			notes = append(notes, "vendored mipsel-none-elf-gcc")
+		} else if p := lookFile("mipsel-none-elf-gcc"); p != "" {
 			env["MIPS_GCC"] = p
 			notes = append(notes, "discovered mipsel-none-elf-gcc on PATH")
+		}
+	}
+	if env["PSN00BSDK_LIBS"] == "" {
+		if p := findVendorDir(prefix, "psn00bsdk"); p != "" {
+			env["PSN00BSDK_LIBS"] = p
+			notes = append(notes, "vendored psn00bsdk")
 		}
 	}
 	if env["PSN00BSDK_TC"] == "" && env["MIPS_GCC"] != "" {
 		env["PSN00BSDK_TC"] = filepath.Dir(filepath.Dir(env["MIPS_GCC"]))
 	}
 	if env["PCSX_EXE"] == "" {
-		if p := lookFile("pcsx-redux"); p != "" {
+		if p := findVendorFile(prefix, filepath.Join("pcsx-redux", "pcsx-redux")); p != "" {
+			env["PCSX_EXE"] = p
+			notes = append(notes, "vendored pcsx-redux")
+		} else if p := lookFile("pcsx-redux"); p != "" {
 			env["PCSX_EXE"] = p
 		}
 	}
 	if env["OPENBIOS"] == "" {
-		if cand := discoverOpenBIOS(); cand != "" {
+		if cand := findVendorFile(prefix, filepath.Join("openbios", "openbios.bin")); cand != "" {
+			env["OPENBIOS"] = cand
+			notes = append(notes, "vendored OpenBIOS")
+		} else if cand := discoverOpenBIOS(); cand != "" {
 			env["OPENBIOS"] = cand
 			notes = append(notes, "discovered OpenBIOS")
 		}
+	}
+	if env["MKPSXISO"] == "" {
+		if p := findVendorFile(prefix, filepath.Join("mkpsxiso", "mkpsxiso")); p != "" {
+			env["MKPSXISO"] = p
+			notes = append(notes, "vendored mkpsxiso")
+		}
+	}
+	if elf := findVendorFile(prefix, filepath.Join("elf2x", "elf2x")); elf != "" {
+		env["ELF2X"] = elf
+		notes = append(notes, "vendored elf2x")
 	}
 	return env, notes
 }
 
 func discoverOpenBIOS() string {
-	if runtime.GOOS == "" {
-		return ""
-	}
 	wd, _ := os.Getwd()
 	cands := []string{
 		filepath.Join(wd, "pcsx-redux", "src", "mips", "openbios", "openbios.bin"),
