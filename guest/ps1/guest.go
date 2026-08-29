@@ -13,7 +13,7 @@ import (
 
 // CookABI is the cooked blob layout version. Bump together with the editor cooker
 // and guest/ps1/runtime/CMakeLists.txt (BLAZIUM_PS1_COOK_ABI).
-const CookABI = 18
+const CookABI = 19
 
 // RuntimeNames are the files Install writes from the embed.
 var RuntimeNames = []string{
