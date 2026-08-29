@@ -19,7 +19,7 @@ func TestInstallWritesRuntime(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "main.cpp")); err != nil {
 		t.Fatal(err)
 	}
-	if CookABI != 4 {
+	if CookABI != 5 {
 		t.Fatalf("CookABI %d", CookABI)
 	}
 	for _, name := range []string{"script_vm.cpp", "script_vm.h", "fmv_play.cpp", "fmv_play.h"} {

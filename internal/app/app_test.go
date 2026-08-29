@@ -164,7 +164,7 @@ func TestPS1StatusReadyJSON(t *testing.T) {
 		t.Fatalf("status %s", out.String())
 	}
 	abi, _ := st["guest_abi"].(float64)
-	if int(abi) != 4 {
+	if int(abi) != 5 {
 		t.Fatalf("guest_abi %v in %s", st["guest_abi"], out.String())
 	}
 	if supported, _ := st["host_supported"].(bool); !supported {

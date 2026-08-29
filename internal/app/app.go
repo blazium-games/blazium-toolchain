@@ -229,13 +229,13 @@ func runFMV(p platforms.Platform, args []string, base platforms.CommonOptions, s
 	if base.JSON {
 		return json.NewEncoder(stdout).Encode(map[string]any{
 			"encoder":   "blazium-mit",
-			"guest":     "DecDCTReset + libpsxpress (MDEC decode) + MIT STR blit",
+			"guest":     "DecDCTin + DecDCTout (MDEC RLE; no psxpress encode)",
 			"spawn":     false,
 			"in_editor": true,
-			"note":      "Editor encodes STR/XA with MIT writers; guest decodes only.",
+			"note":      "Editor encodes STR/XA with MIT writers; guest DecDCTin only.",
 		})
 	}
-	fmt.Fprintln(stdout, "ps1 fmv: in-editor MIT STR/XA encode (encoder=blazium-mit). Guest decodes via libpsxpress/MDEC.")
+	fmt.Fprintln(stdout, "ps1 fmv: in-editor MIT STR/XA encode (encoder=blazium-mit). Guest DecDCTin only.")
 	fmt.Fprintln(stdout, "No psxpress encode spawn. DuckStation/Sony BIOS/hardware are out of scope.")
 	return nil
 }
