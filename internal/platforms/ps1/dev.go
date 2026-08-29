@@ -98,10 +98,7 @@ func (t *Tool) installOpenBIOS(prefix string, log io.Writer) error {
 	plat := cache.PlatformDir(prefix, ID)
 	src := findOpenBIOSFile(filepath.Join(plat, "openbios"), filepath.Join(plat, "pcsx-redux"), plat)
 	if src == "" {
-		src = discoverOpenBIOS()
-	}
-	if src == "" {
-		return fmt.Errorf("%w: openbios.bin not in the pcsx-redux CLI zip or sibling tree; run setup without --offline", platforms.ErrMissingTool)
+		return fmt.Errorf("%w: openbios.bin not in the prefix or pcsx-redux CLI zip; run setup without --offline or set OPENBIOS", platforms.ErrMissingTool)
 	}
 	if sameFile(src, canon) {
 		return nil

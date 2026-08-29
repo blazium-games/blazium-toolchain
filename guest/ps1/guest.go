@@ -11,8 +11,19 @@ import (
 	"strings"
 )
 
-// CookABI is the cooked blob layout version. Bump together with the editor cooker.
-const CookABI = 17
+// CookABI is the cooked blob layout version. Bump together with the editor cooker
+// and guest/ps1/runtime/CMakeLists.txt (BLAZIUM_PS1_COOK_ABI).
+const CookABI = 18
+
+// RuntimeNames are the files Install writes from the embed.
+var RuntimeNames = []string{
+	"CMakeLists.txt",
+	"main.cpp",
+	"script_vm.cpp",
+	"script_vm.h",
+	"fmv_play.cpp",
+	"fmv_play.h",
+}
 
 //go:embed runtime
 var files embed.FS

@@ -1,0 +1,165 @@
+name: Build Toolchain
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cicd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.8"
+      - name: Test
+        run: go test ./...
+      - name: Vet
+        run: go vet ./...
+
+  resolve-version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.final.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Semver action
+        id: semver
+        continue-on-error: true
+        uses: Bioblaze/game-semver-action@v10
+        with:
+          personal_github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Finalize version
+        id: final
+        run: |
+          set -euo pipefail
+          V="${{ steps.semver.outputs.simple_version }}"
+          if [[ -z "$V" ]]; then
+            V="$(jq -r .version manifest.json)"
+          fi
+          test -n "$V"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "resolved $V"
+
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: [test, resolve-version]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            artifact: blazium-toolchain
+          - goos: linux
+            goarch: arm64
+            artifact: blazium-toolchain
+          - goos: windows
+            goarch: amd64
+            artifact: blazium-toolchain.exe
+          - goos: darwin
+            goarch: amd64
+            artifact: blazium-toolchain
+          - goos: darwin
+            goarch: arm64
+            artifact: blazium-toolchain
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.8"
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w -X github.com/blazium-games/blazium-toolchain/internal/app.Version=${VERSION}" \
+            -o "dist/${{ matrix.artifact }}" ./cmd/blazium-toolchain
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: blazium-toolchain-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/${{ matrix.artifact }}
+          if-no-files-found: error
+
+  github-release:
+    name: GitHub Release
+    needs: [resolve-version, build]
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Stage assets
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          stage() {
+            local src="$1" dest="$2"
+            if [[ -f "$src" ]]; then
+              cp "$src" "release-assets/$dest"
+            fi
+          }
+          stage artifacts/blazium-toolchain-linux-amd64/blazium-toolchain blazium-toolchain-linux-amd64
+          stage artifacts/blazium-toolchain-linux-arm64/blazium-toolchain blazium-toolchain-linux-arm64
+          stage artifacts/blazium-toolchain-windows-amd64/blazium-toolchain.exe blazium-toolchain-windows-amd64.exe
+          stage artifacts/blazium-toolchain-darwin-amd64/blazium-toolchain blazium-toolchain-darwin-amd64
+          stage artifacts/blazium-toolchain-darwin-arm64/blazium-toolchain blazium-toolchain-darwin-arm64
+          cp manifest.json release-assets/manifest.json
+          test -f release-assets/blazium-toolchain-linux-amd64
+          test -f release-assets/blazium-toolchain-windows-amd64.exe
+          ls -la release-assets
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          mapfile -t FILES < <(find release-assets -type f | sort)
+          test "${#FILES[@]}" -ge 3
+          NOTES="blazium-toolchain ${VERSION}
+
+          Official Blazium console toolchain manager (GPL-3.0-or-later).
+          The MIT guest is embedded. Compilers are fetched by \`ps1 setup\`.
+
+          | Platform | Arch | Asset |
+          |----------|------|-------|
+          | Linux | amd64 | \`blazium-toolchain-linux-amd64\` |
+          | Linux | arm64 | \`blazium-toolchain-linux-arm64\` |
+          | Windows | amd64 | \`blazium-toolchain-windows-amd64.exe\` |
+          | macOS | amd64 | \`blazium-toolchain-darwin-amd64\` |
+          | macOS | arm64 | \`blazium-toolchain-darwin-arm64\` |
+          "
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${FILES[@]}" --clobber
+          else
+            gh release create "$TAG" "${FILES[@]}" \
+              --title "blazium-toolchain ${VERSION}" \
+              --notes "$NOTES" \
+              --target "$GITHUB_SHA"
+          fi
+          gh release view "$TAG"

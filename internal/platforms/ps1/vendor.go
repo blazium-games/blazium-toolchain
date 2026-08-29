@@ -8,7 +8,7 @@ import (
 )
 
 // vendorRoots are directories this GPL project may use to contain toolchain bits.
-// Order: cache prefix, then a third_party tree next to the binary or cwd.
+// Order: cache prefix, then a third_party tree next to the executable only.
 func vendorRoots(prefix string) []string {
 	var roots []string
 	add := func(p string) {
@@ -23,11 +23,6 @@ func vendorRoots(prefix string) []string {
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
 		add(filepath.Join(dir, "third_party", ID))
-	}
-	if wd, err := os.Getwd(); err == nil {
-		add(filepath.Join(wd, "third_party", ID))
-		add(filepath.Join(wd, "..", "third_party", ID))
-		add(filepath.Join(wd, "..", "..", "third_party", ID))
 	}
 	return roots
 }
@@ -160,18 +155,6 @@ func walkDirNamed(root string, names ...string) string {
 		return abs
 	}
 	return found
-}
-
-func siblingSDKRoots() []string {
-	wd, err := os.Getwd()
-	if err != nil {
-		return nil
-	}
-	return []string{
-		filepath.Join(wd, "PSn00bSDK"),
-		filepath.Join(wd, "..", "PSn00bSDK"),
-		filepath.Join(wd, "..", "..", "PSn00bSDK"),
-	}
 }
 
 func nameKey(n string) string {

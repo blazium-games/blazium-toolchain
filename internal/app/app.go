@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/blazium-games/blazium-toolchain/internal/cache"
+	"github.com/blazium-games/blazium-toolchain/internal/embedfs"
 	"github.com/blazium-games/blazium-toolchain/internal/iso"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/future"
@@ -20,9 +21,11 @@ import (
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/ps1"
 )
 
-const (
-	Version = "0.1.0"
-	License = "GPL-3.0-or-later"
+// Version and License come from the embedded manifest.json. CI may override
+// Version with -ldflags "-X github.com/blazium-games/blazium-toolchain/internal/app.Version=vX.Y.Z".
+var (
+	Version = embedfs.MustManifest().Version
+	License = embedfs.MustManifest().License
 )
 
 const (

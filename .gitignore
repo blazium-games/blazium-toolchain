@@ -2,9 +2,11 @@
 /blazium-toolchain.exe
 /bin/
 /dist/
+/release-assets/
 *.exe
 *.test
 *.out
+*.iso
 .idea/
 .vscode/
 *.user
@@ -12,3 +14,5 @@
 Thumbs.db
 # local toolchain cache if someone runs setup here
 /.cache/
+/prefix/
+/third_party/

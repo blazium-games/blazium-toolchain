@@ -1,0 +1,26 @@
+{
+  "name": "blazium-toolchain",
+  "version": "0.1.0",
+  "description": "Official Blazium console toolchain manager.",
+  "license": "GPL-3.0-or-later",
+  "cli": "blazium-toolchain",
+  "json_flag": "--json",
+  "platforms": [
+    {
+      "id": "ps1",
+      "status": "supported",
+      "commands": ["setup", "env", "status", "build", "run", "iso"]
+    },
+    {
+      "id": "interdvd",
+      "status": "supported",
+      "commands": ["setup", "env", "status", "iso", "meta"]
+    },
+    { "id": "ps2", "status": "planned", "commands": [] },
+    { "id": "ps3", "status": "planned", "commands": [] },
+    { "id": "ps4", "status": "planned", "commands": [] }
+  ],
+  "profiles": {
+    "ps1": ["compile", "dev", "iso"]
+  }
+}

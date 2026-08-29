@@ -1,11 +1,14 @@
 package ps1
 
-// Pinned component versions. This GPL project may vendor, cache, and
-// redistribute these trees. Do not compile them into the MIT Blazium editor.
+import "github.com/blazium-games/blazium-toolchain/internal/embedfs"
 
-const (
-	SDKVersion     = "0.24"
-	GCCSeries      = "12.3.0"
+// Pinned component versions come from the embedded pins.json. This GPL
+// project may vendor, cache, and redistribute these trees. Do not compile
+// them into the MIT Blazium editor.
+
+var (
+	SDKVersion     = embedfs.MustPins().SDKVersion
+	GCCSeries      = embedfs.MustPins().GCCSeries
 	RecommendedISA = "-march=r3000 -msoft-float"
 )
 

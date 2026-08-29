@@ -19,17 +19,28 @@ func TestInstallWritesRuntime(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "main.cpp")); err != nil {
 		t.Fatal(err)
 	}
-	if CookABI != 17 {
+	if CookABI != 18 {
 		t.Fatalf("CookABI %d", CookABI)
 	}
-	for _, name := range []string{"script_vm.cpp", "script_vm.h", "fmv_play.cpp", "fmv_play.h"} {
+	for _, name := range RuntimeNames {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatalf("missing %s: %v", name, err)
 		}
 	}
 }
 
+func TestEmbeddedRuntimeComplete(t *testing.T) {
+	for _, name := range RuntimeNames {
+		if _, err := files.ReadFile("runtime/" + name); err != nil {
+			t.Fatalf("embed missing %s: %v", name, err)
+		}
+	}
+}
+
 func TestLockstepWithEditorRuntime(t *testing.T) {
+	if os.Getenv("BLAZIUM_EDITOR_LOCKSTEP") != "1" {
+		t.Skip("set BLAZIUM_EDITOR_LOCKSTEP=1 to compare guest sources with a sibling editor tree")
+	}
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("caller")

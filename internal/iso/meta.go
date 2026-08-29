@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/blazium-games/blazium-toolchain/internal/embedfs"
 )
 
 // Extra is one host file or folder to pack beside VIDEO_TS.
@@ -76,19 +78,31 @@ type DiscMeta struct {
 
 // InitMeta returns a template with defaults and empty extras.
 func InitMeta() DiscMeta {
+	if b, err := embedfs.InterDVDMetaTemplate(); err == nil {
+		var m DiscMeta
+		if json.Unmarshal(b, &m) == nil && (m.Schema == "" || m.Schema == SchemaV1) {
+			if m.Schema == "" {
+				m.Schema = SchemaV1
+			}
+			if m.Extras == nil {
+				m.Extras = []Extra{}
+			}
+			return m
+		}
+	}
 	return DiscMeta{
-		Schema:       SchemaV1,
-		Volume:       DefaultVolume,
-		Preparer:     DefaultPreparer,
-		Application:  DefaultApplication,
-		System:       DefaultSystem,
-		Provider:     DefaultProvider,
-		Disc:         1,
-		Discs:        1,
-		MenuLanguage: "en",
-		AudioLanguage: "en",
-		SubtitleLanguage: "en",
-		Extras:       []Extra{},
+		Schema:            SchemaV1,
+		Volume:            DefaultVolume,
+		Preparer:          DefaultPreparer,
+		Application:       DefaultApplication,
+		System:            DefaultSystem,
+		Provider:          DefaultProvider,
+		Disc:              1,
+		Discs:             1,
+		MenuLanguage:      "en",
+		AudioLanguage:     "en",
+		SubtitleLanguage:  "en",
+		Extras:            []Extra{},
 	}
 }
 

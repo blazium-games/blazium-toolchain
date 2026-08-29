@@ -304,14 +304,6 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 		} else if p := walkNamed(plat, append(hostNames("elf2x"))...); p != "" {
 			env["ELF2X"] = p
 			notes = append(notes, "found elf2x under prefix")
-		} else {
-			for _, sib := range siblingSDKRoots() {
-				if p := walkNamed(sib, append(hostNames("elf2x"))...); p != "" {
-					env["ELF2X"] = p
-					notes = append(notes, "found elf2x in sibling PSn00bSDK")
-					break
-				}
-			}
 		}
 		if env["ELF2X"] == "" {
 			if p := lookFile("elf2x"); p != "" {
@@ -331,9 +323,6 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 				env["PSN00BSDK_LIBS"] = p
 			}
 			notes = append(notes, "vendored psn00bsdk")
-		} else if p := findLibpsn00b(siblingSDKRoots()...); p != "" {
-			env["PSN00BSDK_LIBS"] = p
-			notes = append(notes, "found libpsn00b in sibling PSn00bSDK")
 		}
 	}
 	if env["PSN00BSDK_TC"] == "" && env["MIPS_GCC"] != "" {
@@ -361,9 +350,6 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 		} else if cand := findVendorFile(prefix, filepath.Join("openbios", "openbios.bin")); cand != "" {
 			env["OPENBIOS"] = cand
 			notes = append(notes, "vendored OpenBIOS")
-		} else if cand := discoverOpenBIOS(); cand != "" {
-			env["OPENBIOS"] = cand
-			notes = append(notes, "discovered OpenBIOS")
 		}
 	}
 	if env["MKPSXISO"] == "" {
@@ -373,6 +359,9 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 		} else if p := walkNamed(plat, hostNames("mkpsxiso")...); p != "" {
 			env["MKPSXISO"] = p
 			notes = append(notes, "found mkpsxiso under prefix")
+		} else if p := lookFile("mkpsxiso"); p != "" {
+			env["MKPSXISO"] = p
+			notes = append(notes, "discovered mkpsxiso on PATH")
 		}
 	}
 	return env, notes
@@ -428,25 +417,6 @@ func dirExists(p string) bool {
 	}
 	st, err := os.Stat(p)
 	return err == nil && st.IsDir()
-}
-
-func discoverOpenBIOS() string {
-	rel := filepath.Join("pcsx-redux", "src", "mips", "openbios", "openbios.bin")
-	var roots []string
-	if wd, err := os.Getwd(); err == nil {
-		roots = append(roots, wd, filepath.Join(wd, ".."), filepath.Join(wd, "..", ".."))
-	}
-	if exe, err := os.Executable(); err == nil {
-		dir := filepath.Dir(exe)
-		roots = append(roots, dir, filepath.Join(dir, ".."), filepath.Join(dir, "..", ".."))
-	}
-	for _, root := range roots {
-		c := filepath.Join(root, rel)
-		if st, err := os.Stat(c); err == nil && !st.IsDir() {
-			return absOr(c)
-		}
-	}
-	return ""
 }
 
 func lookFile(name string) string {

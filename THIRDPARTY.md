@@ -29,7 +29,7 @@ third_party/ps1/pcsx-redux/pcsx-redux[.exe]
 third_party/ps1/openbios/openbios.bin
 ```
 
-The same layout is accepted under `--prefix` / `BLAZIUM_TOOLCHAIN_PREFIX` (`<prefix>/ps1/…` or `<prefix>/third_party/ps1/…`). Discovery order: environment variables, then these vendor trees, then PATH.
+The same layout is accepted under `--prefix` / `BLAZIUM_TOOLCHAIN_PREFIX` (`<prefix>/ps1/…` or `<prefix>/third_party/ps1/…`) and next to the executable (`<exeDir>/third_party/ps1/…`). Discovery order: environment variables, then those vendor trees, then PATH. The CLI does not walk the current working directory or sibling source checkouts.
 
 Official compile-profile downloads (unmodified):
 
@@ -37,3 +37,7 @@ Official compile-profile downloads (unmodified):
 - `https://github.com/Lameguy64/PSn00bSDK/releases/download/v0.24/PSn00bSDK-0.24-win32.zip`
 - `https://github.com/Kitware/CMake/releases/download/v3.28.6/cmake-3.28.6-windows-x86_64.zip` (if cmake is not on PATH)
 - `https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip` (if ninja is not on PATH)
+
+Official dev-profile downloads (unmodified nightlies):
+
+- AppDistrib catalog `https://distrib.app/storage/manifests/pcsx-redux/dev-win-cli-x64/manifest.json` → latest `pcsx-redux-nightly-*-x64-cli.zip` (contains the CLI and `openbios.bin`)
