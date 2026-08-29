@@ -16,8 +16,11 @@
 //	blazium-toolchain [--prefix DIR] ps1 run [--iso CUE] [--timeout 120s] GAME.EXE
 //	blazium-toolchain [--prefix DIR] ps1 iso --xml FILE [--out PATH]
 //	blazium-toolchain [--json] [--prefix DIR] ps1 fmv
+//	blazium-toolchain interdvd iso --dir DIR --out FILE [--meta FILE] [--write-meta FILE]
+//	blazium-toolchain interdvd meta init --out FILE
+//	blazium-toolchain interdvd meta validate --meta FILE
 //
-// Only the ps1 platform is implemented. PS1 host tools (setup/build/run)
+// ps1 and interdvd are implemented. PS1 host tools (setup/build/run)
 // are Windows and Linux only; other hosts exit with code 2.
 // ps2, ps3, and ps4 are reserved and exit with code 2.
 package main

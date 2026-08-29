@@ -76,6 +76,24 @@ func TestListJSONHasPS1(t *testing.T) {
 	if !ps1 {
 		t.Fatalf("list: %s", out.String())
 	}
+	var interdvd bool
+	for _, info := range list {
+		if info.ID == "interdvd" && info.Status == platforms.StatusSupported {
+			interdvd = true
+			var meta bool
+			for _, c := range info.Commands {
+				if c == "meta" {
+					meta = true
+				}
+			}
+			if !meta {
+				t.Fatalf("interdvd commands missing meta: %v", info.Commands)
+			}
+		}
+	}
+	if !interdvd {
+		t.Fatalf("missing interdvd in %s", out.String())
+	}
 	for _, want := range []string{"ps2", "ps3", "ps4"} {
 		var found bool
 		for _, info := range list {
@@ -164,7 +182,7 @@ func TestPS1StatusReadyJSON(t *testing.T) {
 		t.Fatalf("status %s", out.String())
 	}
 	abi, _ := st["guest_abi"].(float64)
-	if int(abi) != 16 {
+	if int(abi) != 17 {
 		t.Fatalf("guest_abi %v in %s", st["guest_abi"], out.String())
 	}
 	if supported, _ := st["host_supported"].(bool); !supported {
@@ -180,7 +198,7 @@ func TestHelp(t *testing.T) {
 	if Run(context.Background(), []string{"help"}, &out, &bytes.Buffer{}) != ExitOK {
 		t.Fatal("help")
 	}
-	if !strings.Contains(out.String(), "ps1") {
+	if !strings.Contains(out.String(), "ps1") || !strings.Contains(out.String(), "interdvd") {
 		t.Fatal(out.String())
 	}
 	if !strings.Contains(out.String(), "Windows and Linux") {
@@ -207,5 +225,113 @@ func TestUnknownCommand(t *testing.T) {
 	code := Run(context.Background(), []string{"ps1", "frobnicate"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if code != ExitUsage {
 		t.Fatalf("exit %d", code)
+	}
+}
+
+func plantInterDVD(t *testing.T, root string) {
+	t.Helper()
+	v := filepath.Join(root, "VIDEO_TS")
+	if err := os.MkdirAll(v, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(v, "VIDEO_TS.IFO"), []byte("IFO"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInterDVDISOAndMeta(t *testing.T) {
+	src := t.TempDir()
+	plantInterDVD(t, src)
+	isoPath := filepath.Join(t.TempDir(), "game.iso")
+	extra := filepath.Join(t.TempDir(), "note.txt")
+	if err := os.WriteFile(extra, []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	code := Run(context.Background(), []string{
+		"--json", "interdvd", "iso",
+		"--dir", src, "--out", isoPath,
+		"--title", "CLI Title", "--license", "MIT",
+		"--extra", extra + ":NOTES.TXT",
+	}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("iso %d %s %s", code, errb.String(), out.String())
+	}
+	var m map[string]any
+	if err := json.Unmarshal(out.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["format"] != "iso9660+udf" || m["title"] != "CLI Title" {
+		t.Fatalf("%v", m)
+	}
+
+	metaPath := filepath.Join(t.TempDir(), "disc.interdvd.json")
+	out.Reset()
+	errb.Reset()
+	code = Run(context.Background(), []string{"--json", "interdvd", "meta", "init", "--out", metaPath}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("init %d %s", code, errb.String())
+	}
+	b, err := os.ReadFile(metaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "blazium.interdvd.meta/v1") {
+		t.Fatalf("%s", b)
+	}
+
+	// Fill dir/out and validate + master via --meta with title override.
+	var doc map[string]any
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["dir"] = src
+	doc["out"] = filepath.Join(t.TempDir(), "frommeta.iso")
+	nb, _ := json.Marshal(doc)
+	if err := os.WriteFile(metaPath, nb, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	errb.Reset()
+	code = Run(context.Background(), []string{"interdvd", "meta", "validate", "--meta", metaPath}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("validate %d %s", code, errb.String())
+	}
+	out.Reset()
+	errb.Reset()
+	writeMeta := filepath.Join(t.TempDir(), "saved.json")
+	code = Run(context.Background(), []string{
+		"--json", "interdvd", "iso", "--meta", metaPath, "--title", "Override", "--write-meta", writeMeta,
+	}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("meta iso %d %s", code, errb.String())
+	}
+	if err := json.Unmarshal(out.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["title"] != "Override" {
+		t.Fatalf("%v", m)
+	}
+	saved, err := os.ReadFile(writeMeta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(saved), "Override") {
+		t.Fatalf("%s", saved)
+	}
+
+	bad := t.TempDir()
+	badMeta := filepath.Join(t.TempDir(), "bad.json")
+	if err := os.WriteFile(badMeta, []byte(`{"schema":"blazium.interdvd.meta/v1","dir":"`+strings.ReplaceAll(bad, `\`, `\\`)+`"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code = Run(context.Background(), []string{"interdvd", "meta", "validate", "--meta", badMeta}, &bytes.Buffer{}, &bytes.Buffer{})
+	if code == ExitOK {
+		t.Fatal("validate should fail without IFO")
+	}
+
+	code = Run(context.Background(), []string{"ps1", "iso"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if code != ExitUsage {
+		t.Fatalf("ps1 iso without xml exit %d", code)
 	}
 }

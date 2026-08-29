@@ -11,6 +11,11 @@
       "status": "supported",
       "commands": ["setup", "env", "status", "build", "run", "iso"]
     },
+    {
+      "id": "interdvd",
+      "status": "supported",
+      "commands": ["setup", "env", "status", "iso", "meta"]
+    },
     { "id": "ps2", "status": "planned", "commands": [] },
     { "id": "ps3", "status": "planned", "commands": [] },
     { "id": "ps4", "status": "planned", "commands": [] }

@@ -85,9 +85,24 @@ type RunOptions struct {
 	Pcdrv   string        // host dir for -pcdrvbase; empty uses the EXE directory
 }
 
-// ISOOptions spawn an ISO packer (GPL tools must stay external).
+// ISOOptions spawn an ISO packer (ps1) or master a DVD-Video bridge (interdvd).
 type ISOOptions struct {
 	CommonOptions
-	XML string
-	Out string
+	XML      string
+	Dir      string
+	Out      string
+	VolumeID string
+	Extra    []string
+	ExtrasDir string
+	Recursive bool
+	Title, Publisher, Preparer, Application, System, Provider string
+	Copyright, CopyrightFile, License, LicenseFile, Readme, ReadmeFile string
+	Credits, CreditsFile, Author, Studio, Website, Contact, Version, Catalog, Description string
+	Abstract, AbstractFile, Bibliographic, BiblioFile string
+	Created string
+	Disc, Discs int
+	RegionMask, ParentalLevel int
+	MenuLanguage, AudioLanguage, SubtitleLanguage string
+	AutorunLabel, AutorunOpen, AutorunIcon string
+	Meta, WriteMeta string
 }
