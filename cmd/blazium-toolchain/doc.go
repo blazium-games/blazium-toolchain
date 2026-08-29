@@ -11,7 +11,7 @@
 //	blazium-toolchain [--json] [--prefix DIR] ps1 env
 //	blazium-toolchain [--json] [--prefix DIR] ps1 status
 //	blazium-toolchain [--prefix DIR] ps1 build --out FILE [--src DIR | --sample template|gte]
-//	  [--tim|--mesh|--vag|--sprite|--script|--gdbc|--luau|--str|--xa|--node]
+//	  [--tim|--mesh|--vag|--sprite|--script|--gdbc|--luau|--str|--xa|--node|--hud|--tile]
 //	  --src is optional; the bundled MIT guest stub is the default.
 //	blazium-toolchain [--prefix DIR] ps1 run [--iso CUE] [--timeout 120s] GAME.EXE
 //	blazium-toolchain [--prefix DIR] ps1 iso --xml FILE [--out PATH]

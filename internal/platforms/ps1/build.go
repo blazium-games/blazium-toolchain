@@ -137,6 +137,12 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	if opts.Node != "" {
 		cfg = append(cfg, "-DBLAZIUM_PS1_NODE="+filepath.ToSlash(opts.Node))
 	}
+	if opts.Hud != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS1_HUD="+filepath.ToSlash(opts.Hud))
+	}
+	if opts.Tile != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS1_TILE="+filepath.ToSlash(opts.Tile))
+	}
 	if err := t.runEnv(ctx, cmake, cfg, extraPath, extraEnv, opts.Stdout, opts.Stderr); err != nil {
 		return fmt.Errorf("cmake configure: %w", err)
 	}

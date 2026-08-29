@@ -68,6 +68,8 @@ type BuildOptions struct {
 	Str    string // optional cooked FMV00.STR
 	Xa     string // optional cooked FMV00.XA
 	Node   string // optional cooked NODE00.bin
+	Hud    string // optional cooked HUD00.bin
+	Tile   string // optional cooked TILE00.bin
 }
 
 // RunOptions boot the emulator.
