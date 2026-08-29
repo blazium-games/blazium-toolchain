@@ -213,7 +213,10 @@ func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	args := []string{"-no-ui", "-run", "-noupdate", "-safe", "-testmode", "-interpreter", "-softgpu", "-webserver", "-webserver-port", "8080", "-bios", bios, "-stdout"}
+	args := []string{"-run", "-noupdate", "-safe", "-interpreter", "-softgpu", "-webserver", "-webserver-port", "8080", "-bios", bios, "-stdout"}
+	if !opts.UI {
+		args = append([]string{"-no-ui", "-testmode"}, args...)
+	}
 	pcdrv := opts.Pcdrv
 	if pcdrv == "" && opts.Exe != "" {
 		pcdrv = filepath.Dir(opts.Exe)

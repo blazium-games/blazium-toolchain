@@ -231,6 +231,7 @@ func runRun(ctx context.Context, p platforms.Platform, args []string, base platf
 	iso := fs.String("iso", "", "optional cue/bin path")
 	timeout := fs.Duration("timeout", 120*time.Second, "stop the emulator after this duration (smoke)")
 	pcdrv := fs.String("pcdrv", "", "host directory for pcsx-redux -pcdrvbase (default: EXE dir)")
+	ui := fs.Bool("ui", false, "show the pcsx-redux window (default is -no-ui smoke)")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
@@ -238,7 +239,7 @@ func runRun(ctx context.Context, p platforms.Platform, args []string, base platf
 	if fs.NArg() > 0 {
 		exe = fs.Arg(0)
 	}
-	return p.Run(ctx, platforms.RunOptions{CommonOptions: base, Exe: exe, ISO: *iso, Timeout: *timeout, Pcdrv: *pcdrv})
+	return p.Run(ctx, platforms.RunOptions{CommonOptions: base, Exe: exe, ISO: *iso, Timeout: *timeout, Pcdrv: *pcdrv, UI: *ui})
 }
 
 func runFMV(p platforms.Platform, args []string, base platforms.CommonOptions, stdout io.Writer) error {
@@ -430,7 +431,7 @@ PS1 commands:
   env
   status
   build --out FILE [--src DIR | --sample template|gte] [--tim|--mesh|--vag|--sprite|--script|--gdbc|--luau|--str|--xa|--node|--hud|--tile|--scene|--anim|--cam|--hit|--nav|--path|--way]
-  run [--iso CUE] [--timeout 120s] [GAME.EXE]
+  run [--iso CUE] [--timeout 120s] [--ui] [GAME.EXE]
   iso --xml FILE [--out PATH]
   fmv
 

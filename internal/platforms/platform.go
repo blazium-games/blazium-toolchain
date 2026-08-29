@@ -86,6 +86,7 @@ type RunOptions struct {
 	ISO     string
 	Timeout time.Duration // 0 means default 120s smoke watchdog
 	Pcdrv   string        // host dir for -pcdrvbase; empty uses the EXE directory
+	UI      bool          // show the pcsx-redux window; smoke stays headless
 }
 
 // ISOOptions spawn an ISO packer (ps1) or master a DVD-Video bridge (interdvd).

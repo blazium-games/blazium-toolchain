@@ -611,7 +611,23 @@ func TestRunUsesSetupEnv(t *testing.T) {
 		t.Fatalf("calls %v", rec.calls)
 	}
 	joined := strings.Join(rec.calls[0], " ")
-	if !strings.Contains(joined, "-testmode") || !strings.Contains(joined, "-loadexe") || !strings.Contains(joined, "-bios") {
+	if !strings.Contains(joined, "-testmode") || !strings.Contains(joined, "-no-ui") || !strings.Contains(joined, "-loadexe") || !strings.Contains(joined, "-bios") {
 		t.Fatalf("args %s", joined)
+	}
+	rec.calls = nil
+	if err := tool.Run(context.Background(), platforms.RunOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir},
+		Exe:           exe,
+		Timeout:       time.Minute,
+		UI:            true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.calls) != 1 {
+		t.Fatalf("ui calls %v", rec.calls)
+	}
+	ui := strings.Join(rec.calls[0], " ")
+	if strings.Contains(ui, "-no-ui") || strings.Contains(ui, "-testmode") || !strings.Contains(ui, "-loadexe") {
+		t.Fatalf("ui args %s", ui)
 	}
 }
