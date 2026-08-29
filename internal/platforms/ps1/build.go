@@ -149,6 +149,12 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	if opts.Anim != "" {
 		cfg = append(cfg, "-DBLAZIUM_PS1_ANIM="+filepath.ToSlash(opts.Anim))
 	}
+	if opts.Cam != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS1_CAM="+filepath.ToSlash(opts.Cam))
+	}
+	if opts.Hit != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS1_HIT="+filepath.ToSlash(opts.Hit))
+	}
 	if err := t.runEnv(ctx, cmake, cfg, extraPath, extraEnv, opts.Stdout, opts.Stderr); err != nil {
 		return fmt.Errorf("cmake configure: %w", err)
 	}

@@ -206,10 +206,12 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	tile := fs.String("tile", "", "optional cooked TILE00.bin to embed in the guest")
 	scene := fs.String("scene", "", "optional cooked SCENE00.bin to embed in the guest")
 	anim := fs.String("anim", "", "optional cooked ANIM00.bin to embed in the guest")
+	cam := fs.String("cam", "", "optional cooked CAM00.bin to embed in the guest")
+	hit := fs.String("hit", "", "optional cooked HIT00.bin to embed in the guest")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit})
 }
 
 func runRun(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
@@ -294,7 +296,7 @@ PS1 commands:
   setup [--profile compile|dev|iso] [--offline]
   env
   status
-  build --out FILE [--src DIR | --sample template|gte] [--tim|--mesh|--vag|--sprite|--script|--gdbc|--luau|--str|--xa|--node|--hud|--tile|--scene|--anim]
+  build --out FILE [--src DIR | --sample template|gte] [--tim|--mesh|--vag|--sprite|--script|--gdbc|--luau|--str|--xa|--node|--hud|--tile|--scene|--anim|--cam|--hit]
   run [--iso CUE] [--timeout 120s] [GAME.EXE]
   iso --xml FILE [--out PATH]
   fmv

@@ -72,6 +72,8 @@ type BuildOptions struct {
 	Tile   string // optional cooked TILE00.bin
 	Scene  string // optional cooked SCENE00.bin
 	Anim   string // optional cooked ANIM00.bin
+	Cam    string // optional cooked CAM00.bin
+	Hit    string // optional cooked HIT00.bin
 }
 
 // RunOptions boot the emulator.
