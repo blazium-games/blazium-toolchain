@@ -201,10 +201,11 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	luau := fs.String("luau", "", "optional cooked SCRIPT.LU.BC to embed in the guest")
 	str := fs.String("str", "", "optional cooked FMV00.STR to embed in the guest")
 	xa := fs.String("xa", "", "optional cooked FMV00.XA to embed in the guest")
+	node := fs.String("node", "", "optional cooked NODE00.bin to embed in the guest")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node})
 }
 
 func runRun(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
@@ -289,7 +290,7 @@ PS1 commands:
   setup [--profile compile|dev|iso] [--offline]
   env
   status
-  build --out FILE [--src DIR | --sample template|gte] [--tim|--mesh|--vag|--sprite|--script|--gdbc|--luau|--str|--xa]
+  build --out FILE [--src DIR | --sample template|gte] [--tim|--mesh|--vag|--sprite|--script|--gdbc|--luau|--str|--xa|--node]
   run [--iso CUE] [--timeout 120s] [GAME.EXE]
   iso --xml FILE [--out PATH]
   fmv

@@ -67,6 +67,7 @@ type BuildOptions struct {
 	Luau   string // optional cooked SCRIPT.LU.BC
 	Str    string // optional cooked FMV00.STR
 	Xa     string // optional cooked FMV00.XA
+	Node   string // optional cooked NODE00.bin
 }
 
 // RunOptions boot the emulator.

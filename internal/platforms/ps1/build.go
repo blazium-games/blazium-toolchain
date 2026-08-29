@@ -134,6 +134,9 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	if opts.Xa != "" {
 		cfg = append(cfg, "-DBLAZIUM_PS1_XA="+filepath.ToSlash(opts.Xa))
 	}
+	if opts.Node != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS1_NODE="+filepath.ToSlash(opts.Node))
+	}
 	if err := t.runEnv(ctx, cmake, cfg, extraPath, extraEnv, opts.Stdout, opts.Stderr); err != nil {
 		return fmt.Errorf("cmake configure: %w", err)
 	}
