@@ -289,7 +289,7 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 		if p := findVendorFile(prefix, filepath.Join("gcc", "bin", "mipsel-none-elf-gcc")); p != "" {
 			env["MIPS_GCC"] = p
 			notes = append(notes, "vendored mipsel-none-elf-gcc")
-		} else if p := walkNamed(plat, append(hostNames("mipsel-none-elf-gcc"))...); p != "" {
+		} else if p := walkNamed(plat, hostNames("mipsel-none-elf-gcc")...); p != "" {
 			env["MIPS_GCC"] = p
 			notes = append(notes, "found mipsel-none-elf-gcc under prefix")
 		} else if p := lookFile("mipsel-none-elf-gcc"); p != "" {
@@ -301,7 +301,7 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 		if p := findVendorFile(prefix, filepath.Join("elf2x", "elf2x")); p != "" {
 			env["ELF2X"] = p
 			notes = append(notes, "vendored elf2x")
-		} else if p := walkNamed(plat, append(hostNames("elf2x"))...); p != "" {
+		} else if p := walkNamed(plat, hostNames("elf2x")...); p != "" {
 			env["ELF2X"] = p
 			notes = append(notes, "found elf2x under prefix")
 		}
