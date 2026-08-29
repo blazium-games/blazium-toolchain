@@ -49,6 +49,7 @@ type Pins struct {
 	GCCReleaseBase string              `json:"gcc_release_base"`
 	Compile        map[string][]ZipPin `json:"compile"`
 	HostBuild      map[string][]ZipPin `json:"host_build"`
+	InterDVD       map[string][]ZipPin `json:"interdvd"`
 }
 
 var (

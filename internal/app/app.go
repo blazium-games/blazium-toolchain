@@ -149,6 +149,8 @@ func dispatch(ctx context.Context, p platforms.Platform, args []string, base pla
 		err = runFMV(p, rest, base, stdout)
 	case "meta":
 		err = runMeta(p, rest, base, stdout)
+	case "ffmpeg", "ffprobe":
+		err = runEncode(ctx, p, cmd, rest, base)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q for platform %s\n", cmd, p.Info().ID)
 		return ExitUsage
@@ -336,6 +338,17 @@ func runISO(ctx context.Context, p platforms.Platform, args []string, base platf
 	})
 }
 
+func runEncode(ctx context.Context, p platforms.Platform, name string, args []string, base platforms.CommonOptions) error {
+	tool, ok := p.(*interdvd.Tool)
+	if !ok {
+		return fmt.Errorf("%w: %s is an interdvd command", platforms.ErrUsage, name)
+	}
+	if len(args) > 0 && args[0] == "--" {
+		args = args[1:]
+	}
+	return tool.RunTool(ctx, name, args, base)
+}
+
 func runMeta(p platforms.Platform, args []string, base platforms.CommonOptions, stdout io.Writer) error {
 	if p.Info().ID != interdvd.ID {
 		return fmt.Errorf("%w: meta is an interdvd command", platforms.ErrUsage)
@@ -432,6 +445,11 @@ PS1 commands:
   fmv
 
 Interactive DVD commands:
+  setup [--offline]
+  env
+  status
+  ffmpeg -- <args>
+  ffprobe -- <args>
   iso --dir DIR --out FILE [--meta FILE] [--write-meta FILE] [--volume ID] [--title TEXT]
       [--copyright TEXT] [--license TEXT] [--extra HOST[:DISC]] [--extras-dir DIR] [--recursive]
   meta init --out FILE

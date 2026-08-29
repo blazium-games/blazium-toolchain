@@ -5,14 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/blazium-games/blazium-toolchain/internal/cache"
+	"github.com/blazium-games/blazium-toolchain/internal/execx"
 	"github.com/blazium-games/blazium-toolchain/internal/iso"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms"
 )
 
 const ID = "interdvd"
 
-// Tool is the Interactive DVD ISO masterer.
-type Tool struct{}
+// Tool is the Interactive DVD ISO masterer and ffmpeg host.
+type Tool struct {
+	Runner  execx.Runner
+	Fetcher ZipFetcher
+}
 
 func New() *Tool { return &Tool{} }
 
@@ -21,26 +26,61 @@ func (t *Tool) Info() platforms.Info {
 		ID:          ID,
 		Name:        "Interactive DVD",
 		Status:      platforms.StatusSupported,
-		Commands:    []string{"setup", "env", "status", "iso", "meta"},
-		Description: "ISO9660+UDF DVD-Video bridge. Pure Go; no mkisofs/oscdimg.",
+		Commands:    []string{"setup", "env", "status", "iso", "meta", "ffmpeg", "ffprobe"},
+		Description: "ISO9660+UDF DVD-Video bridge plus cached ffmpeg/ffprobe. No mkisofs/oscdimg.",
 	}
 }
 
-func (t *Tool) Setup(_ context.Context, _ platforms.SetupOptions) error {
+func (t *Tool) Setup(ctx context.Context, opts platforms.SetupOptions) error {
+	env := t.discover(opts.Prefix)
+	if !encodeReady(env) && !opts.Offline {
+		if err := t.ensureFFmpeg(ctx, opts.Prefix, opts.Stdout); err != nil {
+			return err
+		}
+		env = t.discover(opts.Prefix)
+	}
+	if opts.Offline && !encodeReady(env) {
+		return fmt.Errorf("%w: interdvd ffmpeg/ffprobe missing under prefix and --offline set", platforms.ErrOffline)
+	}
+	if !encodeReady(env) {
+		return fmt.Errorf("%w: interdvd setup needs ffmpeg and ffprobe", platforms.ErrMissingTool)
+	}
+	st := cache.State{
+		Platform: ID,
+		Profile:  opts.Profile,
+		Env:      env,
+		Notes:    []string{"ffmpeg+ffprobe cached under interdvd/ffmpeg"},
+	}
+	if err := cache.WriteState(opts.Prefix, ID, st); err != nil {
+		return err
+	}
+	if opts.Stdout != nil {
+		fmt.Fprintf(opts.Stdout, "interdvd setup prefix=%s\n", cache.PlatformDir(opts.Prefix, ID))
+		fmt.Fprintf(opts.Stdout, "  FFMPEG=%s\n", env["FFMPEG"])
+		fmt.Fprintf(opts.Stdout, "  FFPROBE=%s\n", env["FFPROBE"])
+		fmt.Fprintf(opts.Stdout, "  ISO_TOOL=%s\n", env["ISO_TOOL"])
+		fmt.Fprintf(opts.Stdout, "  SCHEMA=%s\n", env["SCHEMA"])
+	}
 	return nil
 }
 
-func (t *Tool) Env(_ platforms.CommonOptions) (platforms.EnvMap, error) {
-	return platforms.EnvMap{"ISO_TOOL": "builtin"}, nil
+func (t *Tool) Env(opts platforms.CommonOptions) (platforms.EnvMap, error) {
+	return t.discover(opts.Prefix), nil
 }
 
-func (t *Tool) Status(_ platforms.CommonOptions) (map[string]any, error) {
+func (t *Tool) Status(opts platforms.CommonOptions) (map[string]any, error) {
+	env := t.discover(opts.Prefix)
+	ready := encodeReady(env)
 	return map[string]any{
-		"platform":   ID,
-		"ready":      true,
-		"format":     "iso9660+udf",
-		"iso_tool":   "builtin",
-		"schema":     iso.SchemaV1,
+		"platform":     ID,
+		"ready":        ready,
+		"encode_ready": ready,
+		"iso_ready":    true,
+		"format":       "iso9660+udf",
+		"iso_tool":     "builtin",
+		"schema":       iso.SchemaV1,
+		"ffmpeg":       env["FFMPEG"],
+		"ffprobe":      env["FFPROBE"],
 	}, nil
 }
 

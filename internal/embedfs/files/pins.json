@@ -55,5 +55,23 @@
         "dest": "ninja"
       }
     ]
+  },
+  "interdvd": {
+    "windows": [
+      {
+        "id": "ffmpeg",
+        "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-16-13-00/ffmpeg-n7.1.5-16-g9a4bb2c579-win64-gpl-7.1.zip",
+        "sha256": "907ae59ae94d39561b9e03f6d5b0ec4a2778df1e75c763c9a0ddbae266415860",
+        "dest": "ffmpeg"
+      }
+    ],
+    "linux": [
+      {
+        "id": "ffmpeg",
+        "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-16-13-00/ffmpeg-n7.1.5-16-g9a4bb2c579-linux64-gpl-7.1.tar.xz",
+        "sha256": "21a55e0ad14423572523c04425fd2f7a03bee0436d25a36e629362b99e45fb00",
+        "dest": "ffmpeg"
+      }
+    ]
   }
 }

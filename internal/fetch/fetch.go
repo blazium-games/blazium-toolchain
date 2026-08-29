@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -44,7 +45,7 @@ func (h HTTP) FetchZip(ctx context.Context, url, wantSHA, destDir string, log io
 	if err := h.download(ctx, url, zipPath, wantSHA, log); err != nil {
 		return err
 	}
-	return Unzip(zipPath, destDir)
+	return ExtractArchive(zipPath, destDir)
 }
 
 func (h HTTP) download(ctx context.Context, url, dest, wantSHA string, log io.Writer) error {
@@ -110,6 +111,31 @@ func hashFile(path string) string {
 		return ""
 	}
 	return hex.EncodeToString(sum.Sum(nil))
+}
+
+// ExtractArchive unpacks a zip or tar.xz into destDir.
+func ExtractArchive(archivePath, destDir string) error {
+	lower := strings.ToLower(archivePath)
+	switch {
+	case strings.HasSuffix(lower, ".zip"):
+		return Unzip(archivePath, destDir)
+	case strings.HasSuffix(lower, ".tar.xz"), strings.HasSuffix(lower, ".tgz"), strings.HasSuffix(lower, ".tar.gz"):
+		return extractTar(archivePath, destDir)
+	default:
+		return fmt.Errorf("unsupported archive %s", filepath.Base(archivePath))
+	}
+}
+
+func extractTar(archivePath, destDir string) error {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return err
+	}
+	cmd := exec.Command("tar", "-xaf", archivePath, "-C", destDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("tar extract %s: %w: %s", filepath.Base(archivePath), err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // Unzip extracts zipPath into destDir, rejecting path traversal.
