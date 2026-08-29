@@ -216,10 +216,13 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	anim := fs.String("anim", "", "optional cooked ANIM00.bin to embed in the guest")
 	cam := fs.String("cam", "", "optional cooked CAM00.bin to embed in the guest")
 	hit := fs.String("hit", "", "optional cooked HIT00.bin to embed in the guest")
+	nav := fs.String("nav", "", "optional cooked NAV00.bin to embed in the guest")
+	pathTbl := fs.String("path", "", "optional cooked PATH00.bin to embed in the guest")
+	way := fs.String("way", "", "optional cooked WAY00.bin to embed in the guest")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way})
 }
 
 func runRun(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
@@ -426,7 +429,7 @@ PS1 commands:
   setup [--profile compile|dev|iso] [--offline]
   env
   status
-  build --out FILE [--src DIR | --sample template|gte] [--tim|--mesh|--vag|--sprite|--script|--gdbc|--luau|--str|--xa|--node|--hud|--tile|--scene|--anim|--cam|--hit]
+  build --out FILE [--src DIR | --sample template|gte] [--tim|--mesh|--vag|--sprite|--script|--gdbc|--luau|--str|--xa|--node|--hud|--tile|--scene|--anim|--cam|--hit|--nav|--path|--way]
   run [--iso CUE] [--timeout 120s] [GAME.EXE]
   iso --xml FILE [--out PATH]
   fmv

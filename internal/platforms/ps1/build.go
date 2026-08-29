@@ -155,6 +155,15 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	if opts.Hit != "" {
 		cfg = append(cfg, "-DBLAZIUM_PS1_HIT="+filepath.ToSlash(opts.Hit))
 	}
+	if opts.Nav != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS1_NAV="+filepath.ToSlash(opts.Nav))
+	}
+	if opts.Path != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS1_PATH="+filepath.ToSlash(opts.Path))
+	}
+	if opts.Way != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS1_WAY="+filepath.ToSlash(opts.Way))
+	}
 	if err := t.runEnv(ctx, cmake, cfg, extraPath, extraEnv, opts.Stdout, opts.Stderr); err != nil {
 		return fmt.Errorf("cmake configure: %w", err)
 	}

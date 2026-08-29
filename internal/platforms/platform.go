@@ -74,6 +74,9 @@ type BuildOptions struct {
 	Anim   string // optional cooked ANIM00.bin
 	Cam    string // optional cooked CAM00.bin
 	Hit    string // optional cooked HIT00.bin
+	Nav    string // optional cooked NAV00.bin
+	Path   string // optional cooked PATH00.bin
+	Way    string // optional cooked WAY00.bin
 }
 
 // RunOptions boot the emulator.
