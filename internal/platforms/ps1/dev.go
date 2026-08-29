@@ -35,7 +35,7 @@ func (t *Tool) ensureDev(ctx context.Context, prefix string, log io.Writer) erro
 	plat := cache.PlatformDir(prefix, ID)
 	dest := filepath.Join(plat, "pcsx-redux")
 	if !pcsxPresent(dest) && !fileExists(env["PCSX_EXE"]) {
-		if runtime.GOOS != "windows" {
+		if runtime.GOOS != "windows" && t.CLIURL == "" {
 			return fmt.Errorf("%w: pcsx-redux AppDistrib is Windows-only (dev-win-cli-x64). On Linux, install pcsx-redux or pcsx-redux-cli, put it on PATH, or set PCSX_EXE. OpenBIOS is required (OPENBIOS or prefix/ps1/openbios/openbios.bin). See https://pcsx-redux.consoledev.net/", platforms.ErrMissingTool)
 		}
 		url, err := t.pcsxZipURL(ctx)
