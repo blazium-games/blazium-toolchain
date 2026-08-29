@@ -1901,9 +1901,9 @@ int main(int argc, const char **argv) {
 				const int dy = int(parts[i].y) - int(pos.vy);
 				const int dz = int(parts[i].z) - int(pos.vz);
 				const int cy = icos(rot.vy);
-				const int sy = isin(rot.vy);
-				const int lx = (dx * cy - dz * sy) >> 12;
-				const int lz = (dx * sy + dz * cy) >> 12;
+				const int ysin = isin(rot.vy);
+				const int lx = (dx * cy - dz * ysin) >> 12;
+				const int lz = (dx * ysin + dz * cy) >> 12;
 				const int cp = icos(rot.vx);
 				const int sp = isin(rot.vx);
 				const int ly = (dy * cp - lz * sp) >> 12;
@@ -1926,8 +1926,8 @@ int main(int argc, const char **argv) {
 					const int pdx = int(parts[i].px) - int(pos.vx);
 					const int pdy = int(parts[i].py) - int(pos.vy);
 					const int pdz = int(parts[i].pz) - int(pos.vz);
-					const int plx = (pdx * cy - pdz * sy) >> 12;
-					const int plz = (pdx * sy + pdz * cy) >> 12;
+					const int plx = (pdx * cy - pdz * ysin) >> 12;
+					const int plz = (pdx * ysin + pdz * cy) >> 12;
 					const int ply = (pdy * cp - plz * sp) >> 12;
 					const int plz2 = (pdy * sp + plz * cp) >> 12;
 					if (plz2 <= 1) {

@@ -225,6 +225,7 @@ struct ScriptVMParticle {
 	uint8_t frame;
 	uint8_t nframes;
 	uint8_t ftick;
+	uint8_t fps;
 };
 
 int script_vm_script_cam();

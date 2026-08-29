@@ -2436,6 +2436,7 @@ static void part_birth(float x, float y, float z, float vx, float vy, float vz, 
 	g_parts[i].frame = 0;
 	g_parts[i].nframes = g_part_nframes ? g_part_nframes : 1;
 	g_parts[i].ftick = 0;
+	g_parts[i].fps = g_part_fps ? g_part_fps : 8;
 	if (g_npart < PS1_MAX_PARTICLES) {
 		g_npart = PS1_MAX_PARTICLES;
 	}
@@ -3164,7 +3165,7 @@ static int apply_call(const ScriptVMHost *host, int node, const char *name, floa
 		*ret = gv_int(mc_peek32(off));
 		return 1;
 	}
-	if (name_is(name, "set_meta")) {
+	if (name_is(name, "set_node_meta") || name_is(name, "set_meta")) {
 		int nid = node;
 		int16_t v = 0;
 		if (argv && argc >= 2) {
@@ -3181,7 +3182,7 @@ static int apply_call(const ScriptVMHost *host, int node, const char *name, floa
 		}
 		return 1;
 	}
-	if (name_is(name, "get_meta")) {
+	if (name_is(name, "get_node_meta") || name_is(name, "get_meta")) {
 		int nid = node;
 		if (argv && argc > 0) {
 			nid = argv[0].type == V_OBJ ? argv[0].i : int(as_float(argv[0]));
