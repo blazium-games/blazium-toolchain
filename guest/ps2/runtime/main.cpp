@@ -2,6 +2,7 @@
 // P4: double 16-bit frame + Z, CPU GIF textured MESH/GTEX. Optional VU1 when linked.
 
 #include "gs_draw.h"
+#include "guest_hooks.h"
 #include "pack_io.h"
 #include "pad_io.h"
 #include "script_vm.h"
@@ -203,6 +204,9 @@ int main(int argc, char **argv)
 #ifdef BLAZIUM_PS2_HAS_SCRIPT
 	script_vm_init(cooked_script, size_cooked_script, node, node_sz);
 #endif
+	if (user_init) {
+		user_init();
+	}
 	const int use_vu1 = vu1_draw_init(mesh, mesh_sz) && vu1_draw_ready();
 
 	int context = 0;
@@ -211,6 +215,9 @@ int main(int argc, char **argv)
 		float dolly = 0.0f;
 		int cross = 0;
 		pad_io_poll(&yaw, &dolly, &cross);
+		if (user_pad) {
+			user_pad();
+		}
 		gs_draw_orbit(yaw, dolly);
 		if (cross) {
 			pad_io_set_rumble(1, 0);
@@ -221,6 +228,9 @@ int main(int argc, char **argv)
 #ifdef BLAZIUM_PS2_HAS_SCRIPT
 		script_vm_process(1.0f / 60.0f);
 #endif
+		if (user_tick) {
+			user_tick(1.0f / 60.0f);
+		}
 		if (use_vu1) {
 			vu1_draw_scene(&frames[context], &z);
 		} else {

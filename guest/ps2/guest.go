@@ -37,6 +37,8 @@ var RuntimeNames = []string{
 	"vu1_draw.cpp",
 	"vu1_draw.h",
 	"draw_3D.vsm",
+	"guest_hooks.h",
+	"extra/user_hooks.cpp",
 }
 
 //go:embed runtime

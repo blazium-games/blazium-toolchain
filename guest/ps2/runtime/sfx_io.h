@@ -8,6 +8,8 @@ extern "C" {
 #endif
 
 int sfx_io_init(void);
+int sfx_io_load(int pack);
+void sfx_io_unload(void);
 void sfx_io_play(void);
 void sfx_io_stop(void);
 int sfx_io_ready(void);

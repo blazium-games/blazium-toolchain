@@ -131,6 +131,11 @@ static unsigned char s_tile_atlas[256];
 static unsigned long long s_over_prev;
 static unsigned long long s_over_now;
 static int s_over_entered;
+static unsigned char s_ent_kit[64];
+static int s_ent_idx[64];
+static int s_ent_n;
+static unsigned char s_left_kit[64];
+static int s_left_n;
 static float s_ray_x;
 static float s_ray_y;
 static float s_ray_z;
@@ -700,6 +705,8 @@ int sys_io_init(void)
 	s_px = s_py = s_pz = 0.0f;
 	s_over_prev = s_over_now = 0;
 	s_over_entered = 0;
+	s_ent_n = 0;
+	s_left_n = 0;
 	s_ray_x = s_ray_y = s_ray_z = 0.0f;
 	s_fade_left = s_fade_dur = 0.0f;
 	s_fade_r = s_fade_g = s_fade_b = 0;
@@ -1450,7 +1457,22 @@ void sys_io_overlap_refresh(void)
 			now |= (1ull << i);
 		}
 	}
-	s_over_entered = (now & ~s_over_prev) != 0;
+	const unsigned long long entered = now & ~s_over_prev;
+	const unsigned long long left = s_over_prev & ~now;
+	s_over_entered = entered != 0;
+	s_ent_n = 0;
+	s_left_n = 0;
+	for (int i = 0; i < s_hit_n && i < 64; i++) {
+		if (entered & (1ull << i)) {
+			s_ent_kit[s_ent_n] = s_hit_kit[i];
+			s_ent_idx[s_ent_n] = i;
+			s_ent_n++;
+		}
+		if (left & (1ull << i)) {
+			s_left_kit[s_left_n] = s_hit_kit[i];
+			s_left_n++;
+		}
+	}
 	s_over_now = now;
 	s_over_prev = now;
 }
@@ -1478,6 +1500,57 @@ int sys_io_hitbox_kind(void)
 		}
 	}
 	return 0;
+}
+
+int sys_io_hitbox_kit(void)
+{
+	for (int i = 0; i < s_hit_n && i < 64; i++) {
+		if (s_over_now & (1ull << i)) {
+			return (int)s_hit_kit[i];
+		}
+	}
+	return 0;
+}
+
+int sys_io_entered_kit_count(void)
+{
+	return s_ent_n;
+}
+
+int sys_io_entered_kit_at(int i)
+{
+	if (i < 0 || i >= s_ent_n) {
+		return 0;
+	}
+	return (int)s_ent_kit[i];
+}
+
+int sys_io_left_kit_count(void)
+{
+	return s_left_n;
+}
+
+int sys_io_left_kit_at(int i)
+{
+	if (i < 0 || i >= s_left_n) {
+		return 0;
+	}
+	return (int)s_left_kit[i];
+}
+
+int sys_io_disable_entered_kit(int kit)
+{
+	int n = 0;
+	for (int i = 0; i < s_ent_n; i++) {
+		if (s_ent_kit[i] == (unsigned char)kit) {
+			const int idx = s_ent_idx[i];
+			if (idx >= 0 && idx < s_hit_n) {
+				s_hit_on[idx] = 0;
+				n = 1;
+			}
+		}
+	}
+	return n;
 }
 
 static int ray_aabb(float ox, float oy, float oz, float dx, float dy, float dz, float dist, int i, float *t_hit)

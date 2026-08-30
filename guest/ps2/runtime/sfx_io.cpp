@@ -72,6 +72,7 @@ static int s_rate;
 static unsigned char *s_vag;
 static unsigned s_vag_sz;
 static int s_ready;
+static int s_sfx_pack = -1;
 static int s_played;
 static int s_audible;
 static int s_sd_ok;
@@ -363,40 +364,92 @@ int sfx_io_init(void)
 #endif
 	load_sound_irx();
 	s_sd_ok = init_sdr();
-	static const char *sfx_paths[] = {
-		"host:SFX00.bin",
-		"cdrom0:\\SFX00.BIN;1",
-		"cdrom0:SFX00.BIN;1",
-		NULL
-	};
-	unsigned char *blob = 0;
-	unsigned sz = 0;
-	if (!load_blob(sfx_paths, &blob, &sz)) {
-		return 0;
+	s_sfx_pack = -1;
+	const int ok = sfx_io_load(0);
+	(void)sfx_io_music_load(0);
+	return ok;
+}
+
+static void free_sfx(void)
+{
+	sfx_io_stop();
+	if (s_pcm) {
+		free(s_pcm);
+		s_pcm = 0;
 	}
-	if (sz < 12 || blob[0] != 'S' || blob[1] != 'F' || blob[2] != 'X' || blob[3] != ' ') {
-		free(blob);
+	if (s_vag) {
+		free(s_vag);
+		s_vag = 0;
+	}
+	s_pcm_n = 0;
+	s_vag_sz = 0;
+	s_ready = 0;
+	s_sfx_pack = -1;
+}
+
+static int decode_sfx_blob(unsigned char *blob, unsigned sz)
+{
+	if (!blob || sz < 12 || blob[0] != 'S' || blob[1] != 'F' || blob[2] != 'X' || blob[3] != ' ') {
 		return 0;
 	}
 	if (ru16(blob + 4) != 1) {
-		free(blob);
 		return 0;
 	}
 	s_rate = (int)ru16(blob + 6);
 	const unsigned nbytes = ru32(blob + 8);
 	if (12 + nbytes > sz) {
-		free(blob);
 		return 0;
 	}
-	const int ok = decode_ima(blob + 12, nbytes, &s_pcm, &s_pcm_n);
+	if (!decode_ima(blob + 12, nbytes, &s_pcm, &s_pcm_n)) {
+		return 0;
+	}
+	(void)encode_vag(s_pcm, s_pcm_n, &s_vag, &s_vag_sz, 0);
+	s_ready = 1;
+	return 1;
+}
+
+int sfx_io_load(int pack)
+{
+	if (pack < 0) {
+		pack = 0;
+	}
+	char host[48];
+	char iso_bs[56];
+	char iso[56];
+	sprintf(host, "host:SFX%02d.bin", pack);
+	sprintf(iso_bs, "cdrom0:\\SFX%02d.BIN;1", pack);
+	sprintf(iso, "cdrom0:SFX%02d.BIN;1", pack);
+	const char *paths[] = { host, iso_bs, iso, NULL };
+	unsigned char *blob = 0;
+	unsigned sz = 0;
+	if (!load_blob(paths, &blob, &sz) && pack != 0) {
+		static const char *p0[] = {
+			"host:SFX00.bin",
+			"cdrom0:\\SFX00.BIN;1",
+			"cdrom0:SFX00.BIN;1",
+			NULL
+		};
+		(void)load_blob(p0, &blob, &sz);
+	}
+	if (!blob) {
+		return 0;
+	}
+	free_sfx();
+	const int ok = decode_sfx_blob(blob, sz);
 	free(blob);
 	if (ok) {
-		encode_vag(s_pcm, s_pcm_n, &s_vag, &s_vag_sz, 0);
+		s_sfx_pack = pack;
 	}
-	s_ready = ok;
-
-	(void)sfx_io_music_load(0);
 	return ok;
+}
+
+void sfx_io_unload(void)
+{
+	const int was = s_sfx_pack;
+	free_sfx();
+	if (was > 0) {
+		(void)sfx_io_load(0);
+	}
 }
 
 void sfx_io_play(void)

@@ -94,6 +94,9 @@ func TestGuestPack1AndDisp(t *testing.T) {
 	if !strings.Contains(string(sfx), "MUSIC00") || !strings.Contains(string(sfx), "sfx_io_music_play") {
 		t.Fatal("sfx_io.cpp must load MUSIC00 and expose sfx_io_music_play")
 	}
+	if !strings.Contains(string(sfx), "SFX%02d") || !strings.Contains(string(sfx), "sfx_io_load") || !strings.Contains(string(sfx), "sfx_io_unload") {
+		t.Fatal("sfx_io.cpp must load SFX%02d.bin and expose sfx_io_load/unload")
+	}
 	if !strings.Contains(string(sfx), "ADPCM_LOOP") || !strings.Contains(string(sfx), "0x10000") {
 		t.Fatal("sfx_io.cpp must loop music VAG on SPU addr 0x10000")
 	}
@@ -129,6 +132,12 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	}
 	if !strings.Contains(string(vm), "OP_KIT_TICK") || !strings.Contains(string(vm), "Checkpoint") {
 		t.Fatal("script_vm must interpret kit tick and Checkpoint")
+	}
+	if !strings.Contains(string(vm), "sys_io_overlap_refresh") || !strings.Contains(string(vm), "sys_io_entered_kit") {
+		t.Fatal("script_vm must fire kit on HIT enter (overlap kit, not Cross-only)")
+	}
+	if !strings.Contains(string(vm), "s_kit_player") || !strings.Contains(string(vm), "pad_io_stick") {
+		t.Fatal("script_vm must auto-slide CharacterBody kit 4 from stick")
 	}
 	if !strings.Contains(string(vm), "OP_SAY") || !strings.Contains(string(vm), "OP_PLAY_FMV") {
 		t.Fatal("script_vm must interpret say and play_fmv")
@@ -266,6 +275,27 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	}
 	if strings.Contains(cm, "-lgskit") || strings.Contains(strings.ToLower(cm), "libgskit") {
 		t.Fatal("CMakeLists must not link gsKit")
+	}
+	mk, err := files.ReadFile("runtime/Makefile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(mk), "extra/*.cpp") {
+		t.Fatal("Makefile must glob extra/*.cpp")
+	}
+	hooks, err := files.ReadFile("runtime/guest_hooks.h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(hooks), "user_init") || !strings.Contains(string(hooks), "user_tick") || !strings.Contains(string(hooks), "user_pad") {
+		t.Fatal("guest_hooks.h must declare user_init/user_tick/user_pad")
+	}
+	main2, err := files.ReadFile("runtime/main.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(main2), "user_init") || !strings.Contains(string(main2), "user_tick") || !strings.Contains(string(main2), "user_pad") {
+		t.Fatal("main.cpp must call user_init/user_tick/user_pad")
 	}
 }
 

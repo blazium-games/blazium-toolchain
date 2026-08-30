@@ -165,7 +165,17 @@ static int s_kit_load;
 static int s_kit_talk;
 static int s_kit_spawner;
 static int s_kit_save;
+static int s_kit_camvol;
 static char s_kit_spawn_path[65];
+static char s_kit_portal_path[65];
+static char s_kit_load_path[65];
+static char s_kit_unload_path[65];
+static char s_kit_talk_line[65];
+static int s_kit_cam_index;
+static int s_kit_save_slot;
+static int s_kit_hurt_amt;
+static int s_kit_load_handle;
+static int s_did_slide;
 static float s_yaw;
 
 static unsigned ru16(const unsigned char *p)
@@ -255,8 +265,11 @@ static void apply_kit(unsigned char kit, const char *name)
 	if (kit == 11 || name_is_ci(name, "Spawner") || name_is_ci(name, "Instance")) {
 		s_kit_spawner = 1;
 	}
-	if (kit == 12 || name_is_ci(name, "Save") || name_is_ci(name, "SaveZone")) {
+	if (kit == 12 || name_is_ci(name, "Save") || name_is_ci(name, "SaveZone") || name_is_ci(name, "SavePoint")) {
 		s_kit_save = 1;
+	}
+	if (kit == 13 || name_is_ci(name, "CameraVolume") || name_is_ci(name, "CamVol")) {
+		s_kit_camvol = 1;
 	}
 }
 
@@ -282,9 +295,36 @@ static void bind_nodes(const unsigned char *blob, unsigned sz)
 		memcpy(name, n + 42, 32);
 		name[32] = 0;
 		apply_kit(n[5], name);
-		if (rec >= 138 && (n[5] == 11 || name_is_ci(name, "Spawner") || name_is_ci(name, "Instance"))) {
-			memcpy(s_kit_spawn_path, n + 74, 64);
-			s_kit_spawn_path[64] = 0;
+		if (rec >= 138) {
+			if (n[5] == 11 || name_is_ci(name, "Spawner") || name_is_ci(name, "Instance")) {
+				memcpy(s_kit_spawn_path, n + 74, 64);
+				s_kit_spawn_path[64] = 0;
+			}
+			if (n[5] == 3 || name_is_ci(name, "Portal")) {
+				memcpy(s_kit_portal_path, n + 74, 64);
+				s_kit_portal_path[64] = 0;
+			}
+			if (n[5] == 9 || name_is_ci(name, "Load") || name_is_ci(name, "LoadZone")) {
+				memcpy(s_kit_load_path, n + 74, 64);
+				s_kit_load_path[64] = 0;
+			}
+			if (n[5] == 8 || name_is_ci(name, "Unload") || name_is_ci(name, "UnloadZone") || name_is_ci(name, "UnloadVolume")) {
+				memcpy(s_kit_unload_path, n + 74, 64);
+				s_kit_unload_path[64] = 0;
+			}
+			if (n[5] == 10 || name_is_ci(name, "Talk") || name_is_ci(name, "TalkZone")) {
+				memcpy(s_kit_talk_line, n + 74, 64);
+				s_kit_talk_line[64] = 0;
+			}
+			if (n[5] == 13 || name_is_ci(name, "CameraVolume") || name_is_ci(name, "CamVol")) {
+				s_kit_cam_index = atoi((const char *)(n + 74));
+			}
+			if (n[5] == 12 || name_is_ci(name, "Save") || name_is_ci(name, "SaveZone") || name_is_ci(name, "SavePoint")) {
+				s_kit_save_slot = atoi((const char *)(n + 74));
+			}
+			if (n[5] == 5 || name_is_ci(name, "Hazard")) {
+				s_kit_hurt_amt = atoi((const char *)(n + 74));
+			}
 		}
 	}
 }
@@ -341,53 +381,138 @@ static void rebind_current_pack(void)
 	}
 }
 
-static void kit_tick(void)
+static int hint_is_path(const char *s)
 {
-	if (pad_io_just_pressed(4)) {
-		if (s_kit_portal || s_kit_load) {
-			const int cur = pack_io_current();
-			const int next = cur + 1;
-			if (!pack_io_swap(next)) {
-				if (!pack_io_swap(1)) {
-					pack_io_swap(0);
-				}
-			}
-			rebind_current_pack();
-		}
-		if (s_kit_checkpoint || s_kit_save) {
-			if (!pack_io_user_save(pack_io_poke_data(), pack_io_poke_size())) {
-				(void)pack_io_user_error();
-			}
-		}
-		if (s_kit_pickup || s_kit_talk) {
-			sfx_io_play();
-		}
-		if (s_kit_spawner) {
-			int pack = -1;
-			if (s_kit_spawn_path[0]) {
-				pack = pack_io_find_path(s_kit_spawn_path);
-			}
-			if (pack < 0) {
-				pack = pack_io_current() + 1;
-			}
-			(void)pack_io_instantiate(pack > 0 ? pack : 1);
-		}
-		if (s_kit_unload) {
-			const int cur = pack_io_current();
-			if (cur > 0) {
-				pack_io_unload(cur);
-			} else {
-				pack_io_unload(pack_io_max());
-			}
+	if (!s || !s[0]) {
+		return 0;
+	}
+	if (s[0] == 'r' && s[1] == 'e' && s[2] == 's') {
+		return 1;
+	}
+	return strstr(s, ".tscn") != 0 || strstr(s, ".bin") != 0;
+}
+
+static int pack_from_hint(const char *path, int fallback)
+{
+	if (hint_is_path(path)) {
+		const int found = pack_io_find_path(path);
+		if (found >= 0) {
+			return found;
 		}
 	}
-	if (s_kit_hazard && pad_io_pressed(4)) {
+	return fallback;
+}
+
+static void fire_kit(unsigned char kit)
+{
+	if (kit == 2 || kit == 12) {
+		if (kit == 12) {
+			if (!pack_io_user_save_slot(s_kit_save_slot, pack_io_poke_data(), pack_io_poke_size())) {
+				(void)pack_io_user_error();
+			}
+		} else if (!pack_io_user_save(pack_io_poke_data(), pack_io_poke_size())) {
+			(void)pack_io_user_error();
+		}
+	}
+	if (kit == 3) {
+		int pack = pack_from_hint(s_kit_portal_path, pack_io_current() + 1);
+		if (pack < 0) {
+			pack = 1;
+		}
+		if (pack_io_is_loaded(pack) || pack_io_can_fit(pack)) {
+			sys_io_set_fade_pack(pack);
+			sys_io_scene_fade(0.2f);
+		}
+	}
+	if (kit == 5) {
+		const int amt = s_kit_hurt_amt > 0 ? s_kit_hurt_amt : 1;
+		(void)sys_io_hurt(amt, 0.0f, 0.0f, 0.0f);
 		pad_io_set_rumble(1, 64);
 		sfx_io_play();
 	}
-	if (s_kit_music && !s_kit_music_on) {
-		sfx_io_music_play();
-		s_kit_music_on = 1;
+	if (kit == 6) {
+		sfx_io_play();
+		sys_io_disable_entered_kit(6);
+	}
+	if (kit == 7) {
+		const int pack = pack_io_current();
+		if (pack <= 0 || pack_io_is_loaded(pack) || pack_io_can_fit(pack)) {
+			if (sfx_io_music_load(pack)) {
+				sfx_io_music_play();
+				s_kit_music_on = 1;
+			}
+		}
+	}
+	if (kit == 8) {
+		int pack = pack_from_hint(s_kit_unload_path, s_kit_load_handle);
+		if (pack <= 0) {
+			pack = pack_io_current();
+		}
+		if (pack <= 0) {
+			pack = pack_io_max();
+		}
+		if (pack > 0) {
+			pack_io_unload(pack);
+			sfx_io_unload();
+		}
+	}
+	if (kit == 9) {
+		int pack = pack_from_hint(s_kit_load_path, pack_io_current() + 1);
+		if (pack < 0) {
+			pack = 1;
+		}
+		if (pack_io_is_loaded(pack) || pack_io_can_fit(pack)) {
+			if (pack_io_instantiate(pack)) {
+				s_kit_load_handle = pack;
+				if (pack <= 0 || pack_io_is_loaded(pack) || pack_io_can_fit(pack)) {
+					(void)sfx_io_load(pack);
+				}
+			}
+		}
+	}
+	if (kit == 10) {
+		if (s_kit_talk_line[0]) {
+			sys_io_say(s_kit_talk_line);
+		} else {
+			sys_io_say("PS2");
+		}
+		sfx_io_play();
+	}
+	if (kit == 11) {
+		int pack = pack_from_hint(s_kit_spawn_path, pack_io_current() + 1);
+		if (pack < 0) {
+			pack = 1;
+		}
+		if (pack_io_is_loaded(pack) || pack_io_can_fit(pack)) {
+			(void)pack_io_instantiate(pack > 0 ? pack : 1);
+		}
+	}
+	if (kit == 13) {
+		(void)sys_io_set_cam(s_kit_cam_index);
+	}
+}
+
+static void kit_tick(void)
+{
+	sys_io_overlap_refresh();
+	const int n = sys_io_entered_kit_count();
+	for (int i = 0; i < n; i++) {
+		fire_kit((unsigned char)sys_io_entered_kit_at(i));
+	}
+	const int left = sys_io_left_kit_count();
+	for (int i = 0; i < left; i++) {
+		if (sys_io_left_kit_at(i) == 7) {
+			sfx_io_music_unload();
+			s_kit_music_on = 0;
+		}
+	}
+	if (pad_io_just_pressed(4)) {
+		if (s_kit_talk) {
+			fire_kit(10);
+		}
+		if (s_kit_pickup) {
+			fire_kit(6);
+		}
 	}
 }
 
@@ -479,6 +604,7 @@ static void run_range(unsigned from, unsigned to, float delta)
 			float sy = 0.0f;
 			pad_io_stick(0, &sx, &sy);
 			sys_io_slide(sx * rate, 0.0f, sy * rate, delta, 255);
+			s_did_slide = 1;
 			continue;
 		}
 		if (op == OP_JUST_ACCEPT_SFX) {
@@ -505,7 +631,6 @@ static void run_range(unsigned from, unsigned to, float delta)
 			continue;
 		}
 		if (op == OP_KIT_TICK) {
-			kit_tick();
 			continue;
 		}
 		if (op == OP_SAY) {
@@ -635,6 +760,7 @@ static void run_range(unsigned from, unsigned to, float delta)
 			const float vy = stack[--sp];
 			const float vx = stack[--sp];
 			sys_io_slide(vx, vy, vz, delta, mask);
+			s_did_slide = 1;
 			continue;
 		}
 		if (op == OP_OVERLAP) {
@@ -1151,7 +1277,17 @@ int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 	s_kit_talk = 0;
 	s_kit_spawner = 0;
 	s_kit_save = 0;
+	s_kit_camvol = 0;
 	s_kit_spawn_path[0] = 0;
+	s_kit_portal_path[0] = 0;
+	s_kit_load_path[0] = 0;
+	s_kit_unload_path[0] = 0;
+	s_kit_talk_line[0] = 0;
+	s_kit_cam_index = 0;
+	s_kit_save_slot = 0;
+	s_kit_hurt_amt = 1;
+	s_kit_load_handle = -1;
+	s_did_slide = 0;
 	s_yaw = 0.0f;
 	s_str_n = 0;
 	s_last_str = -1;
@@ -1197,11 +1333,20 @@ int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 
 void script_vm_process(float delta)
 {
-	if (!s_ready || !s_tape) {
-		return;
+	s_did_slide = 0;
+	if (s_ready && s_tape) {
+		run_range(s_process_off, s_tape_n, delta);
 	}
-	run_range(s_process_off, s_tape_n, delta);
-	sfx_io_tick(delta);
+	kit_tick();
+	if (s_kit_player && !s_did_slide) {
+		float sx = 0.0f;
+		float sy = 0.0f;
+		pad_io_stick(0, &sx, &sy);
+		sys_io_slide(sx * 4.0f, 0.0f, sy * 4.0f, delta, 255);
+	}
+	if (s_ready && s_tape) {
+		sfx_io_tick(delta);
+	}
 }
 
 int script_vm_ready(void)
