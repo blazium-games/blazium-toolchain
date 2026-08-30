@@ -139,6 +139,15 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	if !strings.Contains(string(vm), "s_kit_player") || !strings.Contains(string(vm), "pad_io_stick") {
 		t.Fatal("script_vm must auto-slide CharacterBody kit 4 from stick")
 	}
+	if !strings.Contains(string(vm), "sys_io_spawn_ofs") || !strings.Contains(string(vm), "do_checkpoint") {
+		t.Fatal("script_vm must teleport spawn_ofs and store checkpoint xyz")
+	}
+	if !strings.Contains(string(vm), "NAT_SET_CHECKPOINT") || !strings.Contains(string(vm), "NAT_RESPAWN") {
+		t.Fatal("script_vm must interpret set_checkpoint / respawn natives")
+	}
+	if !strings.Contains(string(vm), "s_grav_vy") || !strings.Contains(string(vm), "s_kit_follow") {
+		t.Fatal("script_vm must apply gravity and kit 14 follow")
+	}
 	if !strings.Contains(string(vm), "OP_SAY") || !strings.Contains(string(vm), "OP_PLAY_FMV") {
 		t.Fatal("script_vm must interpret say and play_fmv")
 	}
@@ -313,6 +322,12 @@ func TestGuestSysIO(t *testing.T) {
 	}
 	if !strings.Contains(src, "sys_io_say_done") || !strings.Contains(src, "s_hud_kind") {
 		t.Fatal("sys_io.cpp must expose say_done and button HUD kinds")
+	}
+	if !strings.Contains(src, "s_paused") || !strings.Contains(src, "s_hud_just_accept") {
+		t.Fatal("sys_io.cpp must toggle Start pause and HUD accept actions")
+	}
+	if !strings.Contains(src, "s_hud_act") || !strings.Contains(src, "strchr") {
+		t.Fatal("sys_io.cpp must split HUD action|label")
 	}
 	if !strings.Contains(src, "sys_io_seek_anim") || !strings.Contains(src, "s_ak_t") {
 		t.Fatal("sys_io.cpp must interpolate ANIM TRS keys")

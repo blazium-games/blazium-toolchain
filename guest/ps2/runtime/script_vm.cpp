@@ -141,7 +141,9 @@ enum {
 	NAT_CAN_LOAD_MUSIC = 121,
 	NAT_IS_MUSIC_LOADED = 122,
 	NAT_PLAY_ANIM = 123,
-	NAT_STOP_ANIM = 124
+	NAT_STOP_ANIM = 124,
+	NAT_SET_CHECKPOINT = 125,
+	NAT_RESPAWN = 126
 };
 
 static char s_str[8][128];
@@ -166,6 +168,18 @@ static int s_kit_talk;
 static int s_kit_spawner;
 static int s_kit_save;
 static int s_kit_camvol;
+static int s_kit_follow;
+static float s_follow_speed;
+static float s_spawn_x;
+static float s_spawn_y;
+static float s_spawn_z;
+static int s_spawn_ok;
+static float s_chk_x;
+static float s_chk_y;
+static float s_chk_z;
+static int s_chk_pack;
+static int s_chk_ok;
+static float s_grav_vy;
 static char s_kit_spawn_path[65];
 static char s_kit_portal_path[65];
 static char s_kit_load_path[65];
@@ -271,6 +285,9 @@ static void apply_kit(unsigned char kit, const char *name)
 	if (kit == 13 || name_is_ci(name, "CameraVolume") || name_is_ci(name, "CamVol")) {
 		s_kit_camvol = 1;
 	}
+	if (kit == 14 || name_is_ci(name, "Follow") || name_is_ci(name, "KitFollow") || name_is_ci(name, "CamFollow")) {
+		s_kit_follow = 1;
+	}
 }
 
 static void bind_nodes(const unsigned char *blob, unsigned sz)
@@ -295,6 +312,12 @@ static void bind_nodes(const unsigned char *blob, unsigned sz)
 		memcpy(name, n + 42, 32);
 		name[32] = 0;
 		apply_kit(n[5], name);
+		if (n[5] == 1 || name_is_ci(name, "Spawn") || name_is_ci(name, "KitSpawn")) {
+			s_spawn_x = rf32(n + 6);
+			s_spawn_y = rf32(n + 10);
+			s_spawn_z = rf32(n + 14);
+			s_spawn_ok = 1;
+		}
 		if (rec >= 138) {
 			if (n[5] == 11 || name_is_ci(name, "Spawner") || name_is_ci(name, "Instance")) {
 				memcpy(s_kit_spawn_path, n + 74, 64);
@@ -324,6 +347,10 @@ static void bind_nodes(const unsigned char *blob, unsigned sz)
 			}
 			if (n[5] == 5 || name_is_ci(name, "Hazard")) {
 				s_kit_hurt_amt = atoi((const char *)(n + 74));
+			}
+			if (n[5] == 14 || name_is_ci(name, "Follow") || name_is_ci(name, "KitFollow") || name_is_ci(name, "CamFollow")) {
+				const float spd = (float)atof((const char *)(n + 74));
+				s_follow_speed = spd > 0.05f ? spd : 4.0f;
 			}
 		}
 	}
@@ -403,14 +430,105 @@ static int pack_from_hint(const char *path, int fallback)
 	return fallback;
 }
 
+static void fire_kit(unsigned char kit);
+
+static void do_checkpoint(void)
+{
+	sys_io_get_pos(&s_chk_x, &s_chk_y, &s_chk_z);
+	s_chk_pack = pack_io_current();
+	s_chk_ok = 1;
+}
+
+static void do_respawn(void)
+{
+	if (s_chk_ok) {
+		sys_io_spawn_ofs(s_chk_x, s_chk_y, s_chk_z);
+		if (s_chk_pack >= 0 && s_chk_pack != pack_io_current()) {
+			if (pack_io_is_loaded(s_chk_pack) || pack_io_can_fit(s_chk_pack)) {
+				pack_io_swap(s_chk_pack);
+			}
+		}
+	} else if (s_spawn_ok) {
+		sys_io_spawn_ofs(s_spawn_x, s_spawn_y, s_spawn_z);
+	}
+	s_grav_vy = 0.0f;
+	if (sys_io_get_hp() <= 0) {
+		sys_io_set_hp(3);
+	}
+}
+
+static int act_is(const char *act, const char *want)
+{
+	if (!act || !want) {
+		return 0;
+	}
+	unsigned i = 0;
+	while (want[i]) {
+		char a = act[i];
+		char b = want[i];
+		if (a >= 'A' && a <= 'Z') {
+			a = (char)(a - 'A' + 'a');
+		}
+		if (a != b) {
+			return 0;
+		}
+		i++;
+	}
+	return act[i] == 0 || act[i] == ':' || act[i] == '|';
+}
+
+static void run_hud_action(const char *act)
+{
+	if (!act || !act[0]) {
+		return;
+	}
+	if (act_is(act, "pause")) {
+		sys_io_set_paused(1);
+		return;
+	}
+	if (act_is(act, "resume")) {
+		sys_io_set_paused(0);
+		return;
+	}
+	if (act_is(act, "save")) {
+		(void)pack_io_user_save_slot(0, pack_io_poke_data(), pack_io_poke_size());
+		return;
+	}
+	if (act_is(act, "load")) {
+		fire_kit(9);
+		return;
+	}
+	if (act_is(act, "respawn")) {
+		do_respawn();
+		return;
+	}
+	if (act_is(act, "say")) {
+		const char *line = act;
+		while (*line && *line != ':') {
+			line++;
+		}
+		if (*line == ':' && line[1]) {
+			sys_io_say(line + 1);
+		} else {
+			sys_io_say("PS2");
+		}
+		return;
+	}
+	if (act_is(act, "portal")) {
+		fire_kit(3);
+	}
+}
+
 static void fire_kit(unsigned char kit)
 {
-	if (kit == 2 || kit == 12) {
-		if (kit == 12) {
-			if (!pack_io_user_save_slot(s_kit_save_slot, pack_io_poke_data(), pack_io_poke_size())) {
-				(void)pack_io_user_error();
-			}
-		} else if (!pack_io_user_save(pack_io_poke_data(), pack_io_poke_size())) {
+	if (kit == 1 && s_spawn_ok) {
+		sys_io_spawn_ofs(s_spawn_x, s_spawn_y, s_spawn_z);
+	}
+	if (kit == 2) {
+		do_checkpoint();
+	}
+	if (kit == 12) {
+		if (!pack_io_user_save_slot(s_kit_save_slot, pack_io_poke_data(), pack_io_poke_size())) {
 			(void)pack_io_user_error();
 		}
 	}
@@ -429,6 +547,9 @@ static void fire_kit(unsigned char kit)
 		(void)sys_io_hurt(amt, 0.0f, 0.0f, 0.0f);
 		pad_io_set_rumble(1, 64);
 		sfx_io_play();
+		if (sys_io_get_hp() <= 0) {
+			do_respawn();
+		}
 	}
 	if (kit == 6) {
 		sfx_io_play();
@@ -494,6 +615,9 @@ static void fire_kit(unsigned char kit)
 
 static void kit_tick(void)
 {
+	if (sys_io_paused()) {
+		return;
+	}
 	sys_io_overlap_refresh();
 	const int n = sys_io_entered_kit_count();
 	for (int i = 0; i < n; i++) {
@@ -1249,6 +1373,12 @@ static void run_range(unsigned from, unsigned to, float delta)
 			} else if (nid == NAT_STOP_ANIM && sp < 8) {
 				sys_io_stop_anim();
 				stack[sp++] = 1.0f;
+			} else if (nid == NAT_SET_CHECKPOINT && sp < 8) {
+				do_checkpoint();
+				stack[sp++] = 1.0f;
+			} else if (nid == NAT_RESPAWN && sp < 8) {
+				do_respawn();
+				stack[sp++] = 1.0f;
 			} else if (sp < 8) {
 				stack[sp++] = (float)sys_io_get_hp();
 			}
@@ -1278,6 +1408,18 @@ int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 	s_kit_spawner = 0;
 	s_kit_save = 0;
 	s_kit_camvol = 0;
+	s_kit_follow = 0;
+	s_follow_speed = 4.0f;
+	s_spawn_x = 0.0f;
+	s_spawn_y = 0.0f;
+	s_spawn_z = 0.0f;
+	s_spawn_ok = 0;
+	s_chk_x = 0.0f;
+	s_chk_y = 0.0f;
+	s_chk_z = 0.0f;
+	s_chk_pack = 0;
+	s_chk_ok = 0;
+	s_grav_vy = 0.0f;
 	s_kit_spawn_path[0] = 0;
 	s_kit_portal_path[0] = 0;
 	s_kit_load_path[0] = 0;
@@ -1295,6 +1437,14 @@ int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 	bind_nodes(node, node_sz);
 	try_bind_node_pack(1);
 	try_bind_node_pack(2);
+	if (s_spawn_ok) {
+		sys_io_spawn_ofs(s_spawn_x, s_spawn_y, s_spawn_z);
+		s_chk_x = s_spawn_x;
+		s_chk_y = s_spawn_y;
+		s_chk_z = s_spawn_z;
+		s_chk_pack = pack_io_current();
+		s_chk_ok = 1;
+	}
 	if (!scrp || scrp_sz < 12) {
 		return 0;
 	}
@@ -1334,15 +1484,45 @@ int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 void script_vm_process(float delta)
 {
 	s_did_slide = 0;
+	if (sys_io_hud_just_accept()) {
+		run_hud_action(sys_io_hud_action());
+	}
+	if (sys_io_paused()) {
+		if (s_ready && s_tape) {
+			sfx_io_tick(delta);
+		}
+		return;
+	}
 	if (s_ready && s_tape) {
 		run_range(s_process_off, s_tape_n, delta);
 	}
 	kit_tick();
-	if (s_kit_player && !s_did_slide) {
+	if (s_kit_player) {
+		s_grav_vy -= 18.0f * delta;
+		if (s_grav_vy < -24.0f) {
+			s_grav_vy = -24.0f;
+		}
+		if (sys_io_on_floor() && s_grav_vy < 0.0f) {
+			s_grav_vy = 0.0f;
+		}
+		if (pad_io_just_pressed(4) && sys_io_on_floor() && sys_io_btn_count() == 0) {
+			s_grav_vy = 8.0f;
+		}
 		float sx = 0.0f;
 		float sy = 0.0f;
-		pad_io_stick(0, &sx, &sy);
-		sys_io_slide(sx * 4.0f, 0.0f, sy * 4.0f, delta, 255);
+		if (!s_did_slide) {
+			pad_io_stick(0, &sx, &sy);
+		}
+		sys_io_slide(sx * 4.0f, s_grav_vy, sy * 4.0f, delta, 255);
+	}
+	if (s_kit_follow) {
+		float px = 0.0f;
+		float py = 0.0f;
+		float pz = 0.0f;
+		sys_io_get_pos(&px, &py, &pz);
+		(void)py;
+		sys_io_attach(0.0f, 1.6f, s_follow_speed);
+		sys_io_follow_node(px, pz, s_follow_speed, delta);
 	}
 	if (s_ready && s_tape) {
 		sfx_io_tick(delta);

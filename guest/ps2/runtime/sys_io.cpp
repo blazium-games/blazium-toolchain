@@ -121,6 +121,9 @@ static int s_hud_b[16];
 static int s_hud_focus;
 static int s_btn_n;
 static int s_btn_slot[16];
+static int s_paused;
+static int s_hud_just_accept;
+static char s_hud_act[65];
 static float s_say_left;
 static int s_say_done;
 static int s_tile_n;
@@ -335,7 +338,12 @@ static void redraw_hud(void)
 		}
 		gs_draw_hud_quad(i, s_hud_x[i], s_hud_y[i], s_hud_w[i], s_hud_h[i], r, g, b);
 		if (s_hud_kind[i] == 1 || s_hud_text[i][0]) {
-			gs_draw_hud_text(i, s_hud_x[i], s_hud_y[i], r, g, b, s_hud_text[i]);
+			const char *label = s_hud_text[i];
+			const char *bar = strchr(s_hud_text[i], '|');
+			if (bar) {
+				label = bar + 1;
+			}
+			gs_draw_hud_text(i, s_hud_x[i], s_hud_y[i], r, g, b, label);
 		}
 	}
 }
@@ -707,6 +715,9 @@ int sys_io_init(void)
 	s_over_entered = 0;
 	s_ent_n = 0;
 	s_left_n = 0;
+	s_paused = 0;
+	s_hud_just_accept = 0;
+	s_hud_act[0] = 0;
 	s_ray_x = s_ray_y = s_ray_z = 0.0f;
 	s_fade_left = s_fade_dur = 0.0f;
 	s_fade_r = s_fade_g = s_fade_b = 0;
@@ -882,6 +893,9 @@ int sys_io_play_fmv(void)
 
 void sys_io_tick(float delta)
 {
+	if (pad_io_just_pressed(12)) {
+		s_paused = !s_paused;
+	}
 	if (s_hitstop_ms > 0) {
 		s_hitstop_ms -= (int)(delta * 1000.0f);
 		if (s_hitstop_ms < 0) {
@@ -938,7 +952,25 @@ void sys_io_tick(float delta)
 		}
 		if (pad_io_just_pressed(4)) {
 			sfx_io_play();
+			s_hud_just_accept = 1;
+			s_hud_act[0] = 0;
+			if (s_hud_focus >= 0 && s_hud_focus < 16) {
+				const char *src = s_hud_text[s_hud_focus];
+				int n = 0;
+				while (src[n] && src[n] != '|' && n < 64) {
+					s_hud_act[n] = src[n];
+					n++;
+				}
+				s_hud_act[n] = 0;
+				if (!s_hud_act[0]) {
+					strncpy(s_hud_act, src, 64);
+					s_hud_act[64] = 0;
+				}
+			}
 		}
+	}
+	if (s_paused) {
+		return;
 	}
 	if (s_shake_left <= 0.0f) {
 		gs_draw_shake(0.0f, 0.0f, 0.0f);
@@ -1961,6 +1993,47 @@ void sys_io_spawn_ofs(float x, float y, float z)
 	s_px = x;
 	s_py = y;
 	s_pz = z;
+	s_player_ok = 1;
+}
+
+void sys_io_get_pos(float *x, float *y, float *z)
+{
+	if (x) {
+		*x = s_px;
+	}
+	if (y) {
+		*y = s_py;
+	}
+	if (z) {
+		*z = s_pz;
+	}
+}
+
+int sys_io_paused(void)
+{
+	return s_paused;
+}
+
+void sys_io_set_paused(int on)
+{
+	s_paused = on ? 1 : 0;
+}
+
+int sys_io_btn_count(void)
+{
+	return s_btn_n;
+}
+
+int sys_io_hud_just_accept(void)
+{
+	const int v = s_hud_just_accept;
+	s_hud_just_accept = 0;
+	return v;
+}
+
+const char *sys_io_hud_action(void)
+{
+	return s_hud_act;
 }
 
 void sys_io_move_6dof(float ax, float ay, float az, float pitch, float yaw, float roll, float speed, float delta)
