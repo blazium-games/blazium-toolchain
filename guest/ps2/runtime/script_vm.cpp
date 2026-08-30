@@ -1,4 +1,4 @@
-// MIT. Interpret cooked SCRP ABI 1 (rotate_y + kit name bind). No Godot/Luau VM.
+// MIT. Interpret cooked SCRP ABI 1 (rotate_y + kit name/id bind). No Godot/Luau VM.
 
 #include "script_vm.h"
 
@@ -32,7 +32,8 @@ enum {
 	OP_JUST_ACCEPT_SFX = 13,
 	OP_USER_SAVE = 14,
 	OP_USER_LOAD = 15,
-	OP_MEMCARD_PRESENT = 16
+	OP_MEMCARD_PRESENT = 16,
+	OP_KIT_TICK = 17
 };
 
 static const unsigned char *s_tape;
@@ -42,6 +43,15 @@ static int s_ready;
 static int s_kit_spawn;
 static int s_kit_player;
 static int s_kit_portal;
+static int s_kit_checkpoint;
+static int s_kit_hazard;
+static int s_kit_pickup;
+static int s_kit_music;
+static int s_kit_unload;
+static int s_kit_load;
+static int s_kit_talk;
+static int s_kit_spawner;
+static int s_kit_save;
 static float s_yaw;
 
 static unsigned ru16(const unsigned char *p)
@@ -62,12 +72,67 @@ static float rf32(const unsigned char *p)
 	return f;
 }
 
-static int name_is(const char *n, const char *want)
+static int name_is_ci(const char *n, const char *want)
 {
 	if (!n || !want) {
 		return 0;
 	}
-	return strcmp(n, want) == 0;
+	unsigned i = 0;
+	while (n[i] && want[i]) {
+		char a = n[i];
+		char b = want[i];
+		if (a >= 'A' && a <= 'Z') {
+			a = (char)(a - 'A' + 'a');
+		}
+		if (b >= 'A' && b <= 'Z') {
+			b = (char)(b - 'A' + 'a');
+		}
+		if (a != b) {
+			return 0;
+		}
+		i++;
+	}
+	return n[i] == 0 && want[i] == 0;
+}
+
+static void apply_kit(unsigned char kit, const char *name)
+{
+	if (kit == 1 || name_is_ci(name, "Spawn")) {
+		s_kit_spawn = 1;
+	}
+	if (kit == 2 || name_is_ci(name, "Checkpoint")) {
+		s_kit_checkpoint = 1;
+	}
+	if (kit == 3 || name_is_ci(name, "Portal")) {
+		s_kit_portal = 1;
+	}
+	if (kit == 4 || name_is_ci(name, "Player") || name_is_ci(name, "Hero")) {
+		s_kit_player = 1;
+	}
+	if (kit == 5 || name_is_ci(name, "Hazard")) {
+		s_kit_hazard = 1;
+	}
+	if (kit == 6 || name_is_ci(name, "Pickup")) {
+		s_kit_pickup = 1;
+	}
+	if (kit == 7 || name_is_ci(name, "Music") || name_is_ci(name, "MusicZone")) {
+		s_kit_music = 1;
+	}
+	if (kit == 8 || name_is_ci(name, "Unload") || name_is_ci(name, "UnloadVolume")) {
+		s_kit_unload = 1;
+	}
+	if (kit == 9 || name_is_ci(name, "Load") || name_is_ci(name, "LoadZone")) {
+		s_kit_load = 1;
+	}
+	if (kit == 10 || name_is_ci(name, "Talk") || name_is_ci(name, "TalkZone")) {
+		s_kit_talk = 1;
+	}
+	if (kit == 11 || name_is_ci(name, "Spawner") || name_is_ci(name, "Instance")) {
+		s_kit_spawner = 1;
+	}
+	if (kit == 12 || name_is_ci(name, "Save") || name_is_ci(name, "SaveZone")) {
+		s_kit_save = 1;
+	}
 }
 
 static void bind_nodes(const unsigned char *blob, unsigned sz)
@@ -91,24 +156,23 @@ static void bind_nodes(const unsigned char *blob, unsigned sz)
 		char name[33];
 		memcpy(name, n + 42, 32);
 		name[32] = 0;
-		if (name_is(name, "Spawn")) {
-			s_kit_spawn = 1;
-		} else if (name_is(name, "Player")) {
-			s_kit_player = 1;
-		} else if (name_is(name, "Portal")) {
-			s_kit_portal = 1;
-		}
+		apply_kit(n[5], name);
 	}
 }
 
-static void try_bind_node01(void)
+static void try_bind_node_pack(int pack)
 {
-	static const char *paths[] = {
-		"host:NODE01.bin",
-		"cdrom0:\\NODE01.BIN;1",
-		"cdrom0:NODE01.BIN;1",
-		NULL
-	};
+	char host[40];
+	char iso_bs[48];
+	char iso[48];
+	sprintf(host, "host:NODE%02d.bin", pack);
+	sprintf(iso_bs, "cdrom0:\\NODE%02d.BIN;1", pack);
+	sprintf(iso, "cdrom0:NODE%02d.BIN;1", pack);
+	const char *paths[4];
+	paths[0] = host;
+	paths[1] = iso_bs;
+	paths[2] = iso;
+	paths[3] = NULL;
 	for (int i = 0; paths[i]; i++) {
 		FILE *f = fopen(paths[i], "rb");
 		if (!f) {
@@ -136,6 +200,48 @@ static void try_bind_node01(void)
 		fclose(f);
 		return;
 	}
+}
+
+static void rebind_current_pack(void)
+{
+	const unsigned char *node = 0;
+	unsigned sz = 0;
+	pack_io_current_node(&node, &sz);
+	if (node && sz) {
+		bind_nodes(node, sz);
+	}
+}
+
+static void kit_tick(void)
+{
+	if (pad_io_just_pressed(4)) {
+		if (s_kit_portal || s_kit_load) {
+			const int cur = pack_io_current();
+			const int next = cur + 1;
+			if (!pack_io_swap(next)) {
+				if (!pack_io_swap(1)) {
+					pack_io_swap(0);
+				}
+			}
+			rebind_current_pack();
+		}
+		if (s_kit_checkpoint || s_kit_save) {
+			const unsigned char slot[2] = { 1, 0 };
+			if (!pack_io_user_save(slot, 2)) {
+				(void)pack_io_user_error();
+			}
+		}
+		if (s_kit_pickup || s_kit_talk) {
+			sfx_io_play();
+		}
+	}
+	if (s_kit_hazard && pad_io_pressed(4)) {
+		pad_io_set_rumble(1, 64);
+		sfx_io_play();
+	}
+	(void)s_kit_music;
+	(void)s_kit_unload;
+	(void)s_kit_spawner;
 }
 
 static void run_range(unsigned from, unsigned to, float delta)
@@ -197,6 +303,7 @@ static void run_range(unsigned from, unsigned to, float delta)
 				return;
 			}
 			pack_io_swap((int)stack[--sp]);
+			rebind_current_pack();
 			continue;
 		}
 		if (op == OP_PLAY_SFX) {
@@ -251,6 +358,10 @@ static void run_range(unsigned from, unsigned to, float delta)
 			}
 			continue;
 		}
+		if (op == OP_KIT_TICK) {
+			kit_tick();
+			continue;
+		}
 	}
 }
 
@@ -264,9 +375,19 @@ int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 	s_kit_spawn = 0;
 	s_kit_player = 0;
 	s_kit_portal = 0;
+	s_kit_checkpoint = 0;
+	s_kit_hazard = 0;
+	s_kit_pickup = 0;
+	s_kit_music = 0;
+	s_kit_unload = 0;
+	s_kit_load = 0;
+	s_kit_talk = 0;
+	s_kit_spawner = 0;
+	s_kit_save = 0;
 	s_yaw = 0.0f;
 	bind_nodes(node, node_sz);
-	try_bind_node01();
+	try_bind_node_pack(1);
+	try_bind_node_pack(2);
 	if (!scrp || scrp_sz < 12) {
 		return 0;
 	}
@@ -323,4 +444,29 @@ int script_vm_kit_player(void)
 int script_vm_kit_portal(void)
 {
 	return s_kit_portal;
+}
+
+int script_vm_kit_checkpoint(void)
+{
+	return s_kit_checkpoint;
+}
+
+int script_vm_kit_hazard(void)
+{
+	return s_kit_hazard;
+}
+
+int script_vm_kit_pickup(void)
+{
+	return s_kit_pickup;
+}
+
+int script_vm_kit_load(void)
+{
+	return s_kit_load;
+}
+
+int script_vm_kit_save(void)
+{
+	return s_kit_save;
 }

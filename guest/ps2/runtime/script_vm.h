@@ -14,6 +14,11 @@ int script_vm_ready(void);
 int script_vm_kit_spawn(void);
 int script_vm_kit_player(void);
 int script_vm_kit_portal(void);
+int script_vm_kit_checkpoint(void);
+int script_vm_kit_hazard(void);
+int script_vm_kit_pickup(void);
+int script_vm_kit_load(void);
+int script_vm_kit_save(void);
 
 #ifdef __cplusplus
 }

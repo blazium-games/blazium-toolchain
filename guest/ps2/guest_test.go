@@ -52,8 +52,12 @@ func TestGuestPack1AndDisp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(pack), "MESH01") || !strings.Contains(string(pack), "pack_io_swap") {
-		t.Fatal("pack_io.cpp must load MESH01 and expose pack_io_swap")
+	src := string(pack)
+	if (!strings.Contains(src, "MESH01") && !strings.Contains(src, "MESH%02d")) || !strings.Contains(src, "pack_io_swap") {
+		t.Fatal("pack_io.cpp must load MESH%02d / MESH01 and expose pack_io_swap")
+	}
+	if !strings.Contains(src, "STREAM") {
+		t.Fatal("pack_io.cpp must read STREAM.bin for extra packs")
 	}
 	main, err := files.ReadFile("runtime/main.cpp")
 	if err != nil {
@@ -92,6 +96,9 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	}
 	if !strings.Contains(string(vm), "OP_INPUT_TRANSLATE") || !strings.Contains(string(vm), "OP_USER_SAVE") {
 		t.Fatal("script_vm must interpret Input translate and user:// save")
+	}
+	if !strings.Contains(string(vm), "OP_KIT_TICK") || !strings.Contains(string(vm), "Checkpoint") {
+		t.Fatal("script_vm must interpret kit tick and Checkpoint")
 	}
 }
 
