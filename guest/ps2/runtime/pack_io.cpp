@@ -3,6 +3,7 @@
 #include "pack_io.h"
 
 #include "gs_draw.h"
+#include "sys_io.h"
 #include "vu1_draw.h"
 
 #include <stdio.h>
@@ -14,6 +15,9 @@ static int s_current;
 static int s_has_pack1;
 static int s_has_stream;
 static int s_max_pack;
+static char s_paths[32][128];
+static int s_res[4];
+static int s_res_n;
 
 static const unsigned char *s_p0_mesh;
 static const unsigned char *s_p0_gtex;
@@ -75,6 +79,21 @@ static int parse_stream(const unsigned char *blob, unsigned sz)
 		}
 	}
 	s_max_pack = (int)maxp;
+	unsigned off = 8 + count * 2;
+	for (unsigned i = 0; i < count && off < sz; i++) {
+		const unsigned id = ru16(blob + 8 + i * 2);
+		const unsigned len = blob[off++];
+		if (off + len > sz || id >= 32) {
+			break;
+		}
+		unsigned n = len;
+		if (n > 127) {
+			n = 127;
+		}
+		memcpy(s_paths[id], blob + off, n);
+		s_paths[id][n] = 0;
+		off += len;
+	}
 	return maxp > 0;
 }
 
@@ -266,6 +285,7 @@ int pack_io_swap(int pack)
 		}
 		vu1_draw_init(s_p0_mesh, s_p0_mesh_sz);
 		s_current = 0;
+		sys_io_load_pack(0);
 		return 1;
 	}
 	if (!load_pack_n(pack)) {
@@ -276,6 +296,7 @@ int pack_io_swap(int pack)
 	}
 	vu1_draw_init(s_px_mesh, s_px_mesh_sz);
 	s_current = pack;
+	sys_io_load_pack(pack);
 	return 1;
 }
 
@@ -284,6 +305,9 @@ int pack_io_init(void)
 	s_toc_ok = 0;
 	s_has_stream = 0;
 	s_max_pack = 0;
+	s_res_n = 0;
+	memset(s_paths, 0, sizeof(s_paths));
+	memset(s_res, 0, sizeof(s_res));
 	unsigned char *buf = 0;
 	unsigned sz = 0;
 	if (read_named("host:STREAM.bin", "cdrom0:\\STREAM.BIN;1", "cdrom0:STREAM.BIN;1", &buf, &sz)) {
@@ -331,6 +355,75 @@ int pack_io_max(void)
 int pack_io_has_stream(void)
 {
 	return s_has_stream;
+}
+
+int pack_io_find_path(const char *path)
+{
+	if (!path || !path[0]) {
+		return -1;
+	}
+	for (int i = 0; i < 32; i++) {
+		if (s_paths[i][0] && strcmp(s_paths[i], path) == 0) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+int pack_io_instantiate(int pack)
+{
+	if (pack < 1) {
+		return 0;
+	}
+	for (int i = 0; i < s_res_n; i++) {
+		if (s_res[i] == pack) {
+			return 1;
+		}
+	}
+	if (s_res_n >= 4) {
+		return 0;
+	}
+	if (!load_pack_n(pack)) {
+		return 0;
+	}
+	s_res[s_res_n++] = pack;
+	return 1;
+}
+
+int pack_io_unload(int pack)
+{
+	int found = 0;
+	int w = 0;
+	for (int i = 0; i < s_res_n; i++) {
+		if (s_res[i] == pack) {
+			found = 1;
+			continue;
+		}
+		s_res[w++] = s_res[i];
+	}
+	s_res_n = w;
+	if (found && s_current == pack) {
+		pack_io_swap(0);
+	}
+	return found;
+}
+
+int pack_io_is_loaded(int pack)
+{
+	if (pack == s_current) {
+		return 1;
+	}
+	for (int i = 0; i < s_res_n; i++) {
+		if (s_res[i] == pack) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+int pack_io_loaded_count(void)
+{
+	return 1 + s_res_n;
 }
 
 void pack_io_current_node(const unsigned char **out, unsigned *sz)

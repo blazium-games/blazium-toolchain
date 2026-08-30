@@ -82,7 +82,8 @@ struct HudQuad {
 	int x, y, w, h;
 	int r, g, b;
 };
-static HudQuad g_hudq[8];
+static HudQuad g_hudq[16];
+static float g_nofs[32][3];
 static int g_fade_a;
 static int g_fade_r;
 static int g_fade_g;
@@ -405,7 +406,10 @@ static void xform(const Mat4 *m, float x, float y, float z, float *ox, float *oy
 static int project_vert(const Mat4 *mvp, const CookVert *v, vertex_f_t *clip, color_f_t *col, texel_f_t *st)
 {
 	float x, y, z, w;
-	xform(mvp, v->x, v->y, v->z, &x, &y, &z, &w);
+	{
+		const int ni = (v->node < 32) ? (int)v->node : 0;
+		xform(mvp, v->x + g_nofs[ni][0], v->y + g_nofs[ni][1], v->z + g_nofs[ni][2], &x, &y, &z, &w);
+	}
 	if (w <= 0.08f) {
 		return 0;
 	}
@@ -423,6 +427,8 @@ static int project_vert(const Mat4 *mvp, const CookVert *v, vertex_f_t *clip, co
 	st->q = 1.0f;
 	return 1;
 }
+
+static void send_packet(packet_t *packet, qword_t *q);
 
 void gs_draw_fb_origin(int width, int height, float *ox, float *oy)
 {
@@ -462,7 +468,7 @@ static qword_t *emit_hud(qword_t *q, int width, int height)
 	rect.color.a = 0x80;
 	rect.color.q = 1.0f;
 	q = draw_rect_textured(q, 0, &rect);
-	for (int i = 0; i < 8; i++) {
+	for (int i = 0; i < 16; i++) {
 		if (!g_hudq[i].used) {
 			continue;
 		}
@@ -512,6 +518,7 @@ int gs_draw_init(const unsigned char *mesh, unsigned mesh_sz,
 	g_tex_count = 0;
 	g_fade_a = g_fade_r = g_fade_g = g_fade_b = 0;
 	memset(g_hudq, 0, sizeof(g_hudq));
+	memset(g_nofs, 0, sizeof(g_nofs));
 	parse_camera(node, node_sz);
 	parse_upload_gtex(gtex, gtex_sz);
 	if (!parse_mesh(mesh, mesh_sz)) {
@@ -678,7 +685,7 @@ static void eye_now(float *x, float *y, float *z)
 
 void gs_draw_hud_quad(int slot, int x, int y, int w, int h, int r, int g, int b)
 {
-	if (slot < 0 || slot >= 8) {
+	if (slot < 0 || slot >= 16) {
 		return;
 	}
 	g_hudq[slot].used = 1;
@@ -689,6 +696,47 @@ void gs_draw_hud_quad(int slot, int x, int y, int w, int h, int r, int g, int b)
 	g_hudq[slot].r = r;
 	g_hudq[slot].g = g;
 	g_hudq[slot].b = b;
+}
+
+void gs_draw_set_node_ofs(int node, float x, float y, float z)
+{
+	if (node < 0 || node >= 32) {
+		return;
+	}
+	g_nofs[node][0] = x;
+	g_nofs[node][1] = y;
+	g_nofs[node][2] = z;
+}
+
+void gs_draw_apply_node(int node, float *x, float *y, float *z)
+{
+	if (node < 0 || node >= 32) {
+		return;
+	}
+	if (x) {
+		*x += g_nofs[node][0];
+	}
+	if (y) {
+		*y += g_nofs[node][1];
+	}
+	if (z) {
+		*z += g_nofs[node][2];
+	}
+}
+
+void gs_draw_overlay(framebuffer_t *frame, zbuffer_t *z)
+{
+	if (!frame) {
+		return;
+	}
+	(void)z;
+	packet_t *packet = packet_init(64, PACKET_NORMAL);
+	qword_t *q = packet->data;
+	q = draw_framebuffer(q, 0, frame);
+	q = emit_hud(q, frame->width, frame->height);
+	q = draw_finish(q);
+	send_packet(packet, q);
+	packet_free(packet);
 }
 
 void gs_draw_set_fade(int a, int r, int g, int b)

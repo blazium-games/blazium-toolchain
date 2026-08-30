@@ -21,6 +21,11 @@ int pack_io_current(void);
 int pack_io_has_pack1(void);
 int pack_io_max(void);
 int pack_io_has_stream(void);
+int pack_io_find_path(const char *path);
+int pack_io_instantiate(int pack);
+int pack_io_unload(int pack);
+int pack_io_is_loaded(int pack);
+int pack_io_loaded_count(void);
 void pack_io_current_node(const unsigned char **out, unsigned *sz);
 
 // user:// → host:SAVE.BIN then mc0:SAVE.BIN. Errors if neither is writable.

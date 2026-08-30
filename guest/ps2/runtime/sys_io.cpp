@@ -3,6 +3,7 @@
 #include "sys_io.h"
 
 #include "gs_draw.h"
+#include "pack_io.h"
 #include "pad_io.h"
 #include "sfx_io.h"
 
@@ -50,6 +51,20 @@ static int s_on_wall;
 static int s_on_ceil;
 static int s_player_ok;
 static int s_hud_n;
+static unsigned char s_hud_kind[16];
+static char s_hud_text[16][65];
+static int s_hud_x[16];
+static int s_hud_y[16];
+static int s_hud_w[16];
+static int s_hud_h[16];
+static int s_hud_r[16];
+static int s_hud_g[16];
+static int s_hud_b[16];
+static int s_hud_focus;
+static int s_btn_n;
+static int s_btn_slot[16];
+static float s_say_left;
+static int s_say_done;
 static int s_tile_n;
 static short s_tile_x[64];
 static short s_tile_y[64];
@@ -65,8 +80,22 @@ static float s_fade_dur;
 static int s_fade_r;
 static int s_fade_g;
 static int s_fade_b;
+static int s_fade_pack;
+static int s_fade_phase;
 static int s_nav_n;
 static int s_anim_n;
+static float s_anim_len;
+static int s_anim_node;
+static int s_anim_keys;
+static float s_ak_t[64];
+static float s_ak_px[64];
+static float s_ak_py[64];
+static float s_ak_pz[64];
+static float s_ak_rx[64];
+static float s_ak_ry[64];
+static float s_ak_rz[64];
+static float s_anim_t;
+static float s_anim_speed;
 static int s_fmv_n;
 static int s_hp = 3;
 static int s_frame;
@@ -198,6 +227,25 @@ static void apply_hit(const unsigned char *b, unsigned sz)
 	}
 }
 
+static void redraw_hud(void)
+{
+	s_btn_n = 0;
+	for (int i = 0; i < s_hud_n && i < 16; i++) {
+		int r = s_hud_r[i];
+		int g = s_hud_g[i];
+		int b = s_hud_b[i];
+		if (s_hud_kind[i] == 3) {
+			s_btn_slot[s_btn_n++] = i;
+			if (s_hud_focus == i) {
+				r = 255;
+				g = 220;
+				b = 40;
+			}
+		}
+		gs_draw_hud_quad(i, s_hud_x[i], s_hud_y[i], s_hud_w[i], s_hud_h[i], r, g, b);
+	}
+}
+
 static void apply_hud(const unsigned char *b, unsigned sz)
 {
 	if (!b || sz < 8 || !mag4(b, 'H', 'U', 'D', ' ') || ru16(b + 4) != BLAZIUM_PS2_COOK_ABI) {
@@ -209,14 +257,28 @@ static void apply_hud(const unsigned char *b, unsigned sz)
 		s_hud_n = 0;
 		return;
 	}
-	for (int i = 0; i < s_hud_n && i < 8; i++) {
-		const unsigned char *r = b + 8 + (unsigned)i * rec;
-		const int x = (int)(short)ru16(r);
-		const int y = (int)(short)ru16(r + 2);
-		const int w = (int)(short)ru16(r + 4);
-		const int h = (int)(short)ru16(r + 6);
-		gs_draw_hud_quad(i, x, y, w, h, r[9], r[10], r[11]);
+	if (s_hud_n > 16) {
+		s_hud_n = 16;
 	}
+	s_btn_n = 0;
+	s_hud_focus = -1;
+	for (int i = 0; i < s_hud_n; i++) {
+		const unsigned char *r = b + 8 + (unsigned)i * rec;
+		s_hud_x[i] = (int)(short)ru16(r);
+		s_hud_y[i] = (int)(short)ru16(r + 2);
+		s_hud_w[i] = (int)(short)ru16(r + 4);
+		s_hud_h[i] = (int)(short)ru16(r + 6);
+		s_hud_kind[i] = r[8];
+		s_hud_r[i] = r[9];
+		s_hud_g[i] = r[10];
+		s_hud_b[i] = r[11];
+		memcpy(s_hud_text[i], r + 12, 64);
+		s_hud_text[i][64] = 0;
+		if (s_hud_kind[i] == 3 && s_hud_focus < 0) {
+			s_hud_focus = i;
+		}
+	}
+	redraw_hud();
 }
 
 static void apply_tile(const unsigned char *b, unsigned sz)
@@ -253,12 +315,118 @@ static void apply_nav(const unsigned char *b, unsigned sz)
 	}
 }
 
+static void apply_anim_pose(void)
+{
+	if (s_anim_keys < 1) {
+		return;
+	}
+	float t = s_anim_t;
+	if (t < 0.0f) {
+		t = 0.0f;
+	}
+	if (s_anim_len > 0.0f && t > s_anim_len) {
+		t = s_anim_len;
+	}
+	int a = 0;
+	int b = 0;
+	for (int i = 0; i < s_anim_keys; i++) {
+		if (s_ak_t[i] <= t) {
+			a = i;
+		}
+		if (s_ak_t[i] >= t) {
+			b = i;
+			break;
+		}
+		b = i;
+	}
+	float u = 0.0f;
+	const float dt = s_ak_t[b] - s_ak_t[a];
+	if (dt > 0.0001f) {
+		u = (t - s_ak_t[a]) / dt;
+	}
+	const float px = s_ak_px[a] + (s_ak_px[b] - s_ak_px[a]) * u;
+	const float py = s_ak_py[a] + (s_ak_py[b] - s_ak_py[a]) * u;
+	const float pz = s_ak_pz[a] + (s_ak_pz[b] - s_ak_pz[a]) * u;
+	gs_draw_set_node_ofs(s_anim_node, px, py, pz);
+	(void)s_ak_rx[a];
+	(void)s_ak_ry[a];
+	(void)s_ak_rz[a];
+}
+
 static void apply_anim(const unsigned char *b, unsigned sz)
 {
 	if (!b || sz < 8 || !mag4(b, 'A', 'N', 'I', 'M') || ru16(b + 4) != BLAZIUM_PS2_COOK_ABI) {
 		return;
 	}
 	s_anim_n = (int)ru16(b + 6);
+	s_anim_keys = 0;
+	s_anim_node = 0;
+	s_anim_len = 1.0f;
+	s_anim_t = 0.0f;
+	s_anim_speed = 1.0f;
+	if (s_anim_n < 1 || sz < 8 + 36) {
+		return;
+	}
+	const unsigned char *clip = b + 8;
+	s_anim_len = rf32(clip + 32);
+	s_anim_keys = (int)ru16(clip + 36);
+	s_anim_node = (int)(short)ru16(clip + 38);
+	if (s_anim_keys > 64) {
+		s_anim_keys = 64;
+	}
+	unsigned off = 40;
+	for (int k = 0; k < s_anim_keys; k++) {
+		if (off + 28 > sz) {
+			s_anim_keys = k;
+			break;
+		}
+		s_ak_t[k] = rf32(clip + off);
+		s_ak_px[k] = rf32(clip + off + 4);
+		s_ak_py[k] = rf32(clip + off + 8);
+		s_ak_pz[k] = rf32(clip + off + 12);
+		s_ak_rx[k] = rf32(clip + off + 16);
+		s_ak_ry[k] = rf32(clip + off + 20);
+		s_ak_rz[k] = rf32(clip + off + 24);
+		off += 28;
+	}
+	apply_anim_pose();
+}
+
+/* Pack 0 CAM00 HUD00 NAV00 plus CAM%02d HIT%02d HUD%02d TILE%02d NAV%02d ANIM%02d. */
+static void load_sys_named(int pack, const char *stem,
+		void (*apply)(const unsigned char *, unsigned))
+{
+	char host[40];
+	char iso_bs[48];
+	char iso[48];
+	sprintf(host, "host:%s%02d.bin", stem, pack);
+	sprintf(iso_bs, "cdrom0:\\%s%02d.BIN;1", stem, pack);
+	sprintf(iso, "cdrom0:%s%02d.BIN;1", stem, pack);
+	unsigned sz = 0;
+	unsigned char *buf = read_sys(host, iso_bs, iso, &sz);
+	if (buf) {
+		apply(buf, sz);
+		free(buf);
+		s_ok = 1;
+	}
+}
+
+int sys_io_load_pack(int pack)
+{
+	if (pack < 0) {
+		pack = 0;
+	}
+	s_cam_n = s_hit_n = s_hud_n = s_tile_n = s_nav_n = s_anim_n = 0;
+	s_anim_keys = 0;
+	s_btn_n = 0;
+	s_hud_focus = -1;
+	load_sys_named(pack, "CAM", apply_cam);
+	load_sys_named(pack, "HIT", apply_hit);
+	load_sys_named(pack, "HUD", apply_hud);
+	load_sys_named(pack, "TILE", apply_tile);
+	load_sys_named(pack, "NAV", apply_nav);
+	load_sys_named(pack, "ANIM", apply_anim);
+	return s_ok;
 }
 
 int sys_io_init(void)
@@ -288,49 +456,18 @@ int sys_io_init(void)
 	s_ray_x = s_ray_y = s_ray_z = 0.0f;
 	s_fade_left = s_fade_dur = 0.0f;
 	s_fade_r = s_fade_g = s_fade_b = 0;
+	s_fade_pack = -1;
+	s_fade_phase = 0;
+	s_say_left = 0.0f;
+	s_say_done = 1;
+	s_anim_speed = 1.0f;
 	gs_draw_set_fade(0, 0, 0, 0);
 	memcpy(s_fmv_err, "FMV/IPU not shipped on PS2 ABI 1 (no license-clean decoder)", 59);
 	s_fmv_err[59] = 0;
-	unsigned sz = 0;
-	unsigned char *cam = read_sys("host:CAM00.bin", "cdrom0:\\CAM00.BIN;1", "cdrom0:CAM00.BIN;1", &sz);
-	if (cam) {
-		apply_cam(cam, sz);
-		free(cam);
-		s_ok = 1;
-	}
-	unsigned char *hit = read_sys("host:HIT00.bin", "cdrom0:\\HIT00.BIN;1", "cdrom0:HIT00.BIN;1", &sz);
-	if (hit) {
-		apply_hit(hit, sz);
-		s_ok = 1;
-		/* keep buffer for tick — re-read is fine; free now */
-		free(hit);
-	}
+	sys_io_load_pack(0);
 	gs_draw_look_point(&s_px, &s_py, &s_pz);
 	s_player_ok = 1;
-	unsigned char *hud = read_sys("host:HUD00.bin", "cdrom0:\\HUD00.BIN;1", "cdrom0:HUD00.BIN;1", &sz);
-	if (hud) {
-		apply_hud(hud, sz);
-		free(hud);
-		s_ok = 1;
-	}
-	unsigned char *tile = read_sys("host:TILE00.bin", "cdrom0:\\TILE00.BIN;1", "cdrom0:TILE00.BIN;1", &sz);
-	if (tile) {
-		apply_tile(tile, sz);
-		free(tile);
-		s_ok = 1;
-	}
-	unsigned char *nav = read_sys("host:NAV00.bin", "cdrom0:\\NAV00.BIN;1", "cdrom0:NAV00.BIN;1", &sz);
-	if (nav) {
-		apply_nav(nav, sz);
-		free(nav);
-		s_ok = 1;
-	}
-	unsigned char *anim = read_sys("host:ANIM00.bin", "cdrom0:\\ANIM00.BIN;1", "cdrom0:ANIM00.BIN;1", &sz);
-	if (anim) {
-		apply_anim(anim, sz);
-		free(anim);
-		s_ok = 1;
-	}
+	unsigned sz = 0;
 	unsigned char *fmv = read_sys("host:FMV00.bin", "cdrom0:\\FMV00.BIN;1", "cdrom0:FMV00.BIN;1", &sz);
 	if (fmv) {
 		if (mag4(fmv, 'F', 'M', 'V', ' ') && ru16(fmv + 4) == BLAZIUM_PS2_COOK_ABI) {
@@ -354,11 +491,54 @@ const char *sys_io_fmv_error(void) { return s_fmv_err; }
 
 void sys_io_say(const char *line)
 {
-	(void)line;
 	if (s_hud_n < 1) {
 		s_hud_n = 1;
+		s_hud_x[0] = 8;
+		s_hud_y[0] = 8;
+		s_hud_w[0] = 96;
+		s_hud_h[0] = 16;
+		s_hud_r[0] = 255;
+		s_hud_g[0] = 255;
+		s_hud_b[0] = 80;
+		s_hud_kind[0] = 1;
 	}
-	gs_draw_hud_quad(0, 8, 8, 96, 16, 255, 255, 80);
+	if (line && line[0]) {
+		unsigned i = 0;
+		while (line[i] && i < 64) {
+			s_hud_text[0][i] = line[i];
+			i++;
+		}
+		s_hud_text[0][i] = 0;
+	} else if (s_hud_text[0][0] == 0) {
+		memcpy(s_hud_text[0], "PS2", 4);
+	}
+	s_say_left = 0.35f;
+	s_say_done = 0;
+	redraw_hud();
+}
+
+int sys_io_say_done(void)
+{
+	return s_say_done;
+}
+
+void sys_io_set_hud_text(int slot, const char *text)
+{
+	if (slot < 0 || slot >= 16) {
+		slot = 0;
+	}
+	if (slot >= s_hud_n) {
+		s_hud_n = slot + 1;
+	}
+	unsigned i = 0;
+	if (text) {
+		while (text[i] && i < 64) {
+			s_hud_text[slot][i] = text[i];
+			i++;
+		}
+	}
+	s_hud_text[slot][i] = 0;
+	redraw_hud();
 }
 
 void sys_io_nav_follow(float speed, float delta)
@@ -396,6 +576,28 @@ int sys_io_get_hp(void)
 void sys_io_set_frame(int i)
 {
 	s_frame = i;
+	if (s_anim_keys > 0) {
+		int k = i;
+		if (k < 0) {
+			k = 0;
+		}
+		if (k >= s_anim_keys) {
+			k = s_anim_keys - 1;
+		}
+		s_anim_t = s_ak_t[k];
+		apply_anim_pose();
+	}
+}
+
+void sys_io_seek_anim(float sec)
+{
+	s_anim_t = sec;
+	apply_anim_pose();
+}
+
+void sys_io_set_anim_speed(float s)
+{
+	s_anim_speed = s;
 }
 
 int sys_io_play_fmv(void)
@@ -407,6 +609,46 @@ void sys_io_tick(float delta)
 {
 	if (s_anim_n > 0) {
 		s_frame++;
+		s_anim_t += delta * s_anim_speed;
+		if (s_anim_len > 0.0f && s_anim_t > s_anim_len) {
+			s_anim_t = s_anim_len;
+		}
+		apply_anim_pose();
+	}
+	if (s_say_left > 0.0f) {
+		s_say_left -= delta;
+		if (s_say_left <= 0.0f) {
+			s_say_left = 0.0f;
+			s_say_done = 1;
+		}
+	}
+	if (s_btn_n > 0) {
+		int idx = 0;
+		for (int i = 0; i < s_btn_n; i++) {
+			if (s_btn_slot[i] == s_hud_focus) {
+				idx = i;
+				break;
+			}
+		}
+		if (pad_io_just_pressed(0) || pad_io_just_pressed(2)) {
+			idx--;
+			if (idx < 0) {
+				idx = s_btn_n - 1;
+			}
+			s_hud_focus = s_btn_slot[idx];
+			redraw_hud();
+		}
+		if (pad_io_just_pressed(1) || pad_io_just_pressed(3)) {
+			idx++;
+			if (idx >= s_btn_n) {
+				idx = 0;
+			}
+			s_hud_focus = s_btn_slot[idx];
+			redraw_hud();
+		}
+		if (pad_io_just_pressed(4)) {
+			sfx_io_play();
+		}
 	}
 	if (s_shake_left <= 0.0f) {
 		gs_draw_shake(0.0f, 0.0f, 0.0f);
@@ -446,10 +688,26 @@ void sys_io_tick(float delta)
 			}
 		}
 	}
-	if (s_fade_left > 0.0f) {
+	if (s_fade_phase == 1) {
 		s_fade_left -= delta;
 		if (s_fade_left <= 0.0f || s_fade_dur <= 0.0f) {
 			s_fade_left = 0.0f;
+			gs_draw_set_fade(128, s_fade_r, s_fade_g, s_fade_b);
+			if (s_fade_pack >= 0) {
+				pack_io_swap(s_fade_pack);
+				s_fade_pack = -1;
+			}
+			s_fade_phase = 2;
+			s_fade_left = s_fade_dur > 0.0f ? s_fade_dur : 0.01f;
+		} else {
+			const float u = 1.0f - (s_fade_left / s_fade_dur);
+			gs_draw_set_fade((int)(u * 128.0f), s_fade_r, s_fade_g, s_fade_b);
+		}
+	} else if (s_fade_phase == 2 || s_fade_left > 0.0f) {
+		s_fade_left -= delta;
+		if (s_fade_left <= 0.0f || s_fade_dur <= 0.0f) {
+			s_fade_left = 0.0f;
+			s_fade_phase = 0;
 			gs_draw_set_fade(0, s_fade_r, s_fade_g, s_fade_b);
 		} else {
 			const float u = s_fade_left / s_fade_dur;
@@ -908,10 +1166,21 @@ void sys_io_scene_fade(float sec)
 	if (sec <= 0.0f) {
 		s_fade_left = 0.0f;
 		s_fade_dur = 0.0f;
+		s_fade_phase = 0;
+		if (s_fade_pack >= 0) {
+			pack_io_swap(s_fade_pack);
+			s_fade_pack = -1;
+		}
 		gs_draw_set_fade(0, 0, 0, 0);
 		return;
 	}
 	s_fade_dur = sec;
 	s_fade_left = sec;
-	gs_draw_set_fade(128, 0, 0, 0);
+	s_fade_phase = 1;
+	gs_draw_set_fade(0, 0, 0, 0);
+}
+
+void sys_io_set_fade_pack(int pack)
+{
+	s_fade_pack = pack;
 }

@@ -59,6 +59,9 @@ func TestGuestPack1AndDisp(t *testing.T) {
 	if !strings.Contains(src, "STREAM") {
 		t.Fatal("pack_io.cpp must read STREAM.bin for extra packs")
 	}
+	if !strings.Contains(src, "pack_io_find_path") || !strings.Contains(src, "s_paths") {
+		t.Fatal("pack_io.cpp must map STREAM res:// paths")
+	}
 	main, err := files.ReadFile("runtime/main.cpp")
 	if err != nil {
 		t.Fatal(err)
@@ -133,6 +136,15 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	if !strings.Contains(string(vm), "OP_SET_FADE") || !strings.Contains(string(vm), "OP_SCENE_FADE") {
 		t.Fatal("script_vm must interpret set_fade / change_scene_fade")
 	}
+	if !strings.Contains(string(vm), "OP_CHANGE_SCENE") || !strings.Contains(string(vm), "OP_INSTANTIATE") {
+		t.Fatal("script_vm must interpret change_scene / instantiate")
+	}
+	if !strings.Contains(string(vm), "OP_JMP") || !strings.Contains(string(vm), "OP_CALL_NATIVE") {
+		t.Fatal("script_vm must interpret JMP / CALL_NATIVE")
+	}
+	if !strings.Contains(string(vm), "pack_io_find_path") {
+		t.Fatal("script_vm must resolve STREAM paths")
+	}
 }
 
 func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
@@ -171,6 +183,22 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	if !strings.Contains(string(sys), "sys_io_set_fade") || !strings.Contains(string(sys), "sys_io_scene_fade") {
 		t.Fatal("sys_io.cpp must expose set_fade / change_scene_fade")
 	}
+	if !strings.Contains(string(sys), "sys_io_set_fade_pack") || !strings.Contains(string(sys), "pack_io_swap") {
+		t.Fatal("sys_io.cpp must fade then swap packs")
+	}
+	vu1, err := files.ReadFile("runtime/vu1_draw.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(vu1), "frame->width") || !strings.Contains(string(vu1), "gs_draw_fb_origin") {
+		t.Fatal("vu1_draw.cpp must clear using DISP framebuffer size")
+	}
+	if !strings.Contains(string(vu1), "gs_draw_overlay") {
+		t.Fatal("vu1_draw.cpp must draw HUD/fade on the VU1 path")
+	}
+	if strings.Contains(string(vu1), "2048.0f - 320.0f") {
+		t.Fatal("vu1_draw.cpp must not hardcode 320x224 clear")
+	}
 	if !strings.Contains(string(gs), "gs_draw_set_fade") || !strings.Contains(string(gs), "draw_rect_filled") {
 		t.Fatal("gs_draw.cpp must overlay set_fade as a blended GS rect")
 	}
@@ -195,6 +223,15 @@ func TestGuestSysIO(t *testing.T) {
 	src := string(sys)
 	if !strings.Contains(src, "CAM00") || !strings.Contains(src, "HUD00") || !strings.Contains(src, "NAV00") {
 		t.Fatal("sys_io.cpp must load CAM/HUD/NAV sidecars")
+	}
+	if !strings.Contains(src, "sys_io_load_pack") || !strings.Contains(src, "CAM%02d") {
+		t.Fatal("sys_io.cpp must reload CAM%02d per pack")
+	}
+	if !strings.Contains(src, "sys_io_say_done") || !strings.Contains(src, "s_hud_kind") {
+		t.Fatal("sys_io.cpp must expose say_done and button HUD kinds")
+	}
+	if !strings.Contains(src, "sys_io_seek_anim") || !strings.Contains(src, "s_ak_t") {
+		t.Fatal("sys_io.cpp must interpolate ANIM TRS keys")
 	}
 	if !strings.Contains(src, "FMV/IPU") && !strings.Contains(src, "license-clean") {
 		t.Fatal("sys_io.cpp must name FMV/IPU skip")

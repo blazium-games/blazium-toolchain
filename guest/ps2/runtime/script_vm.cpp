@@ -57,8 +57,21 @@ enum {
 	OP_RAYCAST = 37,
 	OP_TILE_AT = 38,
 	OP_SET_FADE = 39,
-	OP_SCENE_FADE = 40
+	OP_SCENE_FADE = 40,
+	OP_CHANGE_SCENE = 41,
+	OP_INSTANTIATE = 42,
+	OP_UNLOAD_PACK = 43,
+	OP_SAY_TEXT = 44,
+	OP_SEEK_ANIM = 45,
+	OP_JMP = 46,
+	OP_JZ = 47,
+	OP_CALL_NATIVE = 48,
+	OP_LOADK_S = 49
 };
+
+static char s_str[8][128];
+static int s_str_n;
+static int s_last_str;
 
 static const unsigned char *s_tape;
 static unsigned s_tape_n;
@@ -259,6 +272,18 @@ static void kit_tick(void)
 		if (s_kit_pickup || s_kit_talk) {
 			sfx_io_play();
 		}
+		if (s_kit_spawner) {
+			const int next = pack_io_current() + 1;
+			(void)pack_io_instantiate(next > 0 ? next : 1);
+		}
+		if (s_kit_unload) {
+			const int cur = pack_io_current();
+			if (cur > 0) {
+				pack_io_unload(cur);
+			} else {
+				pack_io_unload(pack_io_max());
+			}
+		}
 	}
 	if (s_kit_hazard && pad_io_pressed(4)) {
 		pad_io_set_rumble(1, 64);
@@ -268,8 +293,6 @@ static void kit_tick(void)
 		sfx_io_music_play();
 		s_kit_music_on = 1;
 	}
-	(void)s_kit_unload;
-	(void)s_kit_spawner;
 }
 
 static void run_range(unsigned from, unsigned to, float delta)
@@ -391,7 +414,11 @@ static void run_range(unsigned from, unsigned to, float delta)
 			continue;
 		}
 		if (op == OP_SAY) {
-			sys_io_say("PS2");
+			if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+				sys_io_say(s_str[s_last_str]);
+			} else {
+				sys_io_say("PS2");
+			}
 			continue;
 		}
 		if (op == OP_NAV_FOLLOW) {
@@ -519,9 +546,9 @@ static void run_range(unsigned from, unsigned to, float delta)
 		}
 		if (op == OP_OVERLAP) {
 			sys_io_overlap_refresh();
-			(void)sys_io_overlaps();
-			(void)sys_io_overlaps_entered();
-			(void)sys_io_hitbox_kind();
+			if (sp < 8) {
+				stack[sp++] = sys_io_overlaps() ? 1.0f : 0.0f;
+			}
 			continue;
 		}
 		if (op == OP_RAYCAST) {
@@ -534,7 +561,10 @@ static void run_range(unsigned from, unsigned to, float delta)
 			const float dx = stack[--sp];
 			float px = 0.0f, py = 0.0f, pz = 0.0f;
 			gs_draw_look_point(&px, &py, &pz);
-			(void)sys_io_raycast(px, py, pz, dx, dy, dz, dist, 255);
+			const int hit = sys_io_raycast(px, py, pz, dx, dy, dz, dist, 255);
+			if (sp < 8) {
+				stack[sp++] = hit ? 1.0f : 0.0f;
+			}
 			continue;
 		}
 		if (op == OP_TILE_AT) {
@@ -543,8 +573,9 @@ static void run_range(unsigned from, unsigned to, float delta)
 			}
 			const float y = stack[--sp];
 			const float x = stack[--sp];
-			(void)sys_io_tile_solid_at(x, y);
-			(void)sys_io_tile_at(x, y);
+			if (sp < 8) {
+				stack[sp++] = (float)sys_io_tile_at(x, y);
+			}
 			continue;
 		}
 		if (op == OP_SET_FADE) {
@@ -562,7 +593,132 @@ static void run_range(unsigned from, unsigned to, float delta)
 			if (sp < 1) {
 				return;
 			}
+			if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+				sys_io_set_fade_pack(pack_io_find_path(s_str[s_last_str]));
+			}
 			sys_io_scene_fade(stack[--sp]);
+			continue;
+		}
+		if (op == OP_LOADK_S) {
+			if (i >= s_tape_n) {
+				return;
+			}
+			const unsigned n = s_tape[i++];
+			if (i + n > s_tape_n) {
+				return;
+			}
+			if (s_str_n >= 8) {
+				s_str_n = 0;
+			}
+			unsigned c = 0;
+			while (c < n && c < 127) {
+				s_str[s_str_n][c] = (char)s_tape[i + c];
+				c++;
+			}
+			s_str[s_str_n][c] = 0;
+			i += n;
+			s_last_str = s_str_n;
+			if (sp < 8) {
+				stack[sp++] = (float)s_str_n;
+			}
+			s_str_n++;
+			continue;
+		}
+		if (op == OP_CHANGE_SCENE) {
+			int pack = -1;
+			if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+				pack = pack_io_find_path(s_str[s_last_str]);
+			}
+			if (pack < 0 && sp >= 1) {
+				pack = (int)stack[--sp];
+			}
+			if (pack >= 0) {
+				pack_io_swap(pack);
+				rebind_current_pack();
+			}
+			continue;
+		}
+		if (op == OP_INSTANTIATE) {
+			int pack = -1;
+			if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+				pack = pack_io_find_path(s_str[s_last_str]);
+			}
+			if (pack < 0 && sp >= 1) {
+				pack = (int)stack[--sp];
+			}
+			if (sp < 8) {
+				stack[sp++] = pack_io_instantiate(pack) ? 1.0f : 0.0f;
+			} else {
+				(void)pack_io_instantiate(pack);
+			}
+			continue;
+		}
+		if (op == OP_UNLOAD_PACK) {
+			int pack = pack_io_current();
+			if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+				const int found = pack_io_find_path(s_str[s_last_str]);
+				if (found >= 0) {
+					pack = found;
+				}
+			}
+			pack_io_unload(pack);
+			rebind_current_pack();
+			continue;
+		}
+		if (op == OP_SAY_TEXT) {
+			if (s_last_str >= 0 && s_last_str < 8) {
+				sys_io_set_hud_text(0, s_str[s_last_str]);
+			}
+			(void)sys_io_say_done();
+			continue;
+		}
+		if (op == OP_SEEK_ANIM) {
+			float t = 0.0f;
+			if (sp >= 1) {
+				t = stack[--sp];
+			}
+			sys_io_seek_anim(t);
+			continue;
+		}
+		if (op == OP_JMP) {
+			if (i + 2 > s_tape_n) {
+				return;
+			}
+			const short off = (short)ru16(s_tape + i);
+			i += 2;
+			i = (unsigned)((int)i + off);
+			continue;
+		}
+		if (op == OP_JZ) {
+			if (i + 2 > s_tape_n || sp < 1) {
+				return;
+			}
+			const short off = (short)ru16(s_tape + i);
+			i += 2;
+			if (stack[--sp] == 0.0f) {
+				i = (unsigned)((int)i + off);
+			}
+			continue;
+		}
+		if (op == OP_CALL_NATIVE) {
+			if (i >= s_tape_n) {
+				return;
+			}
+			const unsigned char nid = s_tape[i++];
+			if (nid == OP_HAS_FEATURE_PS2 && sp < 8) {
+				stack[sp++] = 1.0f;
+			} else if (nid == OP_OVERLAP) {
+				sys_io_overlap_refresh();
+				if (sp < 8) {
+					stack[sp++] = sys_io_overlaps() ? 1.0f : 0.0f;
+				}
+			} else if (nid == OP_TILE_AT && sp >= 2) {
+				const float y = stack[--sp];
+				const float x = stack[--sp];
+				stack[sp++] = (float)sys_io_tile_at(x, y);
+			} else if (sp < 8) {
+				stack[sp++] = (float)sys_io_get_hp();
+			}
 			continue;
 		}
 	}
@@ -589,6 +745,9 @@ int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 	s_kit_spawner = 0;
 	s_kit_save = 0;
 	s_yaw = 0.0f;
+	s_str_n = 0;
+	s_last_str = -1;
+	memset(s_str, 0, sizeof(s_str));
 	bind_nodes(node, node_sz);
 	try_bind_node_pack(1);
 	try_bind_node_pack(2);
@@ -615,6 +774,12 @@ int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 		}
 		if (s_tape[i] == OP_LOADK_F) {
 			i += 4;
+		} else if (s_tape[i] == OP_JMP || s_tape[i] == OP_JZ) {
+			i += 2;
+		} else if (s_tape[i] == OP_CALL_NATIVE) {
+			i += 1;
+		} else if (s_tape[i] == OP_LOADK_S && i + 1 < s_tape_n) {
+			i += 1 + s_tape[i + 1];
 		}
 	}
 	run_range(0, s_tape_n, 0.0f);

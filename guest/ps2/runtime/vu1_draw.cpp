@@ -231,7 +231,11 @@ void vu1_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 	qword_t *q = clear->data;
 	q = draw_framebuffer(q, 0, frame);
 	q = draw_disable_tests(q, 0, z);
-	q = draw_clear(q, 0, 2048.0f - 320.0f, 2048.0f - 224.0f, (float)frame->width, (float)frame->height, 32, 64, 160);
+	/* DISP framebuffer size from frame->width/height (not hardcoded 320x224). */
+	float ox = 0.0f;
+	float oy = 0.0f;
+	gs_draw_fb_origin(frame->width, frame->height, &ox, &oy);
+	q = draw_clear(q, 0, ox, oy, (float)frame->width, (float)frame->height, 32, 64, 160);
 	q = draw_enable_tests(q, 0, z);
 	q = draw_finish(q);
 	FlushCache(0);
@@ -277,6 +281,7 @@ void vu1_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 			s_pos[n][0] = vs[k]->x;
 			s_pos[n][1] = vs[k]->y;
 			s_pos[n][2] = vs[k]->z;
+			gs_draw_apply_node((int)vs[k]->node, &s_pos[n][0], &s_pos[n][1], &s_pos[n][2]);
 			s_pos[n][3] = 1.0f;
 			s_st[n][0] = vs[k]->u;
 			s_st[n][1] = vs[k]->v;
@@ -294,6 +299,7 @@ void vu1_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 	}
 	dma_channel_wait(DMA_CHANNEL_VIF1, 0);
 	draw_wait_finish();
+	gs_draw_overlay(frame, z);
 }
 
 #endif
