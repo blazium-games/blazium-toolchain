@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.10)
 
 project(blazium_ps2_runtime LANGUAGES CXX)
 
-add_executable(runtime main.cpp)
+add_executable(runtime main.cpp gs_draw.cpp)
 file(GLOB _ps2_extra RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
 	"extra/*.cpp" "extra/*.c")
 if(_ps2_extra)
@@ -24,5 +24,5 @@ target_include_directories(runtime PRIVATE
 	"$ENV{PS2SDK}/common/include")
 target_compile_options(runtime PRIVATE -D_EE -G0 -fno-exceptions -fno-rtti)
 target_compile_definitions(runtime PRIVATE BLAZIUM_PS2_COOK_ABI=1)
-target_link_libraries(runtime PRIVATE draw graph packet dma)
+target_link_libraries(runtime PRIVATE draw graph packet dma m)
 set_target_properties(runtime PROPERTIES OUTPUT_NAME "runtime" SUFFIX ".elf")

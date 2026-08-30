@@ -2,8 +2,8 @@
 # Spawned by blazium-toolchain ps2 build. Do not link gsKit or audsrv.
 
 EE_BIN = runtime.elf
-EE_OBJS = main.o
-EE_LIBS = -ldraw -lgraph -lpacket -ldma
+EE_OBJS = main.o gs_draw.o
+EE_LIBS = -ldraw -lgraph -lpacket -ldma -lm
 EE_CXXFLAGS += -fno-exceptions -fno-rtti -DBLAZIUM_PS2_COOK_ABI=1
 
 # Variables only (no rules). Must come before eeglobal so $(EE_BIN): $(EE_OBJS)

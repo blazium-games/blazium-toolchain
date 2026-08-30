@@ -22,6 +22,8 @@ var RuntimeNames = []string{
 	"CMakeLists.txt",
 	"Makefile",
 	"main.cpp",
+	"gs_draw.cpp",
+	"gs_draw.h",
 }
 
 //go:embed runtime
