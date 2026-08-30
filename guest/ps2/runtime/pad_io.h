@@ -9,6 +9,8 @@ extern "C" {
 
 int pad_io_init(void);
 void pad_io_poll(float *yaw, float *dolly, int *cross_down);
+void pad_io_set_rumble(int small_on, int large);
+int pad_io_get_pressure(int button);
 
 #ifdef __cplusplus
 }

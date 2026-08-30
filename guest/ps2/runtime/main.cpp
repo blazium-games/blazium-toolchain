@@ -1,11 +1,12 @@
 // Blazium PS2 guest — MIT. Links AFL 2.0 ps2sdk graph/draw/dma/packet only.
-// P4: double 16-bit frame + Z, CPU GIF textured MESH/GTEX. Not Godot. Not VU1.
+// P4: double 16-bit frame + Z, CPU GIF textured MESH/GTEX. Optional VU1 when linked.
 
 #include "gs_draw.h"
 #include "pack_io.h"
 #include "pad_io.h"
 #include "script_vm.h"
 #include "sfx_io.h"
+#include "vu1_draw.h"
 
 #include <dma.h>
 #include <draw.h>
@@ -142,6 +143,7 @@ int main(int argc, char **argv)
 #ifdef BLAZIUM_PS2_HAS_SCRIPT
 	script_vm_init(cooked_script, size_cooked_script, node, node_sz);
 #endif
+	const int use_vu1 = vu1_draw_init(mesh, mesh_sz) && vu1_draw_ready();
 
 	int context = 0;
 	for (;;) {
@@ -151,12 +153,19 @@ int main(int argc, char **argv)
 		pad_io_poll(&yaw, &dolly, &cross);
 		gs_draw_orbit(yaw, dolly);
 		if (cross) {
+			pad_io_set_rumble(1, 0);
 			sfx_io_play();
+		} else {
+			pad_io_set_rumble(0, 0);
 		}
 #ifdef BLAZIUM_PS2_HAS_SCRIPT
 		script_vm_process(1.0f / 60.0f);
 #endif
-		gs_draw_scene(&frames[context], &z);
+		if (use_vu1) {
+			vu1_draw_scene(&frames[context], &z);
+		} else {
+			gs_draw_scene(&frames[context], &z);
+		}
 		draw_wait_finish();
 		graph_wait_vsync();
 		graph_set_framebuffer_filtered(frames[context].address, frames[context].width, frames[context].psm, 0, 0);

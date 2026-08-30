@@ -54,7 +54,7 @@ func (t *Tool) Info() platforms.Info {
 		ID:          ID,
 		Name:        "PlayStation 2",
 		Status:      platforms.StatusSupported,
-		Commands:    []string{"setup", "env", "status", "build", "export-guest", "run", "iso", "elf-info"},
+		Commands:    []string{"setup", "env", "status", "build", "export-guest", "run", "iso", "elf-info", "chd"},
 		Description: ps2InfoDescription(),
 	}
 }

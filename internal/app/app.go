@@ -98,7 +98,7 @@ func Run(ctx context.Context, argv []string, stdout, stderr io.Writer) int {
 		return ExitFail
 	}
 	if len(rest) == 0 {
-		fmt.Fprintf(stderr, "usage: blazium-toolchain %s <setup|env|status|build|export-guest|run|iso|elf-info|fmv|meta>\n", platID)
+		fmt.Fprintf(stderr, "usage: blazium-toolchain %s <setup|env|status|build|export-guest|run|iso|elf-info|chd|fmv|meta>\n", platID)
 		return ExitUsage
 	}
 	return dispatch(ctx, p, rest, common(*prefix, *jsonOut, stdout, stderr), stdout, stderr)
@@ -163,6 +163,8 @@ func dispatch(ctx context.Context, p platforms.Platform, args []string, base pla
 		err = runISO(ctx, p, rest, base)
 	case "elf-info":
 		err = runElfInfo(p, rest, base, stdout)
+	case "chd":
+		err = runChd(ctx, p, rest, base)
 	case "fmv":
 		err = runFMV(p, rest, base, stdout)
 	case "meta":
@@ -439,6 +441,20 @@ func runElfInfo(p platforms.Platform, args []string, base platforms.CommonOption
 	return nil
 }
 
+func runChd(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
+	if p.Info().ID != ps2.ID {
+		return fmt.Errorf("%w: chd is a ps2 command", platforms.ErrUsage)
+	}
+	fs := flag.NewFlagSet("chd", flag.ContinueOnError)
+	fs.SetOutput(base.Stderr)
+	isoPath := fs.String("iso", "", "ISO9660 image (not .cue)")
+	out := fs.String("out", "", "output .chd path")
+	if err := fs.Parse(args); err != nil {
+		return platforms.ErrUsage
+	}
+	return ps2.WriteCHD(ctx, *isoPath, *out, base.Stdout, base.Stderr)
+}
+
 func runEncode(ctx context.Context, p platforms.Platform, name string, args []string, base platforms.CommonOptions) error {
 	tool, ok := p.(*interdvd.Tool)
 	if !ok {
@@ -561,6 +577,7 @@ PS2 commands:
   run [--iso FILE.iso] [--timeout 120s] [--ui] [GAME.elf]
   iso --dir TREE --out FILE.iso
   elf-info FILE.elf
+  chd --iso FILE.iso --out FILE.chd
 
 Interactive DVD commands:
   setup [--offline]

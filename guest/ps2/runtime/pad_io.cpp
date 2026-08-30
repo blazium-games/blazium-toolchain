@@ -47,6 +47,34 @@ extern const unsigned int size_irx_iomanX;
 static char s_pad_buf[256] __attribute__((aligned(64)));
 static int s_ready;
 static int s_prev_cross;
+static int s_mode_set;
+static int s_has_act;
+static int s_has_press;
+static unsigned char s_pressure[12];
+
+static void pad_try_dualshock(void)
+{
+	int state = padGetState(0, 0);
+	if (state != PAD_STATE_STABLE && state != PAD_STATE_FINDCTP1) {
+		return;
+	}
+	if (s_mode_set) {
+		return;
+	}
+	padSetMainMode(0, 0, 1, 3);
+	if (padInfoAct(0, 0, -1, 0)) {
+		char align[6] = {0, 1, (char)0xff, (char)0xff, (char)0xff, (char)0xff};
+		if (padSetActAlign(0, 0, align) != 0) {
+			s_has_act = 1;
+		}
+	}
+	if (padInfoPressMode(0, 0)) {
+		if (padEnterPressMode(0, 0) != 0) {
+			s_has_press = 1;
+		}
+	}
+	s_mode_set = 1;
+}
 
 static int load_rom_or_buf(const char *rom, const unsigned char *buf, unsigned sz)
 {
@@ -65,6 +93,10 @@ int pad_io_init(void)
 {
 	s_ready = 0;
 	s_prev_cross = 0;
+	s_mode_set = 0;
+	s_has_act = 0;
+	s_has_press = 0;
+	memset(s_pressure, 0, sizeof(s_pressure));
 	SifInitRpc(0);
 #ifdef BLAZIUM_PS2_HAS_IOPCONTROL
 #if BUILD_FOR_PCSX2
@@ -116,6 +148,7 @@ void pad_io_poll(float *yaw, float *dolly, int *cross_down)
 	if (!s_ready) {
 		return;
 	}
+	pad_try_dualshock();
 	struct padButtonStatus buttons;
 	int state = padGetState(0, 0);
 	if (state != PAD_STATE_STABLE && state != PAD_STATE_FINDCTP1) {
@@ -123,6 +156,20 @@ void pad_io_poll(float *yaw, float *dolly, int *cross_down)
 	}
 	if (padRead(0, 0, &buttons) == 0) {
 		return;
+	}
+	if (s_has_press) {
+		s_pressure[0] = buttons.right_p;
+		s_pressure[1] = buttons.left_p;
+		s_pressure[2] = buttons.up_p;
+		s_pressure[3] = buttons.down_p;
+		s_pressure[4] = buttons.triangle_p;
+		s_pressure[5] = buttons.circle_p;
+		s_pressure[6] = buttons.cross_p;
+		s_pressure[7] = buttons.square_p;
+		s_pressure[8] = buttons.l1_p;
+		s_pressure[9] = buttons.r1_p;
+		s_pressure[10] = buttons.l2_p;
+		s_pressure[11] = buttons.r2_p;
 	}
 	const unsigned short btns = ~buttons.btns;
 	if (yaw) {
@@ -149,6 +196,25 @@ void pad_io_poll(float *yaw, float *dolly, int *cross_down)
 	}
 	s_prev_cross = cross;
 }
+
+void pad_io_set_rumble(int small_on, int large)
+{
+	if (!s_ready || !s_has_act) {
+		return;
+	}
+	char act[6] = {0, 0, 0, 0, 0, 0};
+	act[0] = small_on ? 1 : 0;
+	act[1] = (char)(large < 0 ? 0 : (large > 255 ? 255 : large));
+	padSetActDirect(0, 0, act);
+}
+
+int pad_io_get_pressure(int button)
+{
+	if (!s_has_press || button < 0 || button >= 12) {
+		return 0;
+	}
+	return (int)s_pressure[button];
+}
 #else
 int pad_io_init(void)
 {
@@ -166,5 +232,17 @@ void pad_io_poll(float *yaw, float *dolly, int *cross_down)
 	if (cross_down) {
 		*cross_down = 0;
 	}
+}
+
+void pad_io_set_rumble(int small_on, int large)
+{
+	(void)small_on;
+	(void)large;
+}
+
+int pad_io_get_pressure(int button)
+{
+	(void)button;
+	return 0;
 }
 #endif

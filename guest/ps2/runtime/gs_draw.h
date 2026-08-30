@@ -27,6 +27,11 @@ void gs_draw_set_world_yaw(float yaw);
 // Clear + textured tris + slot-0 HUD stamp. Sends GIF packets itself.
 void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z);
 
+void gs_draw_camera(float *x, float *y, float *z);
+float gs_draw_world_yaw(void);
+void gs_draw_fill_mvp(float out[16], int width, int height);
+int gs_draw_tex_info(int i, int *vram, int *w, int *h, int *psm);
+
 #ifdef __cplusplus
 }
 #endif

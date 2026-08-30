@@ -443,6 +443,44 @@ void gs_draw_set_world_yaw(float yaw)
 	g_world_yaw = yaw;
 }
 
+void gs_draw_camera(float *x, float *y, float *z)
+{
+	if (x) {
+		*x = g_cam_x;
+	}
+	if (y) {
+		*y = g_cam_y;
+	}
+	if (z) {
+		*z = g_cam_z;
+	}
+}
+
+float gs_draw_world_yaw(void)
+{
+	return g_world_yaw;
+}
+
+int gs_draw_tex_info(int i, int *vram, int *w, int *h, int *psm)
+{
+	if (i < 0 || i >= g_tex_count || !g_tex[i].ready) {
+		return 0;
+	}
+	if (vram) {
+		*vram = g_tex[i].vram;
+	}
+	if (w) {
+		*w = g_tex[i].width;
+	}
+	if (h) {
+		*h = g_tex[i].height;
+	}
+	if (psm) {
+		*psm = g_tex[i].hw_psm;
+	}
+	return 1;
+}
+
 static void yaw_y(Mat4 *o, float yaw)
 {
 	const float c = cosf(yaw);
@@ -452,6 +490,20 @@ static void yaw_y(Mat4 *o, float yaw)
 	o->m[8] = s;
 	o->m[2] = -s;
 	o->m[10] = c;
+}
+
+void gs_draw_fill_mvp(float out[16], int width, int height)
+{
+	if (!out) {
+		return;
+	}
+	Mat4 world, view, proj, tmp, mvp;
+	yaw_y(&world, g_world_yaw);
+	look_at(&view, g_cam_x, g_cam_y, g_cam_z, 0.0f, 1.5f, 0.0f);
+	perspective(&proj, 55.0f, (float)width / (float)(height ? height : 1), 0.25f, 400.0f);
+	mat_mul(&view, &world, &tmp);
+	mat_mul(&proj, &tmp, &mvp);
+	memcpy(out, mvp.m, sizeof(mvp.m));
 }
 
 void gs_draw_orbit(float yaw, float dolly)

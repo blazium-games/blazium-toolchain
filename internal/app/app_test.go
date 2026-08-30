@@ -269,6 +269,17 @@ func TestUnknownCommand(t *testing.T) {
 	}
 }
 
+func TestPS2ChdUsage(t *testing.T) {
+	code := Run(context.Background(), []string{"ps2", "chd"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if code != ExitUsage {
+		t.Fatalf("ps2 chd without flags exit %d", code)
+	}
+	code = Run(context.Background(), []string{"ps1", "chd", "--iso", "x.iso", "--out", "x.chd"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if code != ExitUsage {
+		t.Fatalf("ps1 chd exit %d", code)
+	}
+}
+
 func TestPS2ElfInfo(t *testing.T) {
 	const ehSize, shSize, shNum, textSize = 52, 40, 3, 16
 	shstrtab := []byte("\x00.text\x00.shstrtab\x00")
@@ -494,7 +505,7 @@ func TestExportGuestWritesPS2(t *testing.T) {
 	if m["out"] != dest {
 		t.Fatalf("%v", m)
 	}
-	for _, name := range []string{"CMakeLists.txt", "Makefile", "main.cpp"} {
+	for _, name := range []string{"CMakeLists.txt", "Makefile", "main.cpp", "vu1_draw.cpp", "draw_3D.vsm"} {
 		if _, err := os.Stat(filepath.Join(dest, name)); err != nil {
 			t.Fatalf("missing %s: %v", name, err)
 		}

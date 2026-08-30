@@ -32,6 +32,9 @@ var RuntimeNames = []string{
 	"pack_io.h",
 	"script_vm.cpp",
 	"script_vm.h",
+	"vu1_draw.cpp",
+	"vu1_draw.h",
+	"draw_3D.vsm",
 }
 
 //go:embed runtime

@@ -29,6 +29,23 @@ func TestEmbeddedRuntimeComplete(t *testing.T) {
 	}
 }
 
+func TestRuntimeNamesHasVU1(t *testing.T) {
+	var cpp, hdr, vsm bool
+	for _, name := range RuntimeNames {
+		switch name {
+		case "vu1_draw.cpp":
+			cpp = true
+		case "vu1_draw.h":
+			hdr = true
+		case "draw_3D.vsm":
+			vsm = true
+		}
+	}
+	if !cpp || !hdr || !vsm {
+		t.Fatalf("RuntimeNames missing VU1 files: %v", RuntimeNames)
+	}
+}
+
 func TestRuntimeNamesHasScriptVM(t *testing.T) {
 	var vm, hdr bool
 	for _, name := range RuntimeNames {

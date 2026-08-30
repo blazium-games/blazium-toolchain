@@ -86,7 +86,7 @@ func TestInfoSupported(t *testing.T) {
 	if info.ID != "ps2" || info.Status != platforms.StatusSupported {
 		t.Fatalf("%+v", info)
 	}
-	var exp, elfInfo bool
+	var exp, elfInfo, chd bool
 	for _, c := range info.Commands {
 		if c == "export-guest" {
 			exp = true
@@ -94,8 +94,11 @@ func TestInfoSupported(t *testing.T) {
 		if c == "elf-info" {
 			elfInfo = true
 		}
+		if c == "chd" {
+			chd = true
+		}
 	}
-	if !exp || !elfInfo {
+	if !exp || !elfInfo || !chd {
 		t.Fatalf("commands %v", info.Commands)
 	}
 	if !strings.Contains(info.Description, "Windows") || !strings.Contains(info.Description, "Linux") {
@@ -103,6 +106,21 @@ func TestInfoSupported(t *testing.T) {
 	}
 	if !strings.Contains(info.Description, "bundled") {
 		t.Fatalf("description must say guest is bundled: %s", info.Description)
+	}
+}
+
+func TestCHDRequiresIsoAndOut(t *testing.T) {
+	err := WriteCHD(context.Background(), "", "", nil, nil)
+	if err == nil {
+		t.Fatal("expected usage error")
+	}
+	cue := filepath.Join(t.TempDir(), "g.cue")
+	if err := os.WriteFile(cue, []byte("FILE"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err = WriteCHD(context.Background(), cue, filepath.Join(t.TempDir(), "g.chd"), nil, nil)
+	if err == nil {
+		t.Fatal("expected cue refusal")
 	}
 }
 
