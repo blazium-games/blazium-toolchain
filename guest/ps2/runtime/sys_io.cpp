@@ -6,6 +6,7 @@
 #include "pad_io.h"
 #include "sfx_io.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,6 +51,15 @@ static int s_on_ceil;
 static int s_player_ok;
 static int s_hud_n;
 static int s_tile_n;
+static short s_tile_x[64];
+static short s_tile_y[64];
+static unsigned char s_tile_flags[64];
+static unsigned long long s_over_prev;
+static unsigned long long s_over_now;
+static int s_over_entered;
+static float s_ray_x;
+static float s_ray_y;
+static float s_ray_z;
 static int s_nav_n;
 static int s_anim_n;
 static int s_fmv_n;
@@ -210,6 +220,20 @@ static void apply_tile(const unsigned char *b, unsigned sz)
 		return;
 	}
 	s_tile_n = (int)ru16(b + 6);
+	if (s_tile_n > 64) {
+		s_tile_n = 64;
+	}
+	const unsigned rec = 6;
+	for (int i = 0; i < s_tile_n; i++) {
+		if (10 + (unsigned)(i + 1) * rec > sz) {
+			s_tile_n = i;
+			break;
+		}
+		const unsigned char *r = b + 10 + (unsigned)i * rec;
+		s_tile_x[i] = (short)ru16(r);
+		s_tile_y[i] = (short)ru16(r + 2);
+		s_tile_flags[i] = r[4];
+	}
 }
 
 static void apply_nav(const unsigned char *b, unsigned sz)
@@ -250,9 +274,13 @@ int sys_io_init(void)
 	s_frame = 0;
 	s_nav_i = 0;
 	s_hit_n = 0;
+	s_tile_n = 0;
 	s_on_floor = s_on_wall = s_on_ceil = 0;
 	s_player_ok = 0;
 	s_px = s_py = s_pz = 0.0f;
+	s_over_prev = s_over_now = 0;
+	s_over_entered = 0;
+	s_ray_x = s_ray_y = s_ray_z = 0.0f;
 	memcpy(s_fmv_err, "FMV/IPU not shipped on PS2 ABI 1 (no license-clean decoder)", 59);
 	s_fmv_err[59] = 0;
 	unsigned sz = 0;
@@ -698,4 +726,141 @@ int sys_io_hit_hazard(float x, float z)
 		}
 	}
 	return 0;
+}
+
+static void ensure_player(void)
+{
+	if (!s_player_ok) {
+		gs_draw_look_point(&s_px, &s_py, &s_pz);
+		s_player_ok = 1;
+	}
+}
+
+void sys_io_overlap_refresh(void)
+{
+	ensure_player();
+	unsigned long long now = 0;
+	for (int i = 0; i < s_hit_n && i < 64; i++) {
+		if (aabb_overlap(s_px, s_py, s_pz, i)) {
+			now |= (1ull << i);
+		}
+	}
+	s_over_entered = (now & ~s_over_prev) != 0;
+	s_over_now = now;
+	s_over_prev = now;
+}
+
+int sys_io_overlaps(void)
+{
+	return s_over_now != 0;
+}
+
+int sys_io_overlaps_entered(void)
+{
+	return s_over_entered;
+}
+
+int sys_io_has_overlapping(void)
+{
+	return s_over_now != 0;
+}
+
+int sys_io_hitbox_kind(void)
+{
+	for (int i = 0; i < s_hit_n && i < 64; i++) {
+		if (s_over_now & (1ull << i)) {
+			return (int)s_hit_kit[i];
+		}
+	}
+	return 0;
+}
+
+static int ray_aabb(float ox, float oy, float oz, float dx, float dy, float dz, float dist, int i, float *t_hit)
+{
+	float tmin = 0.0f;
+	float tmax = dist;
+	const float o[3] = { ox, oy, oz };
+	const float d[3] = { dx, dy, dz };
+	for (int a = 0; a < 3; a++) {
+		const float mn = s_hit_mn[i][a];
+		const float mx = s_hit_mx[i][a];
+		if (d[a] > -0.00001f && d[a] < 0.00001f) {
+			if (o[a] < mn || o[a] > mx) {
+				return 0;
+			}
+			continue;
+		}
+		const float inv = 1.0f / d[a];
+		float t0 = (mn - o[a]) * inv;
+		float t1 = (mx - o[a]) * inv;
+		if (t0 > t1) {
+			const float tmp = t0;
+			t0 = t1;
+			t1 = tmp;
+		}
+		if (t0 > tmin) {
+			tmin = t0;
+		}
+		if (t1 < tmax) {
+			tmax = t1;
+		}
+		if (tmin > tmax) {
+			return 0;
+		}
+	}
+	*t_hit = tmin;
+	return 1;
+}
+
+int sys_io_raycast(float ox, float oy, float oz, float dx, float dy, float dz, float dist, int mask)
+{
+	(void)mask;
+	if (dist <= 0.0f) {
+		return 0;
+	}
+	float best = dist;
+	int hit = 0;
+	for (int i = 0; i < s_hit_n; i++) {
+		float t = 0.0f;
+		if (ray_aabb(ox, oy, oz, dx, dy, dz, dist, i, &t) && t >= 0.0f && t < best) {
+			best = t;
+			hit = 1;
+		}
+	}
+	if (hit) {
+		s_ray_x = ox + dx * best;
+		s_ray_y = oy + dy * best;
+		s_ray_z = oz + dz * best;
+	}
+	return hit;
+}
+
+void sys_io_ray_point(float *x, float *y, float *z)
+{
+	if (x) {
+		*x = s_ray_x;
+	}
+	if (y) {
+		*y = s_ray_y;
+	}
+	if (z) {
+		*z = s_ray_z;
+	}
+}
+
+int sys_io_tile_at(float x, float y)
+{
+	const short cx = (short)floorf(x);
+	const short cy = (short)floorf(y);
+	for (int i = 0; i < s_tile_n; i++) {
+		if (s_tile_x[i] == cx && s_tile_y[i] == cy) {
+			return (int)s_tile_flags[i];
+		}
+	}
+	return 0;
+}
+
+int sys_io_tile_solid_at(float x, float y)
+{
+	return sys_io_tile_at(x, y) != 0;
 }

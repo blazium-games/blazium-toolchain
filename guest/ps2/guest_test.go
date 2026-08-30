@@ -127,6 +127,9 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	if !strings.Contains(string(vm), "OP_SLIDE") || !strings.Contains(string(vm), "sys_io_slide") {
 		t.Fatal("script_vm must interpret move_and_slide via sys_io_slide")
 	}
+	if !strings.Contains(string(vm), "OP_OVERLAP") || !strings.Contains(string(vm), "OP_RAYCAST") || !strings.Contains(string(vm), "OP_TILE_AT") {
+		t.Fatal("script_vm must interpret overlaps / raycast / tile_solid_at")
+	}
 }
 
 func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
@@ -158,6 +161,9 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	}
 	if !strings.Contains(string(sys), "sys_io_slide") || !strings.Contains(string(sys), "enters_hit") {
 		t.Fatal("sys_io.cpp must slide against HIT00 AABBs")
+	}
+	if !strings.Contains(string(sys), "sys_io_overlaps") || !strings.Contains(string(sys), "sys_io_raycast") || !strings.Contains(string(sys), "sys_io_tile_solid_at") {
+		t.Fatal("sys_io.cpp must query HIT overlaps, raycast, and TILE cells")
 	}
 	cmake, err := files.ReadFile("runtime/CMakeLists.txt")
 	if err != nil {

@@ -52,7 +52,10 @@ enum {
 	OP_TWEEN = 32,
 	OP_TIMER = 33,
 	OP_KILL_TWEENS = 34,
-	OP_SLIDE = 35
+	OP_SLIDE = 35,
+	OP_OVERLAP = 36,
+	OP_RAYCAST = 37,
+	OP_TILE_AT = 38
 };
 
 static const unsigned char *s_tape;
@@ -510,6 +513,36 @@ static void run_range(unsigned from, unsigned to, float delta)
 			const float vy = stack[--sp];
 			const float vx = stack[--sp];
 			sys_io_slide(vx, vy, vz, delta);
+			continue;
+		}
+		if (op == OP_OVERLAP) {
+			sys_io_overlap_refresh();
+			(void)sys_io_overlaps();
+			(void)sys_io_overlaps_entered();
+			(void)sys_io_hitbox_kind();
+			continue;
+		}
+		if (op == OP_RAYCAST) {
+			if (sp < 4) {
+				return;
+			}
+			const float dist = stack[--sp];
+			const float dz = stack[--sp];
+			const float dy = stack[--sp];
+			const float dx = stack[--sp];
+			float px = 0.0f, py = 0.0f, pz = 0.0f;
+			gs_draw_look_point(&px, &py, &pz);
+			(void)sys_io_raycast(px, py, pz, dx, dy, dz, dist, 255);
+			continue;
+		}
+		if (op == OP_TILE_AT) {
+			if (sp < 2) {
+				return;
+			}
+			const float y = stack[--sp];
+			const float x = stack[--sp];
+			(void)sys_io_tile_solid_at(x, y);
+			(void)sys_io_tile_at(x, y);
 			continue;
 		}
 	}

@@ -45,6 +45,15 @@ void sys_io_slide(float vx, float vy, float vz, float delta);
 int sys_io_on_floor(void);
 int sys_io_on_wall(void);
 int sys_io_on_ceiling(void);
+void sys_io_overlap_refresh(void);
+int sys_io_overlaps(void);
+int sys_io_overlaps_entered(void);
+int sys_io_has_overlapping(void);
+int sys_io_hitbox_kind(void);
+int sys_io_raycast(float ox, float oy, float oz, float dx, float dy, float dz, float dist, int mask);
+void sys_io_ray_point(float *x, float *y, float *z);
+int sys_io_tile_solid_at(float x, float y);
+int sys_io_tile_at(float x, float y);
 
 #ifdef __cplusplus
 }
