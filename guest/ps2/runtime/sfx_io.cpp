@@ -395,28 +395,7 @@ int sfx_io_init(void)
 	}
 	s_ready = ok;
 
-	static const char *mus_paths[] = {
-		"host:MUSIC00.bin",
-		"cdrom0:\\MUSIC00.BIN;1",
-		"cdrom0:MUSIC00.BIN;1",
-		NULL
-	};
-	unsigned char *mblob = 0;
-	unsigned msz = 0;
-	if (load_blob(mus_paths, &mblob, &msz) && msz >= 12 &&
-			mblob[0] == 'M' && mblob[1] == 'U' && mblob[2] == 'S' && mblob[3] == ' ' &&
-			ru16(mblob + 4) == 1) {
-		s_mus_rate = (int)ru16(mblob + 6);
-		const unsigned mnbytes = ru32(mblob + 8);
-		if (12 + mnbytes <= msz && decode_ima(mblob + 12, mnbytes, &s_mus_pcm, &s_mus_pcm_n)) {
-			if (encode_vag(s_mus_pcm, s_mus_pcm_n, &s_mus_vag, &s_mus_vag_sz, 1)) {
-				s_mus_ready = 1;
-			}
-		}
-	}
-	if (mblob) {
-		free(mblob);
-	}
+	(void)sfx_io_music_load(0);
 	return ok;
 }
 
@@ -509,6 +488,85 @@ static void apply_music_vol(void)
 int sfx_io_music_loaded(void)
 {
 	return s_mus_ready;
+}
+
+static void free_music(void)
+{
+	sfx_io_music_stop();
+	if (s_mus_pcm) {
+		free(s_mus_pcm);
+		s_mus_pcm = 0;
+	}
+	if (s_mus_vag) {
+		free(s_mus_vag);
+		s_mus_vag = 0;
+	}
+	s_mus_pcm_n = 0;
+	s_mus_vag_sz = 0;
+	s_mus_ready = 0;
+}
+
+static int decode_music_blob(unsigned char *mblob, unsigned msz)
+{
+	if (!mblob || msz < 12) {
+		return 0;
+	}
+	if (mblob[0] != 'M' || mblob[1] != 'U' || mblob[2] != 'S' || mblob[3] != ' ') {
+		return 0;
+	}
+	if (ru16(mblob + 4) != 1) {
+		return 0;
+	}
+	s_mus_rate = (int)ru16(mblob + 6);
+	const unsigned mnbytes = ru32(mblob + 8);
+	if (12 + mnbytes > msz) {
+		return 0;
+	}
+	if (!decode_ima(mblob + 12, mnbytes, &s_mus_pcm, &s_mus_pcm_n)) {
+		return 0;
+	}
+	if (!encode_vag(s_mus_pcm, s_mus_pcm_n, &s_mus_vag, &s_mus_vag_sz, 1)) {
+		return 0;
+	}
+	s_mus_ready = 1;
+	return 1;
+}
+
+int sfx_io_music_load(int pack)
+{
+	if (pack < 0) {
+		pack = 0;
+	}
+	char host[48];
+	char iso_bs[56];
+	char iso[56];
+	sprintf(host, "host:MUSIC%02d.bin", pack);
+	sprintf(iso_bs, "cdrom0:\\MUSIC%02d.BIN;1", pack);
+	sprintf(iso, "cdrom0:MUSIC%02d.BIN;1", pack);
+	const char *paths[] = { host, iso_bs, iso, NULL };
+	unsigned char *blob = 0;
+	unsigned sz = 0;
+	if (!load_blob(paths, &blob, &sz) && pack != 0) {
+		static const char *p0[] = {
+			"host:MUSIC00.bin",
+			"cdrom0:\\MUSIC00.BIN;1",
+			"cdrom0:MUSIC00.BIN;1",
+			NULL
+		};
+		(void)load_blob(p0, &blob, &sz);
+	}
+	if (!blob) {
+		return 0;
+	}
+	free_music();
+	const int ok = decode_music_blob(blob, sz);
+	free(blob);
+	return ok;
+}
+
+void sfx_io_music_unload(void)
+{
+	free_music();
 }
 
 void sfx_io_music_play(void)

@@ -17,7 +17,7 @@
 
 #define GS_MAX_TEX 64
 #define GS_BATCH_TRIS 48
-#define GS_PACKET_QWORDS 1024
+#define GS_PACKET_QWORDS 2048
 #define GS_HUD_PX 64.0f
 
 enum {
@@ -87,8 +87,24 @@ struct HudQuad {
 	int used;
 	int x, y, w, h;
 	int r, g, b;
+	char text[33];
+};
+struct SprtQuad {
+	int used;
+	int x, y, w, h;
+	int tex;
+	int flip;
+};
+struct TileQuad {
+	int used;
+	int x, y;
+	int atlas;
 };
 static HudQuad g_hudq[16];
+static SprtQuad g_sprt[32];
+static TileQuad g_tile[256];
+static int g_sprt_n;
+static int g_tile_n;
 static float g_nofs[32][3];
 static float g_nrot[32][3];
 static int g_fade_a;
@@ -481,53 +497,246 @@ void gs_draw_fb_origin(int width, int height, float *ox, float *oy)
 	}
 }
 
+/* 5x7 rows packed in 7 bytes for ASCII 32..90. Bit 0 is the left column. */
+static const unsigned char kFont5x7[59][7] = {
+	{0, 0, 0, 0, 0, 0, 0}, /* space */
+	{4, 4, 4, 4, 4, 0, 4},
+	{10, 10, 0, 0, 0, 0, 0},
+	{10, 31, 10, 31, 10, 0, 0},
+	{4, 14, 20, 14, 5, 14, 4},
+	{17, 18, 4, 8, 19, 0, 0},
+	{8, 20, 8, 21, 18, 13, 0},
+	{4, 4, 0, 0, 0, 0, 0},
+	{4, 8, 8, 8, 8, 8, 4},
+	{4, 2, 2, 2, 2, 2, 4},
+	{0, 10, 4, 31, 4, 10, 0},
+	{0, 4, 4, 31, 4, 4, 0},
+	{0, 0, 0, 0, 4, 4, 8},
+	{0, 0, 0, 31, 0, 0, 0},
+	{0, 0, 0, 0, 0, 4, 4},
+	{1, 2, 4, 8, 16, 0, 0},
+	{14, 17, 19, 21, 25, 17, 14}, /* 0 */
+	{4, 12, 4, 4, 4, 4, 14},
+	{14, 17, 1, 6, 8, 16, 31},
+	{14, 17, 1, 6, 1, 17, 14},
+	{2, 6, 10, 18, 31, 2, 2},
+	{31, 16, 30, 1, 1, 17, 14},
+	{6, 8, 16, 30, 17, 17, 14},
+	{31, 1, 2, 4, 8, 8, 8},
+	{14, 17, 17, 14, 17, 17, 14},
+	{14, 17, 17, 15, 1, 2, 12},
+	{0, 4, 4, 0, 4, 4, 0},
+	{0, 4, 4, 0, 4, 4, 8},
+	{2, 4, 8, 16, 8, 4, 2},
+	{0, 0, 31, 0, 31, 0, 0},
+	{8, 4, 2, 1, 2, 4, 8},
+	{14, 17, 1, 6, 4, 0, 4},
+	{14, 17, 19, 21, 23, 16, 14},
+	{14, 17, 17, 31, 17, 17, 17}, /* A */
+	{30, 17, 17, 30, 17, 17, 30},
+	{14, 17, 16, 16, 16, 17, 14},
+	{30, 17, 17, 17, 17, 17, 30},
+	{31, 16, 16, 30, 16, 16, 31},
+	{31, 16, 16, 30, 16, 16, 16},
+	{14, 17, 16, 23, 17, 17, 15},
+	{17, 17, 17, 31, 17, 17, 17},
+	{14, 4, 4, 4, 4, 4, 14},
+	{1, 1, 1, 1, 17, 17, 14},
+	{17, 18, 20, 24, 20, 18, 17},
+	{16, 16, 16, 16, 16, 16, 31},
+	{17, 27, 21, 21, 17, 17, 17},
+	{17, 25, 21, 19, 17, 17, 17},
+	{14, 17, 17, 17, 17, 17, 14},
+	{30, 17, 17, 30, 16, 16, 16},
+	{14, 17, 17, 17, 21, 18, 13},
+	{30, 17, 17, 30, 20, 18, 17},
+	{14, 17, 16, 14, 1, 17, 14},
+	{31, 4, 4, 4, 4, 4, 4},
+	{17, 17, 17, 17, 17, 17, 14},
+	{17, 17, 17, 17, 17, 10, 4},
+	{17, 17, 17, 21, 21, 21, 10},
+	{17, 17, 10, 4, 10, 17, 17},
+	{17, 17, 10, 4, 4, 4, 4},
+	{31, 1, 2, 4, 8, 16, 31},
+};
+
+static qword_t *emit_filled(qword_t *q, float x0, float y0, float x1, float y1, int r, int g, int b)
+{
+	rect_t bar;
+	memset(&bar, 0, sizeof(bar));
+	bar.v0.x = x0;
+	bar.v0.y = y0;
+	bar.v0.z = 1;
+	bar.v1.x = x1;
+	bar.v1.y = y1;
+	bar.color.r = (unsigned char)(r >> 1);
+	bar.color.g = (unsigned char)(g >> 1);
+	bar.color.b = (unsigned char)(b >> 1);
+	bar.color.a = 0x80;
+	bar.color.q = 1.0f;
+	return draw_rect_filled(q, 0, &bar);
+}
+
+static qword_t *emit_glyph(qword_t *q, float ox, float oy, int ch, int r, int g, int b)
+{
+	if (ch >= 'a' && ch <= 'z') {
+		ch -= 32;
+	}
+	if (ch < 32 || ch > 90) {
+		ch = '?';
+	}
+	const unsigned char *rows = kFont5x7[ch - 32];
+	for (int row = 0; row < 7; row++) {
+		unsigned char bits = rows[row];
+		int run = 0;
+		int start = -1;
+		for (int col = 0; col < 6; col++) {
+			const int on = (col < 5) && (bits & (1 << (4 - col)));
+			if (on) {
+				if (start < 0) {
+					start = col;
+				}
+				run++;
+			} else if (start >= 0) {
+				q = emit_filled(q, ox + (float)start, oy + (float)row, ox + (float)(start + run), oy + (float)row + 1.0f, r, g, b);
+				start = -1;
+				run = 0;
+			}
+		}
+		if (start >= 0) {
+			q = emit_filled(q, ox + (float)start, oy + (float)row, ox + (float)(start + run), oy + (float)row + 1.0f, r, g, b);
+		}
+	}
+	return q;
+}
+
 static qword_t *emit_hud(qword_t *q, int width, int height)
 {
-	if (g_tex_count < 1 || !g_tex[0].ready) {
-		return q;
-	}
-	q = bind_tex(q, 0);
-	texrect_t rect;
-	memset(&rect, 0, sizeof(rect));
 	float ox = 0.0f;
 	float oy = 0.0f;
 	gs_draw_fb_origin(width, height, &ox, &oy);
-	rect.v0.x = ox + 8.0f;
-	rect.v0.y = oy + 8.0f;
-	rect.v0.z = 1;
-	rect.v1.x = rect.v0.x + GS_HUD_PX;
-	rect.v1.y = rect.v0.y + GS_HUD_PX;
-	rect.t0.u = 0.0f;
-	rect.t0.v = 0.0f;
-	rect.t1.u = (float)g_tex[0].width;
-	rect.t1.v = (float)g_tex[0].height;
-	rect.color.r = 0x80;
-	rect.color.g = 0x80;
-	rect.color.b = 0x80;
-	rect.color.a = 0x80;
-	rect.color.q = 1.0f;
-	q = draw_rect_textured(q, 0, &rect);
+	const int have_tex = g_tex_count > 0 && g_tex[0].ready;
+	if (have_tex) {
+		q = bind_tex(q, 0);
+		texrect_t rect;
+		memset(&rect, 0, sizeof(rect));
+		rect.v0.x = ox + 8.0f;
+		rect.v0.y = oy + 8.0f;
+		rect.v0.z = 1;
+		rect.v1.x = rect.v0.x + GS_HUD_PX;
+		rect.v1.y = rect.v0.y + GS_HUD_PX;
+		rect.t0.u = 0.0f;
+		rect.t0.v = 0.0f;
+		rect.t1.u = (float)g_tex[0].width;
+		rect.t1.v = (float)g_tex[0].height;
+		rect.color.r = 0x80;
+		rect.color.g = 0x80;
+		rect.color.b = 0x80;
+		rect.color.a = 0x80;
+		rect.color.q = 1.0f;
+		q = draw_rect_textured(q, 0, &rect);
+	}
 	for (int i = 0; i < 16; i++) {
 		if (!g_hudq[i].used) {
 			continue;
 		}
-		texrect_t bar;
-		memset(&bar, 0, sizeof(bar));
-		bar.v0.x = ox + (float)g_hudq[i].x;
-		bar.v0.y = oy + (float)g_hudq[i].y;
-		bar.v0.z = 1;
-		bar.v1.x = bar.v0.x + (float)g_hudq[i].w;
-		bar.v1.y = bar.v0.y + (float)g_hudq[i].h;
-		bar.t0.u = 0.0f;
-		bar.t0.v = 0.0f;
-		bar.t1.u = 4.0f;
-		bar.t1.v = 4.0f;
-		bar.color.r = (unsigned char)(g_hudq[i].r >> 1);
-		bar.color.g = (unsigned char)(g_hudq[i].g >> 1);
-		bar.color.b = (unsigned char)(g_hudq[i].b >> 1);
-		bar.color.a = 0x80;
-		bar.color.q = 1.0f;
-		q = draw_rect_textured(q, 0, &bar);
+		if (have_tex) {
+			texrect_t bar;
+			memset(&bar, 0, sizeof(bar));
+			bar.v0.x = ox + (float)g_hudq[i].x;
+			bar.v0.y = oy + (float)g_hudq[i].y;
+			bar.v0.z = 1;
+			bar.v1.x = bar.v0.x + (float)g_hudq[i].w;
+			bar.v1.y = bar.v0.y + (float)g_hudq[i].h;
+			bar.t0.u = 0.0f;
+			bar.t0.v = 0.0f;
+			bar.t1.u = 4.0f;
+			bar.t1.v = 4.0f;
+			bar.color.r = (unsigned char)(g_hudq[i].r >> 1);
+			bar.color.g = (unsigned char)(g_hudq[i].g >> 1);
+			bar.color.b = (unsigned char)(g_hudq[i].b >> 1);
+			bar.color.a = 0x80;
+			bar.color.q = 1.0f;
+			q = draw_rect_textured(q, 0, &bar);
+		} else {
+			q = emit_filled(q, ox + (float)g_hudq[i].x, oy + (float)g_hudq[i].y,
+					ox + (float)(g_hudq[i].x + g_hudq[i].w), oy + (float)(g_hudq[i].y + g_hudq[i].h),
+					g_hudq[i].r, g_hudq[i].g, g_hudq[i].b);
+		}
+		if (g_hudq[i].text[0]) {
+			int n = 0;
+			for (int c = 0; g_hudq[i].text[c] && n < 16; c++, n++) {
+				q = emit_glyph(q, ox + (float)(g_hudq[i].x + 2 + n * 6), oy + (float)(g_hudq[i].y + 2),
+						(int)(unsigned char)g_hudq[i].text[c], 255, 255, 255);
+			}
+		}
+	}
+	for (int i = 0; i < g_sprt_n && i < 32; i++) {
+		if (!g_sprt[i].used) {
+			continue;
+		}
+		const int tex = g_sprt[i].tex;
+		float x0 = ox + (float)g_sprt[i].x;
+		float y0 = oy + (float)g_sprt[i].y;
+		float x1 = x0 + (float)(g_sprt[i].w > 0 ? g_sprt[i].w : 16);
+		float y1 = y0 + (float)(g_sprt[i].h > 0 ? g_sprt[i].h : 16);
+		if (g_sprt[i].flip & 1) {
+			float t = x0;
+			x0 = x1;
+			x1 = t;
+		}
+		if (tex >= 0 && tex < g_tex_count && g_tex[tex].ready) {
+			q = bind_tex(q, tex);
+			texrect_t spr;
+			memset(&spr, 0, sizeof(spr));
+			spr.v0.x = x0;
+			spr.v0.y = y0;
+			spr.v0.z = 1;
+			spr.v1.x = x1;
+			spr.v1.y = y1;
+			spr.t0.u = 0.0f;
+			spr.t0.v = 0.0f;
+			spr.t1.u = (float)g_tex[tex].width;
+			spr.t1.v = (float)g_tex[tex].height;
+			spr.color.r = 0x80;
+			spr.color.g = 0x80;
+			spr.color.b = 0x80;
+			spr.color.a = 0x80;
+			spr.color.q = 1.0f;
+			q = draw_rect_textured(q, 0, &spr);
+		} else {
+			q = emit_filled(q, x0, y0, x1, y1, 200, 80, 180);
+		}
+	}
+	for (int i = 0; i < g_tile_n && i < 256; i++) {
+		if (!g_tile[i].used) {
+			continue;
+		}
+		const float x0 = ox + (float)(g_tile[i].x * 16);
+		const float y0 = oy + (float)(g_tile[i].y * 16);
+		const int atlas = g_tile[i].atlas;
+		if (atlas >= 0 && atlas < g_tex_count && g_tex[atlas].ready) {
+			q = bind_tex(q, atlas);
+			texrect_t tq;
+			memset(&tq, 0, sizeof(tq));
+			tq.v0.x = x0;
+			tq.v0.y = y0;
+			tq.v0.z = 1;
+			tq.v1.x = x0 + 16.0f;
+			tq.v1.y = y0 + 16.0f;
+			tq.t0.u = 0.0f;
+			tq.t0.v = 0.0f;
+			tq.t1.u = (float)g_tex[atlas].width;
+			tq.t1.v = (float)g_tex[atlas].height;
+			tq.color.r = 0x80;
+			tq.color.g = 0x80;
+			tq.color.b = 0x80;
+			tq.color.a = 0x80;
+			tq.color.q = 1.0f;
+			q = draw_rect_textured(q, 0, &tq);
+		} else {
+			q = emit_filled(q, x0, y0, x0 + 16.0f, y0 + 16.0f, 40, 120, 80);
+		}
 	}
 	if (g_fade_a > 0) {
 		draw_enable_blending();
@@ -557,6 +766,10 @@ int gs_draw_init(const unsigned char *mesh, unsigned mesh_sz,
 	g_tex_count = 0;
 	g_fade_a = g_fade_r = g_fade_g = g_fade_b = 0;
 	memset(g_hudq, 0, sizeof(g_hudq));
+	memset(g_sprt, 0, sizeof(g_sprt));
+	memset(g_tile, 0, sizeof(g_tile));
+	g_sprt_n = 0;
+	g_tile_n = 0;
 	memset(g_nofs, 0, sizeof(g_nofs));
 	memset(g_nrot, 0, sizeof(g_nrot));
 	parse_camera(node, node_sz);
@@ -771,6 +984,81 @@ void gs_draw_hud_quad(int slot, int x, int y, int w, int h, int r, int g, int b)
 	g_hudq[slot].r = r;
 	g_hudq[slot].g = g;
 	g_hudq[slot].b = b;
+}
+
+void gs_draw_clear_hud(void)
+{
+	memset(g_hudq, 0, sizeof(g_hudq));
+}
+
+void gs_draw_hud_text(int slot, int x, int y, int r, int g, int b, const char *str)
+{
+	if (slot < 0 || slot >= 16) {
+		return;
+	}
+	g_hudq[slot].used = 1;
+	g_hudq[slot].x = x;
+	g_hudq[slot].y = y;
+	if (g_hudq[slot].w < 8) {
+		g_hudq[slot].w = 96;
+	}
+	if (g_hudq[slot].h < 8) {
+		g_hudq[slot].h = 16;
+	}
+	g_hudq[slot].r = r;
+	g_hudq[slot].g = g;
+	g_hudq[slot].b = b;
+	unsigned i = 0;
+	if (str) {
+		while (str[i] && i < 32) {
+			g_hudq[slot].text[i] = str[i];
+			i++;
+		}
+	}
+	g_hudq[slot].text[i] = 0;
+}
+
+void gs_draw_sprt(int slot, int x, int y, int w, int h, int tex, int flip)
+{
+	if (slot < 0 || slot >= 32) {
+		return;
+	}
+	g_sprt[slot].used = 1;
+	g_sprt[slot].x = x;
+	g_sprt[slot].y = y;
+	g_sprt[slot].w = w > 0 ? w : 16;
+	g_sprt[slot].h = h > 0 ? h : 16;
+	g_sprt[slot].tex = tex;
+	g_sprt[slot].flip = flip;
+	if (g_sprt_n <= slot) {
+		g_sprt_n = slot + 1;
+	}
+}
+
+void gs_draw_clear_sprt(void)
+{
+	memset(g_sprt, 0, sizeof(g_sprt));
+	g_sprt_n = 0;
+}
+
+void gs_draw_tile(int slot, int x, int y, int atlas)
+{
+	if (slot < 0 || slot >= 256) {
+		return;
+	}
+	g_tile[slot].used = 1;
+	g_tile[slot].x = x;
+	g_tile[slot].y = y;
+	g_tile[slot].atlas = atlas;
+	if (g_tile_n <= slot) {
+		g_tile_n = slot + 1;
+	}
+}
+
+void gs_draw_clear_tiles(void)
+{
+	memset(g_tile, 0, sizeof(g_tile));
+	g_tile_n = 0;
 }
 
 void gs_draw_set_node_ofs(int node, float x, float y, float z)

@@ -13,6 +13,8 @@ void sfx_io_stop(void);
 int sfx_io_ready(void);
 int sfx_io_audible(void);
 int sfx_io_music_loaded(void);
+int sfx_io_music_load(int pack);
+void sfx_io_music_unload(void);
 void sfx_io_music_play(void);
 void sfx_io_music_stop(void);
 void sfx_io_music_set_vol(float vol);

@@ -130,7 +130,18 @@ enum {
 	NAT_PREFETCH_SCENE = 110,
 	NAT_NAVMESH = 111,
 	NAT_TWEEN_PLAY = 112,
-	NAT_TWEEN_KILL = 113
+	NAT_TWEEN_KILL = 113,
+	NAT_UNLOAD_TILES = 114,
+	NAT_LOAD_HUD = 115,
+	NAT_UNLOAD_HUD = 116,
+	NAT_CAN_LOAD_HUD = 117,
+	NAT_IS_HUD_LOADED = 118,
+	NAT_LOAD_MUSIC = 119,
+	NAT_UNLOAD_MUSIC = 120,
+	NAT_CAN_LOAD_MUSIC = 121,
+	NAT_IS_MUSIC_LOADED = 122,
+	NAT_PLAY_ANIM = 123,
+	NAT_STOP_ANIM = 124
 };
 
 static char s_str[8][128];
@@ -173,6 +184,17 @@ static float rf32(const unsigned char *p)
 	float f;
 	memcpy(&f, &u, 4);
 	return f;
+}
+
+static int resolve_pack(void)
+{
+	if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+		const int found = pack_io_find_path(s_str[s_last_str]);
+		if (found >= 0) {
+			return found;
+		}
+	}
+	return pack_io_current();
 }
 
 static int name_is_ci(const char *n, const char *want)
@@ -456,7 +478,7 @@ static void run_range(unsigned from, unsigned to, float delta)
 			float sx = 0.0f;
 			float sy = 0.0f;
 			pad_io_stick(0, &sx, &sy);
-			sys_io_slide(sx * rate, 0.0f, sy * rate, delta);
+			sys_io_slide(sx * rate, 0.0f, sy * rate, delta, 255);
 			continue;
 		}
 		if (op == OP_JUST_ACCEPT_SFX) {
@@ -605,10 +627,14 @@ static void run_range(unsigned from, unsigned to, float delta)
 			if (sp < 3) {
 				return;
 			}
+			int mask = 255;
+			if (sp >= 4) {
+				mask = (int)stack[--sp];
+			}
 			const float vz = stack[--sp];
 			const float vy = stack[--sp];
 			const float vx = stack[--sp];
-			sys_io_slide(vx, vy, vz, delta);
+			sys_io_slide(vx, vy, vz, delta, mask);
 			continue;
 		}
 		if (op == OP_OVERLAP) {
@@ -714,7 +740,7 @@ static void run_range(unsigned from, unsigned to, float delta)
 				pack = (int)stack[--sp];
 			}
 			if (sp < 8) {
-				stack[sp++] = pack_io_instantiate(pack) ? 1.0f : 0.0f;
+				stack[sp++] = pack_io_instantiate(pack) ? (float)pack : -1.0f;
 			} else {
 				(void)pack_io_instantiate(pack);
 			}
@@ -1057,6 +1083,45 @@ static void run_range(unsigned from, unsigned to, float delta)
 				stack[sp++] = (float)sys_io_tween_start(0.0f, 1.0f, 0.5f, 0);
 			} else if (nid == NAT_TWEEN_KILL && sp < 8) {
 				sys_io_kill_tweens();
+				stack[sp++] = 1.0f;
+			} else if (nid == NAT_UNLOAD_TILES && sp < 8) {
+				stack[sp++] = sys_io_unload_tiles() ? 1.0f : 0.0f;
+			} else if (nid == NAT_LOAD_HUD && sp < 8) {
+				const int pack = resolve_pack();
+				stack[sp++] = sys_io_load_hud(pack) ? 1.0f : 0.0f;
+			} else if (nid == NAT_UNLOAD_HUD && sp < 8) {
+				stack[sp++] = sys_io_unload_hud() ? 1.0f : 0.0f;
+			} else if (nid == NAT_CAN_LOAD_HUD && sp < 8) {
+				const int pack = resolve_pack();
+				stack[sp++] = (pack_io_is_loaded(pack) || pack_io_can_fit(pack)) ? 1.0f : 0.0f;
+			} else if (nid == NAT_IS_HUD_LOADED && sp < 8) {
+				stack[sp++] = sys_io_hud_loaded() ? 1.0f : 0.0f;
+			} else if (nid == NAT_LOAD_MUSIC && sp < 8) {
+				const int pack = resolve_pack();
+				if (pack > 0 && !pack_io_is_loaded(pack) && !pack_io_can_fit(pack)) {
+					stack[sp++] = 0.0f;
+				} else {
+					stack[sp++] = sfx_io_music_load(pack) ? 1.0f : 0.0f;
+				}
+			} else if (nid == NAT_UNLOAD_MUSIC && sp < 8) {
+				sfx_io_music_unload();
+				stack[sp++] = 1.0f;
+			} else if (nid == NAT_CAN_LOAD_MUSIC && sp < 8) {
+				const int pack = resolve_pack();
+				stack[sp++] = (pack <= 0 || pack_io_is_loaded(pack) || pack_io_can_fit(pack)) ? 1.0f : 0.0f;
+			} else if (nid == NAT_IS_MUSIC_LOADED && sp < 8) {
+				stack[sp++] = sfx_io_music_loaded() ? 1.0f : 0.0f;
+			} else if (nid == NAT_PLAY_ANIM && sp < 8) {
+				int idx = 0;
+				if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+					idx = s_str[s_last_str][0];
+				} else if (sp >= 1) {
+					idx = (int)stack[--sp];
+				}
+				sys_io_play_anim(idx);
+				stack[sp++] = 1.0f;
+			} else if (nid == NAT_STOP_ANIM && sp < 8) {
+				sys_io_stop_anim();
 				stack[sp++] = 1.0f;
 			} else if (sp < 8) {
 				stack[sp++] = (float)sys_io_get_hp();

@@ -127,6 +127,7 @@ static int s_tile_n;
 static short s_tile_x[256];
 static short s_tile_y[256];
 static unsigned char s_tile_flags[256];
+static unsigned char s_tile_atlas[256];
 static unsigned long long s_over_prev;
 static unsigned long long s_over_now;
 static int s_over_entered;
@@ -154,6 +155,7 @@ static float s_ak_ry[64];
 static float s_ak_rz[64];
 static float s_anim_t;
 static float s_anim_speed;
+static int s_anim_playing;
 static int s_fmv_n;
 static int s_hp = 3;
 static int s_frame;
@@ -327,6 +329,9 @@ static void redraw_hud(void)
 			}
 		}
 		gs_draw_hud_quad(i, s_hud_x[i], s_hud_y[i], s_hud_w[i], s_hud_h[i], r, g, b);
+		if (s_hud_kind[i] == 1 || s_hud_text[i][0]) {
+			gs_draw_hud_text(i, s_hud_x[i], s_hud_y[i], r, g, b, s_hud_text[i]);
+		}
 	}
 }
 
@@ -375,6 +380,7 @@ static void apply_tile(const unsigned char *b, unsigned sz)
 		s_tile_n = 256;
 	}
 	const unsigned rec = 6;
+	gs_draw_clear_tiles();
 	for (int i = 0; i < s_tile_n; i++) {
 		if (10 + (unsigned)(i + 1) * rec > sz) {
 			s_tile_n = i;
@@ -384,6 +390,10 @@ static void apply_tile(const unsigned char *b, unsigned sz)
 		s_tile_x[i] = (short)ru16(r);
 		s_tile_y[i] = (short)ru16(r + 2);
 		s_tile_flags[i] = r[4];
+		s_tile_atlas[i] = r[5];
+		if (s_tile_flags[i] & 1) {
+			gs_draw_tile(i, s_tile_x[i], s_tile_y[i], s_tile_atlas[i]);
+		}
 	}
 }
 
@@ -449,6 +459,7 @@ static void apply_anim(const unsigned char *b, unsigned sz)
 	s_anim_len = 1.0f;
 	s_anim_t = 0.0f;
 	s_anim_speed = 1.0f;
+	s_anim_playing = 1;
 	s_anim_loaded = 1;
 	if (s_anim_n < 1 || sz < 8 + 36) {
 		return;
@@ -482,6 +493,7 @@ static void apply_sprt(const unsigned char *b, unsigned sz)
 {
 	s_sprt_n = 0;
 	s_sprt_loaded = 0;
+	gs_draw_clear_sprt();
 	if (!b || sz < 8 || !mag4(b, 'S', 'P', 'R', 'T') || ru16(b + 4) != BLAZIUM_PS2_COOK_ABI) {
 		return;
 	}
@@ -504,9 +516,7 @@ static void apply_sprt(const unsigned char *b, unsigned sz)
 		s_sprt_h[i] = (short)ru16(r + 10);
 		s_sprt_flip[i] = r[12];
 		s_sprt_frame[i] = r[13];
-		if (i < 16) {
-			gs_draw_hud_quad(i, s_sprt_x[i], s_sprt_y[i], s_sprt_w[i], s_sprt_h[i], 200, 200, 200);
-		}
+		gs_draw_sprt(i, s_sprt_x[i], s_sprt_y[i], s_sprt_w[i], s_sprt_h[i], s_sprt_tex[i], s_sprt_flip[i]);
 	}
 	s_sprt_loaded = s_sprt_n > 0;
 }
@@ -845,6 +855,19 @@ void sys_io_set_anim_speed(float s)
 	s_anim_speed = s;
 }
 
+void sys_io_play_anim(int name_or_index)
+{
+	(void)name_or_index;
+	s_anim_playing = 1;
+	s_anim_t = 0.0f;
+	apply_anim_pose();
+}
+
+void sys_io_stop_anim(void)
+{
+	s_anim_playing = 0;
+}
+
 int sys_io_play_fmv(void)
 {
 	return 0;
@@ -867,7 +890,7 @@ void sys_io_tick(float delta)
 	if (s_hitstop_ms > 0) {
 		return;
 	}
-	if (s_anim_n > 0) {
+	if (s_anim_n > 0 && s_anim_playing) {
 		s_frame++;
 		s_anim_t += delta * s_anim_speed;
 		if (s_anim_len > 0.0f && s_anim_t > s_anim_len) {
@@ -1301,20 +1324,28 @@ static int aabb_overlap(float px, float py, float pz, int i)
 	return 1;
 }
 
-static int hits_at(float px, float py, float pz)
+static int layer_ok(int i, int mask)
+{
+	if (mask == 0 || mask == 255) {
+		return 1;
+	}
+	return (mask & (int)s_hit_layer[i]) != 0;
+}
+
+static int hits_at(float px, float py, float pz, int mask)
 {
 	for (int i = 0; i < s_hit_n; i++) {
-		if (hit_solid(i) && aabb_overlap(px, py, pz, i)) {
+		if (hit_solid(i) && layer_ok(i, mask) && aabb_overlap(px, py, pz, i)) {
 			return 1;
 		}
 	}
 	return 0;
 }
 
-static int enters_hit(float ox, float oy, float oz, float nx, float ny, float nz)
+static int enters_hit(float ox, float oy, float oz, float nx, float ny, float nz, int mask)
 {
 	for (int i = 0; i < s_hit_n; i++) {
-		if (!hit_solid(i)) {
+		if (!hit_solid(i) || !layer_ok(i, mask)) {
 			continue;
 		}
 		if (!aabb_overlap(ox, oy, oz, i) && aabb_overlap(nx, ny, nz, i)) {
@@ -1324,10 +1355,13 @@ static int enters_hit(float ox, float oy, float oz, float nx, float ny, float nz
 	return 0;
 }
 
-void sys_io_slide(float vx, float vy, float vz, float delta)
+void sys_io_slide(float vx, float vy, float vz, float delta, int mask)
 {
 	if (s_hitstop_ms > 0) {
 		return;
+	}
+	if (mask == 0) {
+		mask = 255;
 	}
 	if (!s_player_ok) {
 		gs_draw_look_point(&s_px, &s_py, &s_pz);
@@ -1341,21 +1375,21 @@ void sys_io_slide(float vx, float vy, float vz, float delta)
 	float ny = s_py;
 	float nz = s_pz;
 	if (dx != 0.0f) {
-		if (enters_hit(s_px, s_py, s_pz, s_px + dx, s_py, s_pz)) {
+		if (enters_hit(s_px, s_py, s_pz, s_px + dx, s_py, s_pz, mask)) {
 			s_on_wall = 1;
 		} else {
 			nx += dx;
 		}
 	}
 	if (dz != 0.0f) {
-		if (enters_hit(nx, s_py, s_pz, nx, s_py, s_pz + dz)) {
+		if (enters_hit(nx, s_py, s_pz, nx, s_py, s_pz + dz, mask)) {
 			s_on_wall = 1;
 		} else {
 			nz += dz;
 		}
 	}
 	if (dy != 0.0f) {
-		if (enters_hit(nx, s_py, nz, nx, s_py + dy, nz)) {
+		if (enters_hit(nx, s_py, nz, nx, s_py + dy, nz, mask)) {
 			if (dy < 0.0f) {
 				s_on_floor = 1;
 			} else {
@@ -1365,7 +1399,7 @@ void sys_io_slide(float vx, float vy, float vz, float delta)
 			ny += dy;
 		}
 	}
-	if (hits_at(nx, ny - 0.08f, nz)) {
+	if (hits_at(nx, ny - 0.08f, nz, mask)) {
 		s_on_floor = 1;
 	}
 	gs_draw_nudge3(nx - s_px, ny - s_py, nz - s_pz);
@@ -1590,7 +1624,7 @@ void sys_io_move_planar(float ax, float ay, float speed, float delta)
 	if (s_hitstop_ms > 0) {
 		return;
 	}
-	sys_io_slide(ax * speed + s_kb_x, 0.0f, ay * speed + s_kb_z, delta);
+	sys_io_slide(ax * speed + s_kb_x, 0.0f, ay * speed + s_kb_z, delta, 255);
 	s_kb_x *= 0.85f;
 	s_kb_z *= 0.85f;
 }
@@ -1681,6 +1715,7 @@ void sys_io_set_flip(int flip)
 	s_flip = flip;
 	for (int i = 0; i < s_sprt_n; i++) {
 		s_sprt_flip[i] = (unsigned char)flip;
+		gs_draw_sprt(i, s_sprt_x[i], s_sprt_y[i], s_sprt_w[i], s_sprt_h[i], s_sprt_tex[i], s_sprt_flip[i]);
 	}
 }
 
@@ -1708,6 +1743,7 @@ int sys_io_unload_sprites(void)
 {
 	s_sprt_n = 0;
 	s_sprt_loaded = 0;
+	gs_draw_clear_sprt();
 	return 1;
 }
 
@@ -1727,6 +1763,7 @@ int sys_io_unload_anims(void)
 	s_anim_n = 0;
 	s_anim_keys = 0;
 	s_anim_loaded = 0;
+	s_anim_playing = 0;
 	return 1;
 }
 
@@ -1764,6 +1801,7 @@ int sys_io_unload_tiles(void)
 {
 	s_tile_n = 0;
 	s_tile_loaded = 0;
+	gs_draw_clear_tiles();
 	return 1;
 }
 
@@ -1783,6 +1821,10 @@ int sys_io_unload_hud(void)
 {
 	s_hud_n = 0;
 	s_hud_loaded = 0;
+	for (int i = 0; i < 16; i++) {
+		s_hud_text[i][0] = 0;
+	}
+	gs_draw_clear_hud();
 	return 1;
 }
 
@@ -1796,6 +1838,9 @@ int sys_io_set_cell(int x, int y, int flags)
 	for (int i = 0; i < s_tile_n; i++) {
 		if (s_tile_x[i] == (short)x && s_tile_y[i] == (short)y) {
 			s_tile_flags[i] = (unsigned char)flags;
+			if (flags & 1) {
+				gs_draw_tile(i, x, y, s_tile_atlas[i]);
+			}
 			return 1;
 		}
 	}
@@ -1805,6 +1850,8 @@ int sys_io_set_cell(int x, int y, int flags)
 	s_tile_x[s_tile_n] = (short)x;
 	s_tile_y[s_tile_n] = (short)y;
 	s_tile_flags[s_tile_n] = (unsigned char)flags;
+	s_tile_atlas[s_tile_n] = 0;
+	gs_draw_tile(s_tile_n, x, y, 0);
 	s_tile_n++;
 	s_tile_loaded = 1;
 	return 1;
@@ -1822,9 +1869,16 @@ int sys_io_erase_cell(int x, int y)
 		s_tile_x[w] = s_tile_x[i];
 		s_tile_y[w] = s_tile_y[i];
 		s_tile_flags[w] = s_tile_flags[i];
+		s_tile_atlas[w] = s_tile_atlas[i];
 		w++;
 	}
 	s_tile_n = w;
+	gs_draw_clear_tiles();
+	for (int i = 0; i < s_tile_n; i++) {
+		if (s_tile_flags[i] & 1) {
+			gs_draw_tile(i, s_tile_x[i], s_tile_y[i], s_tile_atlas[i]);
+		}
+	}
 	return found;
 }
 
@@ -1847,10 +1901,10 @@ void sys_io_move_6dof(float ax, float ay, float az, float pitch, float yaw, floa
 		return;
 	}
 	if (s_vehl_mode == 1) {
-		sys_io_slide(ax * speed, ay * s_vehl_thrust, az * speed, delta);
+		sys_io_slide(ax * speed, ay * s_vehl_thrust, az * speed, delta, 255);
 		return;
 	}
-	sys_io_slide(ax * speed, ay * speed, az * speed, delta);
+	sys_io_slide(ax * speed, ay * speed, az * speed, delta, 255);
 	gs_draw_look(yaw, pitch, roll);
 }
 
