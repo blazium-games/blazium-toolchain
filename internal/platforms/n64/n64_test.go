@@ -2,6 +2,7 @@ package n64
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -206,6 +207,74 @@ func TestRunRequiresRom(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected usage error")
+	}
+}
+
+type memFetch struct{}
+
+func (memFetch) FetchZip(_ context.Context, _, _, destDir string, _ io.Writer) error {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return err
+	}
+	name := "ares"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return os.WriteFile(filepath.Join(destDir, name), []byte("ares"), 0o644)
+}
+
+func TestAresRunArgsUseSettingsTree(t *testing.T) {
+	args := aresRunArgs("game.z64")
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "General/HomebrewMode=true") {
+		t.Fatalf("homebrew key: %v", args)
+	}
+	if !strings.Contains(joined, "Nintendo64/ExpansionPak=true") {
+		t.Fatalf("expansion key: %v", args)
+	}
+	if strings.Contains(joined, "Homebrew Mode=") || strings.Contains(joined, "Expansion Pak=") {
+		t.Fatalf("must use settings tree keys, not UI labels: %v", args)
+	}
+}
+
+func TestOfficialAresURLWindows(t *testing.T) {
+	url := officialAresURLFor("windows", "amd64")
+	if !strings.Contains(url, "ares-emulator/ares") || !strings.HasSuffix(url, "ares-windows-x64.zip") {
+		t.Fatalf("official Ares zip: %s", url)
+	}
+	if officialAresURLFor("linux", "amd64") != "" {
+		t.Fatal("linux has no official GitHub Ares zip in v148")
+	}
+}
+
+func TestSetupDevFetchesAres(t *testing.T) {
+	dir := t.TempDir()
+	plantCompileTools(t, dir)
+	t.Setenv("N64_INST", "")
+	t.Setenv("N64_GCC", "")
+	t.Setenv("ARES_EXE", "")
+	t.Setenv("PROJECT64_EXE", "")
+	tool := &Tool{Fetcher: memFetch{}}
+	err := tool.Setup(context.Background(), platforms.SetupOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir, Stdout: os.Stdout},
+		Profile:       "dev",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := tool.Env(platforms.CommonOptions{Prefix: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fileExists(env["ARES_EXE"]) {
+		t.Fatalf("dev profile must fetch Ares: %+v", env)
+	}
+	st, err := tool.Status(platforms.CommonOptions{Prefix: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st["ares_ready"].(bool) {
+		t.Fatalf("status ares_ready: %+v", st)
 	}
 }
 

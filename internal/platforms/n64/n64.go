@@ -103,8 +103,13 @@ func (t *Tool) Setup(ctx context.Context, opts platforms.SetupOptions) error {
 	}
 
 	if needsDev(profile) {
+		if !opts.Offline {
+			if err := t.ensureDev(ctx, opts.Prefix, opts.Stdout); err != nil {
+				return err
+			}
+		}
 		env, notes = t.discover(opts.Prefix)
-		if env["ARES_EXE"] == "" && env["PROJECT64_EXE"] == "" && !opts.Offline {
+		if env["ARES_EXE"] == "" && env["PROJECT64_EXE"] == "" {
 			notes = append(notes, "dev profile: no ARES_EXE or PROJECT64_EXE found (boot tests will skip that validator)")
 		}
 	}
@@ -317,14 +322,7 @@ func (t *Tool) runOneEmu(ctx context.Context, name, exe, rom string, timeout tim
 	defer cancel()
 	var args []string
 	if name == "ares" {
-		args = []string{
-			"--system", "Nintendo 64",
-			"--no-file-prompt",
-			"--kiosk",
-			"--setting", "Homebrew Mode=true",
-			"--setting", "Expansion Pak=true",
-			rom,
-		}
+		args = aresRunArgs(rom)
 	} else {
 		args = []string{rom}
 	}
@@ -335,7 +333,10 @@ func (t *Tool) runOneEmu(ctx context.Context, name, exe, rom string, timeout tim
 		}
 		return nil
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("%s exited before smoke timeout (ROM did not stay running)", name)
 }
 
 func (t *Tool) ISO(ctx context.Context, opts platforms.ISOOptions) error {
