@@ -30,6 +30,8 @@ var RuntimeNames = []string{
 	"sfx_io.h",
 	"pack_io.cpp",
 	"pack_io.h",
+	"script_vm.cpp",
+	"script_vm.h",
 }
 
 //go:embed runtime

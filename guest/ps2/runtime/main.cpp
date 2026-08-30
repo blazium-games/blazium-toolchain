@@ -4,6 +4,7 @@
 #include "gs_draw.h"
 #include "pack_io.h"
 #include "pad_io.h"
+#include "script_vm.h"
 #include "sfx_io.h"
 
 #include <dma.h>
@@ -30,6 +31,12 @@
 extern "C" {
 extern const unsigned char cooked_node[];
 extern const unsigned int size_cooked_node;
+}
+#endif
+#ifdef BLAZIUM_PS2_HAS_SCRIPT
+extern "C" {
+extern const unsigned char cooked_script[];
+extern const unsigned int size_cooked_script;
 }
 #endif
 #ifdef BLAZIUM_PS2_HAS_MESH
@@ -132,6 +139,9 @@ int main(int argc, char **argv)
 	pad_io_init();
 	sfx_io_init();
 	pack_io_init();
+#ifdef BLAZIUM_PS2_HAS_SCRIPT
+	script_vm_init(cooked_script, size_cooked_script, node, node_sz);
+#endif
 
 	int context = 0;
 	for (;;) {
@@ -143,6 +153,9 @@ int main(int argc, char **argv)
 		if (cross) {
 			sfx_io_play();
 		}
+#ifdef BLAZIUM_PS2_HAS_SCRIPT
+		script_vm_process(1.0f / 60.0f);
+#endif
 		gs_draw_scene(&frames[context], &z);
 		draw_wait_finish();
 		graph_wait_vsync();

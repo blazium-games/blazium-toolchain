@@ -29,6 +29,21 @@ func TestEmbeddedRuntimeComplete(t *testing.T) {
 	}
 }
 
+func TestRuntimeNamesHasScriptVM(t *testing.T) {
+	var vm, hdr bool
+	for _, name := range RuntimeNames {
+		if name == "script_vm.cpp" {
+			vm = true
+		}
+		if name == "script_vm.h" {
+			hdr = true
+		}
+	}
+	if !vm || !hdr {
+		t.Fatalf("RuntimeNames missing script_vm: %v", RuntimeNames)
+	}
+}
+
 func TestOverlayReplacesAndAdds(t *testing.T) {
 	dir := t.TempDir()
 	if err := Install(dir); err != nil {

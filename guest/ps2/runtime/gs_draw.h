@@ -21,6 +21,9 @@ int gs_draw_ready(void);
 // Digital / stick: yaw around look-at, dolly along view distance.
 void gs_draw_orbit(float yaw, float dolly);
 
+// Script-driven Y-up world spin (rotate_y). Independent of pad orbit.
+void gs_draw_set_world_yaw(float yaw);
+
 // Clear + textured tris + slot-0 HUD stamp. Sends GIF packets itself.
 void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z);
 

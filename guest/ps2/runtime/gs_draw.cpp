@@ -62,6 +62,7 @@ static int g_tex_count;
 static float g_cam_x = 0.0f;
 static float g_cam_y = 3.0f;
 static float g_cam_z = 8.0f;
+static float g_world_yaw = 0.0f;
 
 static unsigned ru16(const unsigned char *p)
 {
@@ -437,6 +438,22 @@ int gs_draw_ready(void)
 	return g_ready;
 }
 
+void gs_draw_set_world_yaw(float yaw)
+{
+	g_world_yaw = yaw;
+}
+
+static void yaw_y(Mat4 *o, float yaw)
+{
+	const float c = cosf(yaw);
+	const float s = sinf(yaw);
+	mat_ident(o);
+	o->m[0] = c;
+	o->m[8] = s;
+	o->m[2] = -s;
+	o->m[10] = c;
+}
+
 void gs_draw_orbit(float yaw, float dolly)
 {
 	const float tx = 0.0f;
@@ -508,10 +525,12 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 		return;
 	}
 
-	Mat4 view, proj, mvp;
+	Mat4 world, view, proj, tmp, mvp;
+	yaw_y(&world, g_world_yaw);
 	look_at(&view, g_cam_x, g_cam_y, g_cam_z, 0.0f, 1.5f, 0.0f);
 	perspective(&proj, 55.0f, (float)frame->width / (float)frame->height, 0.25f, 400.0f);
-	mat_mul(&proj, &view, &mvp);
+	mat_mul(&view, &world, &tmp);
+	mat_mul(&proj, &tmp, &mvp);
 
 	prim_t prim;
 	color_t color;
