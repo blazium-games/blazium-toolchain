@@ -59,7 +59,8 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 			return err
 		}
 	}
-	if overlay != "" && sample == "" {
+	needWork := (overlay != "" && sample == "") || hasCookSlices(opts)
+	if needWork && sample == "" {
 		merge := filepath.Join(cache.PlatformDir(opts.Prefix, ID), "work", "guest-src")
 		if err := os.RemoveAll(merge); err != nil {
 			return err
@@ -73,7 +74,12 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 				return err
 			}
 		}
-		if err := guest.Overlay(merge, overlay); err != nil {
+		if overlay != "" {
+			if err := guest.Overlay(merge, overlay); err != nil {
+				return err
+			}
+		}
+		if err := stageCookEmbed(merge, opts); err != nil {
 			return err
 		}
 		src = merge
@@ -83,6 +89,9 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 			return err
 		}
 		src = GuestDir(opts.Prefix)
+		if err := stageCookEmbed(src, opts); err != nil {
+			return err
+		}
 	}
 	if src == "" || opts.Out == "" {
 		return fmt.Errorf("%w: build requires --out (bundled guest is used when --src and --sample are omitted)", platforms.ErrUsage)
@@ -189,6 +198,18 @@ func (t *Tool) buildCMake(ctx context.Context, src, buildDir string, extraPath [
 	cfg := []string{"-S", src, "-B", buildDir, "-DCMAKE_BUILD_TYPE=Debug"}
 	if fileExists(tc) {
 		cfg = append(cfg, "-DCMAKE_TOOLCHAIN_FILE="+tc)
+	}
+	if opts.Node != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS2_NODE="+filepath.ToSlash(opts.Node))
+	}
+	if opts.Mesh != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS2_MESH="+filepath.ToSlash(opts.Mesh))
+	}
+	if opts.Gtex != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS2_GTEX="+filepath.ToSlash(opts.Gtex))
+	}
+	if opts.Script != "" {
+		cfg = append(cfg, "-DBLAZIUM_PS2_SCRIPT="+filepath.ToSlash(opts.Script))
 	}
 	if err := t.runEnv(ctx, cmake, cfg, extraPath, extraEnv, opts.Stdout, opts.Stderr); err != nil {
 		return fmt.Errorf("cmake configure: %w", err)

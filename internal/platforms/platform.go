@@ -60,11 +60,12 @@ type BuildOptions struct {
 	Sample    string // template | gte; used when Src is empty
 	Overlay   string // optional extra/replacement *.cpp on top of Src or the bundled stub
 	ExportSrc string // write the resolved guest C++ tree here (export-guest snapshot)
-	Tim    string // optional cooked TIM to embed (P3+)
-	Mesh   string // optional cooked SVECTOR mesh to embed (P4+)
+	Tim    string // optional cooked TIM to embed (PS1)
+	Mesh   string // optional cooked mesh (PS1 SVECTOR / PS2 EE-native)
+	Gtex   string // optional cooked GTEX (PS2 GS PSM; do not use Tim)
 	Vag    string // optional cooked VAG to embed (P5+)
 	Sprite string // optional cooked SPRITE table to embed (P8+)
-	Script string // optional cooked SCRIPT.IR (ABI 2+)
+	Script string // optional cooked SCRIPT.IR / SCRP
 	Gdbc   string // optional cooked SCRIPT.GD.BC
 	Luau   string // optional cooked SCRIPT.LU.BC
 	Str    string // optional cooked FMV00.STR

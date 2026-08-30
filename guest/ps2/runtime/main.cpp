@@ -15,6 +15,35 @@
 #define BLAZIUM_PS2_COOK_ABI BLAZIUM_PS2_COOK_ABI_VALUE
 #endif
 
+#if defined(__has_include)
+#if __has_include("cook_flags.h")
+#include "cook_flags.h"
+#endif
+#endif
+
+#ifdef BLAZIUM_PS2_HAS_NODE
+extern "C" {
+extern const unsigned char cooked_node[];
+extern const unsigned int size_cooked_node;
+}
+static int g_node_count = 0;
+
+static void verify_cooked_node()
+{
+	if (size_cooked_node < 8) {
+		return;
+	}
+	if (cooked_node[0] != 'N' || cooked_node[1] != 'O' || cooked_node[2] != 'D' || cooked_node[3] != 'E') {
+		return;
+	}
+	const unsigned abi = (unsigned)cooked_node[4] | ((unsigned)cooked_node[5] << 8);
+	if (abi != BLAZIUM_PS2_COOK_ABI) {
+		return;
+	}
+	g_node_count = (int)cooked_node[6] | ((int)cooked_node[7] << 8);
+}
+#endif
+
 static void init_gs(framebuffer_t *frame, zbuffer_t *z)
 {
 	frame->width = 640;
@@ -56,6 +85,11 @@ int main(int argc, char **argv)
 	zbuffer_t z;
 	init_gs(&frame, &z);
 	init_drawing_environment(&frame, &z);
+
+#ifdef BLAZIUM_PS2_HAS_NODE
+	verify_cooked_node();
+	(void)g_node_count;
+#endif
 
 	packet_t *packet = packet_init(16, PACKET_NORMAL);
 	for (;;) {

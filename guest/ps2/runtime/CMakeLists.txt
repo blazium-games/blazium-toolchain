@@ -11,6 +11,13 @@ file(GLOB _ps2_extra RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
 if(_ps2_extra)
 	target_sources(runtime PRIVATE ${_ps2_extra})
 endif()
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cook_embed.S")
+	enable_language(ASM)
+	target_sources(runtime PRIVATE cook_embed.S)
+endif()
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cook_flags.h")
+	target_include_directories(runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
 target_include_directories(runtime PRIVATE
 	"${CMAKE_CURRENT_SOURCE_DIR}"
 	"$ENV{PS2SDK}/ee/include"

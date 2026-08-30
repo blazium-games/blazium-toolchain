@@ -145,6 +145,58 @@ func TestVerifyMipsELF(t *testing.T) {
 	}
 }
 
+func TestStageCookEmbedForwardsGtex(t *testing.T) {
+	dir := t.TempDir()
+	node := filepath.Join(dir, "in-node.bin")
+	gtex := filepath.Join(dir, "in-gtex.bin")
+	if err := os.WriteFile(node, []byte("NODE\x01\x00\x02\x00"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(gtex, []byte("GTEX\x01\x00\x00\x00"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(dir, "src")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	opts := platforms.BuildOptions{Node: node, Gtex: gtex}
+	if !hasCookSlices(opts) {
+		t.Fatal("expected cook slices")
+	}
+	if err := stageCookEmbed(dest, opts); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"NODE00.bin", "GTEX00.bin", "cook_embed.S", "cook_flags.h", "cook.mk"} {
+		if _, err := os.Stat(filepath.Join(dest, name)); err != nil {
+			t.Fatalf("missing %s: %v", name, err)
+		}
+	}
+	asm, err := os.ReadFile(filepath.Join(dest, "cook_embed.S"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(asm), "NODE00.bin") || !strings.Contains(string(asm), "GTEX00.bin") {
+		t.Fatalf("asm missing incbin: %s", asm)
+	}
+	hdr, err := os.ReadFile(filepath.Join(dest, "cook_flags.h"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(hdr), "BLAZIUM_PS2_HAS_NODE") || !strings.Contains(string(hdr), "BLAZIUM_PS2_HAS_GTEX") {
+		t.Fatalf("flags: %s", hdr)
+	}
+	if strings.Contains(string(hdr), "BLAZIUM_PS2_HAS_MESH") {
+		t.Fatal("mesh was not passed")
+	}
+	mk, err := os.ReadFile(filepath.Join(dest, "cook.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(mk), "cook_embed.o") || !strings.Contains(string(mk), "BLAZIUM_PS2_HAS_GTEX") {
+		t.Fatalf("cook.mk missing objs/flags: %s", mk)
+	}
+}
+
 func TestBiosReady(t *testing.T) {
 	dir := t.TempDir()
 	if biosReady(map[string]string{"PS2_BIOS_DIR": dir}) {

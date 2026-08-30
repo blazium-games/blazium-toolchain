@@ -220,8 +220,9 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	sample := fs.String("sample", "", "official SDK sample: template or gte (when --src is empty)")
 	overlay := fs.String("overlay", "", "extra or replacement *.cpp on top of the bundled stub (or --src); also BLAZIUM_PS1_OVERLAY")
 	exportSrc := fs.String("export-src", "", "write the resolved guest C++ tree here")
-	tim := fs.String("tim", "", "optional cooked TIM to embed in the guest")
-	mesh := fs.String("mesh", "", "optional cooked SVECTOR mesh to embed in the guest")
+	tim := fs.String("tim", "", "optional cooked TIM to embed in the guest (PS1)")
+	mesh := fs.String("mesh", "", "optional cooked mesh to embed in the guest")
+	gtex := fs.String("gtex", "", "optional cooked GTEX (GS PSM) to embed in the PS2 guest")
 	vag := fs.String("vag", "", "optional cooked VAG to embed in the guest")
 	sprite := fs.String("sprite", "", "optional cooked SPRITE table to embed in the guest")
 	script := fs.String("script", "", "optional cooked SCRIPT.IR to embed in the guest")
@@ -242,7 +243,7 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Overlay: *overlay, ExportSrc: *exportSrc, Tim: *tim, Mesh: *mesh, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Overlay: *overlay, ExportSrc: *exportSrc, Tim: *tim, Mesh: *mesh, Gtex: *gtex, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way})
 }
 
 func runExportGuest(p platforms.Platform, args []string, base platforms.CommonOptions, stdout io.Writer) error {
@@ -525,6 +526,7 @@ PS2 commands:
   env
   status
   build --out FILE.elf [--src DIR | --sample cube] [--overlay DIR] [--export-src DIR]
+    [--node|--mesh|--gtex|--script]
   export-guest [--out DIR]
   run [--iso FILE.iso] [--timeout 120s] [--ui] [GAME.elf]
   iso --dir TREE --out FILE.iso
