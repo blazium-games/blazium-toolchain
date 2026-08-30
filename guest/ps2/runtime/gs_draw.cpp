@@ -437,6 +437,31 @@ int gs_draw_ready(void)
 	return g_ready;
 }
 
+void gs_draw_orbit(float yaw, float dolly)
+{
+	const float tx = 0.0f;
+	const float ty = 1.5f;
+	const float tz = 0.0f;
+	float dx = g_cam_x - tx;
+	float dz = g_cam_z - tz;
+	float dist = sqrtf(dx * dx + dz * dz);
+	if (dist < 0.25f) {
+		dist = 0.25f;
+	}
+	float az = atan2f(dx, dz);
+	az += yaw;
+	dist += dolly;
+	if (dist < 1.0f) {
+		dist = 1.0f;
+	}
+	if (dist > 80.0f) {
+		dist = 80.0f;
+	}
+	g_cam_x = tx + sinf(az) * dist;
+	g_cam_z = tz + cosf(az) * dist;
+	(void)ty;
+}
+
 static void send_packet(packet_t *packet, qword_t *q)
 {
 	if (!packet || !q) {

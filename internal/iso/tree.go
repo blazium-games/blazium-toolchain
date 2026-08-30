@@ -112,6 +112,10 @@ func addDirChildren(n *node, dir string, recursive bool) error {
 			}
 			continue
 		}
+		ext := strings.ToLower(filepath.Ext(e.Name()))
+		if ext == ".iso" || ext == ".cue" {
+			continue
+		}
 		n.children = append(n.children, &node{
 			name:    e.Name(),
 			srcPath: full,

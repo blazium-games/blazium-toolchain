@@ -18,6 +18,9 @@ int gs_draw_init(const unsigned char *mesh, unsigned mesh_sz,
 
 int gs_draw_ready(void);
 
+// Digital / stick: yaw around look-at, dolly along view distance.
+void gs_draw_orbit(float yaw, float dolly);
+
 // Clear + textured tris + slot-0 HUD stamp. Sends GIF packets itself.
 void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z);
 

@@ -24,6 +24,12 @@ var RuntimeNames = []string{
 	"main.cpp",
 	"gs_draw.cpp",
 	"gs_draw.h",
+	"pad_io.cpp",
+	"pad_io.h",
+	"sfx_io.cpp",
+	"sfx_io.h",
+	"pack_io.cpp",
+	"pack_io.h",
 }
 
 //go:embed runtime

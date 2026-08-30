@@ -126,8 +126,12 @@ func TestISOWritesSYSTEMCNF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "SYSTEM.CNF")); err != nil {
+	cnf, err := os.ReadFile(filepath.Join(dir, "SYSTEM.CNF"))
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(string(cnf), "BOOT2") || !strings.Contains(string(cnf), "cdrom0:") {
+		t.Fatalf("SYSTEM.CNF missing BOOT2: %s", cnf)
 	}
 }
 
@@ -194,6 +198,59 @@ func TestStageCookEmbedForwardsGtex(t *testing.T) {
 	}
 	if !strings.Contains(string(mk), "cook_embed.o") || !strings.Contains(string(mk), "BLAZIUM_PS2_HAS_GTEX") {
 		t.Fatalf("cook.mk missing objs/flags: %s", mk)
+	}
+}
+
+func TestHostFsDirIsElfParent(t *testing.T) {
+	got := hostFsDir(filepath.Join("export", "Game.elf"), "", "")
+	if got != "export" {
+		t.Fatalf("got %q", got)
+	}
+	if hostFsDir("Game.elf", "Game.iso", "") != "" {
+		t.Fatal("ISO run must not pin HostFs")
+	}
+	if hostFsDir("Game.elf", "", "custom") != "custom" {
+		t.Fatal("override")
+	}
+}
+
+func TestStageIrxEmbed(t *testing.T) {
+	sdk := t.TempDir()
+	irxDir := filepath.Join(sdk, "iop", "irx")
+	if err := os.MkdirAll(irxDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(irxDir, "fileXio.irx"), []byte("FXIO"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(irxDir, "freesd.irx"), []byte("FSD"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(t.TempDir(), "src")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := stageIrxEmbed(dest, sdk); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"fileXio.irx", "freesd.irx", "irx_embed.S", "irx_flags.h", "irx.mk"} {
+		if _, err := os.Stat(filepath.Join(dest, name)); err != nil {
+			t.Fatalf("missing %s: %v", name, err)
+		}
+	}
+	asm, err := os.ReadFile(filepath.Join(dest, "irx_embed.S"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(asm), "fileXio.irx") || !strings.Contains(string(asm), "freesd.irx") {
+		t.Fatalf("asm: %s", asm)
+	}
+	hdr, err := os.ReadFile(filepath.Join(dest, "irx_flags.h"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(hdr), "BLAZIUM_PS2_HAS_IRX_FILEXIO") || !strings.Contains(string(hdr), "BLAZIUM_PS2_HAS_IRX_FREESD") {
+		t.Fatalf("flags: %s", hdr)
 	}
 }
 

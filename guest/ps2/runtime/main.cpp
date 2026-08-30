@@ -2,6 +2,9 @@
 // P4: double 16-bit frame + Z, CPU GIF textured MESH/GTEX. Not Godot. Not VU1.
 
 #include "gs_draw.h"
+#include "pack_io.h"
+#include "pad_io.h"
+#include "sfx_io.h"
 
 #include <dma.h>
 #include <draw.h>
@@ -126,8 +129,20 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
+	pad_io_init();
+	sfx_io_init();
+	pack_io_init();
+
 	int context = 0;
 	for (;;) {
+		float yaw = 0.0f;
+		float dolly = 0.0f;
+		int cross = 0;
+		pad_io_poll(&yaw, &dolly, &cross);
+		gs_draw_orbit(yaw, dolly);
+		if (cross) {
+			sfx_io_play();
+		}
 		gs_draw_scene(&frames[context], &z);
 		draw_wait_finish();
 		graph_wait_vsync();

@@ -82,6 +82,9 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 		if err := stageCookEmbed(merge, opts); err != nil {
 			return err
 		}
+		if err := stageIrxEmbed(merge, env["PS2SDK"]); err != nil {
+			return err
+		}
 		src = merge
 	}
 	if src == "" {
@@ -90,6 +93,9 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 		}
 		src = GuestDir(opts.Prefix)
 		if err := stageCookEmbed(src, opts); err != nil {
+			return err
+		}
+		if err := stageIrxEmbed(src, env["PS2SDK"]); err != nil {
 			return err
 		}
 	}

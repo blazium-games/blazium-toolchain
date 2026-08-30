@@ -210,6 +210,18 @@ func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
 		args = append(args, opts.ISO)
 	} else {
 		args = append(args, "-elf", opts.Exe)
+		hostDir := hostFsDir(opts.Exe, opts.ISO, opts.Pcdrv)
+		if hostDir != "" {
+			prev, err := os.Getwd()
+			if err == nil {
+				if chdirErr := os.Chdir(hostDir); chdirErr == nil {
+					defer func() { _ = os.Chdir(prev) }()
+					if opts.Stdout != nil {
+						fmt.Fprintf(opts.Stdout, "HostFs cwd %s (host: resolves to ELF dir)\n", hostDir)
+					}
+				}
+			}
+		}
 	}
 	err = t.runEnv(runCtx, pcsx, args, []string{filepath.Dir(pcsx)}, map[string]string{"PCSX2_EXE": pcsx}, opts.Stdout, opts.Stderr)
 	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
@@ -442,6 +454,20 @@ func or(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// hostFsDir is the folder PCSX2 host: should resolve to for ELF runs (not ISO).
+func hostFsDir(exe, iso, override string) string {
+	if strings.TrimSpace(iso) != "" {
+		return ""
+	}
+	if strings.TrimSpace(override) != "" {
+		return override
+	}
+	if strings.TrimSpace(exe) == "" {
+		return ""
+	}
+	return filepath.Dir(exe)
 }
 
 func ensureSystemCNF(dir string) error {
