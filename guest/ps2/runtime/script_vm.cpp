@@ -6,6 +6,7 @@
 #include "pack_io.h"
 #include "pad_io.h"
 #include "sfx_io.h"
+#include "sys_io.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,7 +34,12 @@ enum {
 	OP_USER_SAVE = 14,
 	OP_USER_LOAD = 15,
 	OP_MEMCARD_PRESENT = 16,
-	OP_KIT_TICK = 17
+	OP_KIT_TICK = 17,
+	OP_SAY = 18,
+	OP_NAV_FOLLOW = 19,
+	OP_SAVE_SLOT = 20,
+	OP_PLAY_FMV = 21,
+	OP_SYS_TICK = 22
 };
 
 static const unsigned char *s_tape;
@@ -360,6 +366,34 @@ static void run_range(unsigned from, unsigned to, float delta)
 		}
 		if (op == OP_KIT_TICK) {
 			kit_tick();
+			continue;
+		}
+		if (op == OP_SAY) {
+			sys_io_say("PS2");
+			continue;
+		}
+		if (op == OP_NAV_FOLLOW) {
+			sys_io_nav_follow(1.0f, delta);
+			continue;
+		}
+		if (op == OP_SAVE_SLOT) {
+			int slot = 0;
+			if (sp >= 1) {
+				slot = (int)stack[--sp];
+			}
+			const unsigned char data[2] = { 1, 0 };
+			if (!pack_io_user_save_slot(slot, data, 2)) {
+				(void)pack_io_user_error();
+			}
+			continue;
+		}
+		if (op == OP_PLAY_FMV) {
+			(void)sys_io_play_fmv();
+			(void)sys_io_fmv_error();
+			continue;
+		}
+		if (op == OP_SYS_TICK) {
+			sys_io_tick(delta);
 			continue;
 		}
 	}

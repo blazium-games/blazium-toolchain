@@ -32,6 +32,8 @@ var RuntimeNames = []string{
 	"pack_io.h",
 	"script_vm.cpp",
 	"script_vm.h",
+	"sys_io.cpp",
+	"sys_io.h",
 	"vu1_draw.cpp",
 	"vu1_draw.h",
 	"draw_3D.vsm",

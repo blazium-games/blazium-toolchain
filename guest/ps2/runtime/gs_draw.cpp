@@ -67,6 +67,13 @@ static float g_look_y = 1.5f;
 static float g_look_z = 0.0f;
 static float g_world_yaw = 0.0f;
 
+struct HudQuad {
+	int used;
+	int x, y, w, h;
+	int r, g, b;
+};
+static HudQuad g_hudq[8];
+
 static unsigned ru16(const unsigned char *p)
 {
 	return (unsigned)p[0] | ((unsigned)p[1] << 8);
@@ -436,7 +443,30 @@ static qword_t *emit_hud(qword_t *q, int width, int height)
 	rect.color.b = 0x80;
 	rect.color.a = 0x80;
 	rect.color.q = 1.0f;
-	return draw_rect_textured(q, 0, &rect);
+	q = draw_rect_textured(q, 0, &rect);
+	for (int i = 0; i < 8; i++) {
+		if (!g_hudq[i].used) {
+			continue;
+		}
+		texrect_t bar;
+		memset(&bar, 0, sizeof(bar));
+		bar.v0.x = ox + (float)g_hudq[i].x;
+		bar.v0.y = oy + (float)g_hudq[i].y;
+		bar.v0.z = 1;
+		bar.v1.x = bar.v0.x + (float)g_hudq[i].w;
+		bar.v1.y = bar.v0.y + (float)g_hudq[i].h;
+		bar.t0.u = 0.0f;
+		bar.t0.v = 0.0f;
+		bar.t1.u = 4.0f;
+		bar.t1.v = 4.0f;
+		bar.color.r = (unsigned char)(g_hudq[i].r >> 1);
+		bar.color.g = (unsigned char)(g_hudq[i].g >> 1);
+		bar.color.b = (unsigned char)(g_hudq[i].b >> 1);
+		bar.color.a = 0x80;
+		bar.color.q = 1.0f;
+		q = draw_rect_textured(q, 0, &bar);
+	}
+	return q;
 }
 
 int gs_draw_init(const unsigned char *mesh, unsigned mesh_sz,
@@ -445,6 +475,7 @@ int gs_draw_init(const unsigned char *mesh, unsigned mesh_sz,
 {
 	g_ready = 0;
 	g_tex_count = 0;
+	memset(g_hudq, 0, sizeof(g_hudq));
 	parse_camera(node, node_sz);
 	parse_upload_gtex(gtex, gtex_sz);
 	if (!parse_mesh(mesh, mesh_sz)) {
@@ -470,6 +501,28 @@ void gs_draw_nudge(float dx, float dz)
 	g_look_z += dz;
 	g_cam_x += dx;
 	g_cam_z += dz;
+}
+
+void gs_draw_set_eye(float x, float y, float z)
+{
+	g_cam_x = x;
+	g_cam_y = y;
+	g_cam_z = z;
+}
+
+void gs_draw_hud_quad(int slot, int x, int y, int w, int h, int r, int g, int b)
+{
+	if (slot < 0 || slot >= 8) {
+		return;
+	}
+	g_hudq[slot].used = 1;
+	g_hudq[slot].x = x;
+	g_hudq[slot].y = y;
+	g_hudq[slot].w = w > 0 ? w : 8;
+	g_hudq[slot].h = h > 0 ? h : 8;
+	g_hudq[slot].r = r;
+	g_hudq[slot].g = g;
+	g_hudq[slot].b = b;
 }
 
 void gs_draw_camera(float *x, float *y, float *z)

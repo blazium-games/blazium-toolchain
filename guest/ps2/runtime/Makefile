@@ -3,7 +3,7 @@
 # VU1 is enabled here when dvp-as + libpacket2 exist. CMake is CPU-GIF fallback.
 
 EE_BIN = runtime.elf
-EE_OBJS = main.o gs_draw.o pad_io.o sfx_io.o pack_io.o script_vm.o vu1_draw.o
+EE_OBJS = main.o gs_draw.o pad_io.o sfx_io.o pack_io.o script_vm.o sys_io.o vu1_draw.o
 EE_LIBS = -ldraw -lgraph -lpacket -ldma -lpad -lfileXio -lpatches -lm
 ifneq ($(wildcard $(PS2SDK)/ee/lib/libsdr.a),)
 EE_LIBS += -lsdr

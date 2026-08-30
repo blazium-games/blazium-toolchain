@@ -26,6 +26,8 @@ void gs_draw_set_world_yaw(float yaw);
 
 // Input.get_vector / Node3D.translate: slide the look-at target on XZ.
 void gs_draw_nudge(float dx, float dz);
+void gs_draw_set_eye(float x, float y, float z);
+void gs_draw_hud_quad(int slot, int x, int y, int w, int h, int r, int g, int b);
 
 // Clear + textured tris + slot-0 HUD stamp. Sends GIF packets itself.
 void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z);

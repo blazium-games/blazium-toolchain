@@ -28,6 +28,9 @@ int pack_io_user_present(void);
 int pack_io_user_ready(void);
 int pack_io_user_save(const void *data, unsigned n);
 int pack_io_user_load(void *data, unsigned maxn);
+int pack_io_user_save_slot(int slot, const void *data, unsigned n);
+int pack_io_user_load_slot(int slot, void *data, unsigned maxn);
+int pack_io_user_format(void);
 const char *pack_io_user_error(void);
 
 #ifdef __cplusplus

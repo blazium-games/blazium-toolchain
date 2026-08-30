@@ -6,6 +6,7 @@
 #include "pad_io.h"
 #include "script_vm.h"
 #include "sfx_io.h"
+#include "sys_io.h"
 #include "vu1_draw.h"
 
 #include <dma.h>
@@ -198,6 +199,7 @@ int main(int argc, char **argv)
 	pad_io_init();
 	sfx_io_init();
 	pack_io_init();
+	sys_io_init();
 #ifdef BLAZIUM_PS2_HAS_SCRIPT
 	script_vm_init(cooked_script, size_cooked_script, node, node_sz);
 #endif

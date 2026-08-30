@@ -100,6 +100,23 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	if !strings.Contains(string(vm), "OP_KIT_TICK") || !strings.Contains(string(vm), "Checkpoint") {
 		t.Fatal("script_vm must interpret kit tick and Checkpoint")
 	}
+	if !strings.Contains(string(vm), "OP_SAY") || !strings.Contains(string(vm), "OP_PLAY_FMV") {
+		t.Fatal("script_vm must interpret say and play_fmv")
+	}
+}
+
+func TestGuestSysIO(t *testing.T) {
+	sys, err := files.ReadFile("runtime/sys_io.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(sys)
+	if !strings.Contains(src, "CAM00") || !strings.Contains(src, "HUD00") || !strings.Contains(src, "NAV00") {
+		t.Fatal("sys_io.cpp must load CAM/HUD/NAV sidecars")
+	}
+	if !strings.Contains(src, "FMV/IPU") && !strings.Contains(src, "license-clean") {
+		t.Fatal("sys_io.cpp must name FMV/IPU skip")
+	}
 }
 
 func TestRuntimeNamesHasScriptVM(t *testing.T) {
