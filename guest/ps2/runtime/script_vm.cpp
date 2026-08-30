@@ -55,7 +55,9 @@ enum {
 	OP_SLIDE = 35,
 	OP_OVERLAP = 36,
 	OP_RAYCAST = 37,
-	OP_TILE_AT = 38
+	OP_TILE_AT = 38,
+	OP_SET_FADE = 39,
+	OP_SCENE_FADE = 40
 };
 
 static const unsigned char *s_tape;
@@ -543,6 +545,24 @@ static void run_range(unsigned from, unsigned to, float delta)
 			const float x = stack[--sp];
 			(void)sys_io_tile_solid_at(x, y);
 			(void)sys_io_tile_at(x, y);
+			continue;
+		}
+		if (op == OP_SET_FADE) {
+			if (sp < 4) {
+				return;
+			}
+			const float b = stack[--sp];
+			const float g = stack[--sp];
+			const float r = stack[--sp];
+			const float a = stack[--sp];
+			sys_io_set_fade(a, r, g, b);
+			continue;
+		}
+		if (op == OP_SCENE_FADE) {
+			if (sp < 1) {
+				return;
+			}
+			sys_io_scene_fade(stack[--sp]);
 			continue;
 		}
 	}

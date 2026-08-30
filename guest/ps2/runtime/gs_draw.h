@@ -37,6 +37,7 @@ void gs_draw_orbit_sph(float yaw, float pitch, float dist);
 void gs_draw_attach_offset(float x, float y, float z);
 void gs_draw_shake(float x, float y, float z);
 void gs_draw_hud_quad(int slot, int x, int y, int w, int h, int r, int g, int b);
+void gs_draw_set_fade(int a, int r, int g, int b);
 
 // Clear + textured tris + slot-0 HUD stamp. Sends GIF packets itself.
 void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z);

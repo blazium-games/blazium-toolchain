@@ -54,6 +54,8 @@ int sys_io_raycast(float ox, float oy, float oz, float dx, float dy, float dz, f
 void sys_io_ray_point(float *x, float *y, float *z);
 int sys_io_tile_solid_at(float x, float y);
 int sys_io_tile_at(float x, float y);
+void sys_io_set_fade(float alpha, float r, float g, float b);
+void sys_io_scene_fade(float sec);
 
 #ifdef __cplusplus
 }

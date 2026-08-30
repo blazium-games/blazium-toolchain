@@ -60,6 +60,11 @@ static int s_over_entered;
 static float s_ray_x;
 static float s_ray_y;
 static float s_ray_z;
+static float s_fade_left;
+static float s_fade_dur;
+static int s_fade_r;
+static int s_fade_g;
+static int s_fade_b;
 static int s_nav_n;
 static int s_anim_n;
 static int s_fmv_n;
@@ -281,6 +286,9 @@ int sys_io_init(void)
 	s_over_prev = s_over_now = 0;
 	s_over_entered = 0;
 	s_ray_x = s_ray_y = s_ray_z = 0.0f;
+	s_fade_left = s_fade_dur = 0.0f;
+	s_fade_r = s_fade_g = s_fade_b = 0;
+	gs_draw_set_fade(0, 0, 0, 0);
 	memcpy(s_fmv_err, "FMV/IPU not shipped on PS2 ABI 1 (no license-clean decoder)", 59);
 	s_fmv_err[59] = 0;
 	unsigned sz = 0;
@@ -436,6 +444,16 @@ void sys_io_tick(float delta)
 				s_tm_left[i] = 0.0f;
 				s_tm_on[i] = 0;
 			}
+		}
+	}
+	if (s_fade_left > 0.0f) {
+		s_fade_left -= delta;
+		if (s_fade_left <= 0.0f || s_fade_dur <= 0.0f) {
+			s_fade_left = 0.0f;
+			gs_draw_set_fade(0, s_fade_r, s_fade_g, s_fade_b);
+		} else {
+			const float u = s_fade_left / s_fade_dur;
+			gs_draw_set_fade((int)(u * 128.0f), s_fade_r, s_fade_g, s_fade_b);
 		}
 	}
 }
@@ -863,4 +881,37 @@ int sys_io_tile_at(float x, float y)
 int sys_io_tile_solid_at(float x, float y)
 {
 	return sys_io_tile_at(x, y) != 0;
+}
+
+void sys_io_set_fade(float alpha, float r, float g, float b)
+{
+	s_fade_left = 0.0f;
+	s_fade_dur = 0.0f;
+	s_fade_r = (int)r;
+	s_fade_g = (int)g;
+	s_fade_b = (int)b;
+	int a = (int)(alpha * 128.0f);
+	if (a < 0) {
+		a = 0;
+	}
+	if (a > 128) {
+		a = 128;
+	}
+	gs_draw_set_fade(a, s_fade_r, s_fade_g, s_fade_b);
+}
+
+void sys_io_scene_fade(float sec)
+{
+	s_fade_r = 0;
+	s_fade_g = 0;
+	s_fade_b = 0;
+	if (sec <= 0.0f) {
+		s_fade_left = 0.0f;
+		s_fade_dur = 0.0f;
+		gs_draw_set_fade(0, 0, 0, 0);
+		return;
+	}
+	s_fade_dur = sec;
+	s_fade_left = sec;
+	gs_draw_set_fade(128, 0, 0, 0);
 }

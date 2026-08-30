@@ -130,6 +130,9 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	if !strings.Contains(string(vm), "OP_OVERLAP") || !strings.Contains(string(vm), "OP_RAYCAST") || !strings.Contains(string(vm), "OP_TILE_AT") {
 		t.Fatal("script_vm must interpret overlaps / raycast / tile_solid_at")
 	}
+	if !strings.Contains(string(vm), "OP_SET_FADE") || !strings.Contains(string(vm), "OP_SCENE_FADE") {
+		t.Fatal("script_vm must interpret set_fade / change_scene_fade")
+	}
 }
 
 func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
@@ -164,6 +167,12 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	}
 	if !strings.Contains(string(sys), "sys_io_overlaps") || !strings.Contains(string(sys), "sys_io_raycast") || !strings.Contains(string(sys), "sys_io_tile_solid_at") {
 		t.Fatal("sys_io.cpp must query HIT overlaps, raycast, and TILE cells")
+	}
+	if !strings.Contains(string(sys), "sys_io_set_fade") || !strings.Contains(string(sys), "sys_io_scene_fade") {
+		t.Fatal("sys_io.cpp must expose set_fade / change_scene_fade")
+	}
+	if !strings.Contains(string(gs), "gs_draw_set_fade") || !strings.Contains(string(gs), "draw_rect_filled") {
+		t.Fatal("gs_draw.cpp must overlay set_fade as a blended GS rect")
 	}
 	cmake, err := files.ReadFile("runtime/CMakeLists.txt")
 	if err != nil {

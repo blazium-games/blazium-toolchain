@@ -83,6 +83,10 @@ struct HudQuad {
 	int r, g, b;
 };
 static HudQuad g_hudq[8];
+static int g_fade_a;
+static int g_fade_r;
+static int g_fade_g;
+static int g_fade_b;
 
 static unsigned ru16(const unsigned char *p)
 {
@@ -480,6 +484,23 @@ static qword_t *emit_hud(qword_t *q, int width, int height)
 		bar.color.q = 1.0f;
 		q = draw_rect_textured(q, 0, &bar);
 	}
+	if (g_fade_a > 0) {
+		draw_enable_blending();
+		rect_t fade;
+		memset(&fade, 0, sizeof(fade));
+		fade.v0.x = ox;
+		fade.v0.y = oy;
+		fade.v0.z = 1;
+		fade.v1.x = ox + (float)width;
+		fade.v1.y = oy + (float)height;
+		fade.color.r = (unsigned char)(g_fade_r >> 1);
+		fade.color.g = (unsigned char)(g_fade_g >> 1);
+		fade.color.b = (unsigned char)(g_fade_b >> 1);
+		fade.color.a = (unsigned char)g_fade_a;
+		fade.color.q = 1.0f;
+		q = draw_rect_filled(q, 0, &fade);
+		draw_disable_blending();
+	}
 	return q;
 }
 
@@ -489,6 +510,7 @@ int gs_draw_init(const unsigned char *mesh, unsigned mesh_sz,
 {
 	g_ready = 0;
 	g_tex_count = 0;
+	g_fade_a = g_fade_r = g_fade_g = g_fade_b = 0;
 	memset(g_hudq, 0, sizeof(g_hudq));
 	parse_camera(node, node_sz);
 	parse_upload_gtex(gtex, gtex_sz);
@@ -667,6 +689,20 @@ void gs_draw_hud_quad(int slot, int x, int y, int w, int h, int r, int g, int b)
 	g_hudq[slot].r = r;
 	g_hudq[slot].g = g;
 	g_hudq[slot].b = b;
+}
+
+void gs_draw_set_fade(int a, int r, int g, int b)
+{
+	if (a < 0) {
+		a = 0;
+	}
+	if (a > 128) {
+		a = 128;
+	}
+	g_fade_a = a;
+	g_fade_r = r < 0 ? 0 : (r > 255 ? 255 : r);
+	g_fade_g = g < 0 ? 0 : (g > 255 ? 255 : g);
+	g_fade_b = b < 0 ? 0 : (b > 255 ? 255 : b);
 }
 
 void gs_draw_camera(float *x, float *y, float *z)
