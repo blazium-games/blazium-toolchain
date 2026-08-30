@@ -298,8 +298,11 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	if !strings.Contains(string(gs), "gs_xfer_bytes") || !strings.Contains(string(gs), "dup_align_xfer") {
 		t.Fatal("gs_draw.cpp must pad short GTEX payloads to the GS BITBLT size")
 	}
-	if !strings.Contains(string(gs), "clip_on_screen") || !strings.Contains(string(gs), "visible == 0") {
-		t.Fatal("gs_draw.cpp must gold-fallback when projected tris miss the framebuffer")
+	if !strings.Contains(string(gs), "aabb_is_tiny()") || !strings.Contains(string(gs), "span * 6.0f + 24.0f") {
+		t.Fatal("gs_draw.cpp must re-frame tiny meshes and cameras that drift too far from the AABB")
+	}
+	if strings.Contains(string(gs), "have_tex") && strings.Contains(string(gs), "draw_rect_textured(q, 0, &bar)") {
+		t.Fatal("gs_draw.cpp must not blit GTEX onto HUD bars (garbles Pause/PS2 text)")
 	}
 	if !strings.Contains(string(gs), "40, 160, 90") {
 		t.Fatal("gs_draw.cpp gold fallback must emit two colors so stills are not a flat field")

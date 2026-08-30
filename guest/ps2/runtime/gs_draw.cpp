@@ -21,8 +21,6 @@
 #define GS_MAX_TEX 64
 #define GS_BATCH_TRIS 48
 #define GS_PACKET_QWORDS 2048
-#define GS_HUD_PX 64.0f
-
 enum {
 	COOK_PSM_T4 = 0,
 	COOK_PSM_T8 = 1,
@@ -199,7 +197,11 @@ static int cam_cannot_see_aabb(float x, float y, float z)
 	const float dz = z - cz;
 	const float dist2 = dx * dx + dy * dy + dz * dz;
 	const float need = span * 0.75f + 2.0f;
-	return dist2 < need * need;
+	if (dist2 < need * need) {
+		return 1;
+	}
+	const float far = span * 6.0f + 24.0f;
+	return dist2 > far * far;
 }
 
 static void read_vert(const unsigned char *p, CookVert *v)
@@ -924,54 +926,13 @@ static qword_t *emit_hud(qword_t *q, int width, int height)
 	 * pixels so GS XYZ lands on the 2048-centered framebuffer. */
 	const float ox = -0.5f * (float)(width > 0 ? width : 640);
 	const float oy = -0.5f * (float)(height > 0 ? height : 448);
-	const int have_tex = g_tex_count > 0 && g_tex[0].ready;
-	if (have_tex) {
-		q = bind_tex(q, 0);
-		texrect_t rect;
-		memset(&rect, 0, sizeof(rect));
-		rect.v0.x = ox + 8.0f;
-		rect.v0.y = oy + 8.0f;
-		rect.v0.z = 1;
-		rect.v1.x = rect.v0.x + GS_HUD_PX;
-		rect.v1.y = rect.v0.y + GS_HUD_PX;
-		rect.t0.u = 0.0f;
-		rect.t0.v = 0.0f;
-		rect.t1.u = (float)g_tex[0].width;
-		rect.t1.v = (float)g_tex[0].height;
-		rect.color.r = 0x80;
-		rect.color.g = 0x80;
-		rect.color.b = 0x80;
-		rect.color.a = 0x80;
-		rect.color.q = 1.0f;
-		q = draw_rect_textured(q, 0, &rect);
-	}
 	for (int i = 0; i < 16; i++) {
 		if (!g_hudq[i].used) {
 			continue;
 		}
-		if (have_tex) {
-			texrect_t bar;
-			memset(&bar, 0, sizeof(bar));
-			bar.v0.x = ox + (float)g_hudq[i].x;
-			bar.v0.y = oy + (float)g_hudq[i].y;
-			bar.v0.z = 1;
-			bar.v1.x = bar.v0.x + (float)g_hudq[i].w;
-			bar.v1.y = bar.v0.y + (float)g_hudq[i].h;
-			bar.t0.u = 0.0f;
-			bar.t0.v = 0.0f;
-			bar.t1.u = 4.0f;
-			bar.t1.v = 4.0f;
-			bar.color.r = (unsigned char)(g_hudq[i].r >> 1);
-			bar.color.g = (unsigned char)(g_hudq[i].g >> 1);
-			bar.color.b = (unsigned char)(g_hudq[i].b >> 1);
-			bar.color.a = 0x80;
-			bar.color.q = 1.0f;
-			q = draw_rect_textured(q, 0, &bar);
-		} else {
-			q = emit_filled(q, ox + (float)g_hudq[i].x, oy + (float)g_hudq[i].y,
-					ox + (float)(g_hudq[i].x + g_hudq[i].w), oy + (float)(g_hudq[i].y + g_hudq[i].h),
-					g_hudq[i].r, g_hudq[i].g, g_hudq[i].b);
-		}
+		q = emit_filled(q, ox + (float)g_hudq[i].x, oy + (float)g_hudq[i].y,
+				ox + (float)(g_hudq[i].x + g_hudq[i].w), oy + (float)(g_hudq[i].y + g_hudq[i].h),
+				g_hudq[i].r, g_hudq[i].g, g_hudq[i].b);
 		if (g_hudq[i].text[0]) {
 			int n = 0;
 			for (int c = 0; g_hudq[i].text[c] && n < 16; c++, n++) {
@@ -1514,7 +1475,7 @@ void gs_draw_fill_mvp(float out[16], int width, int height)
 	yaw_y(&world, g_world_yaw);
 	float ex = 0.0f, ey = 0.0f, ez = 0.0f;
 	eye_now(&ex, &ey, &ez);
-	if (cam_cannot_see_aabb(ex, ey, ez)) {
+	if (aabb_is_tiny() || cam_cannot_see_aabb(ex, ey, ez)) {
 		frame_aabb();
 		eye_now(&ex, &ey, &ez);
 	}
@@ -1613,7 +1574,7 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 	yaw_y(&world, g_world_yaw);
 	float ex = 0.0f, ey = 0.0f, ez = 0.0f;
 	eye_now(&ex, &ey, &ez);
-	if (cam_cannot_see_aabb(ex, ey, ez)) {
+	if (aabb_is_tiny() || cam_cannot_see_aabb(ex, ey, ez)) {
 		frame_aabb();
 		eye_now(&ex, &ey, &ez);
 	}
@@ -1787,7 +1748,7 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 	}
 	q = end_prim(q, &in_prim);
 	q = draw_disable_tests(q, 0, z);
-	if (drawn == 0 || visible == 0) {
+	if (drawn == 0) {
 		const float hx = -0.5f * (float)frame->width;
 		const float hy = -0.5f * (float)frame->height;
 		const float hw = (float)frame->width;
