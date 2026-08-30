@@ -41,6 +41,10 @@ int sys_io_tween_count(void);
 int sys_io_tween_done(int id);
 int sys_io_timer_start(float sec);
 int sys_io_timer_done(int id);
+void sys_io_slide(float vx, float vy, float vz, float delta);
+int sys_io_on_floor(void);
+int sys_io_on_wall(void);
+int sys_io_on_ceiling(void);
 
 #ifdef __cplusplus
 }

@@ -26,6 +26,8 @@ void gs_draw_set_world_yaw(float yaw);
 
 // Input.get_vector / Node3D.translate: slide the look-at target on XZ.
 void gs_draw_nudge(float dx, float dz);
+void gs_draw_nudge3(float dx, float dy, float dz);
+void gs_draw_look_point(float *x, float *y, float *z);
 void gs_draw_set_eye(float x, float y, float z);
 // Camera3D: Godot Y-up YXZ euler, look along local -Z. fov_deg is the cooked FOV.
 void gs_draw_set_camera(float x, float y, float z, float pitch, float yaw, float roll, float fov_deg);

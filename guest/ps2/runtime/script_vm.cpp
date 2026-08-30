@@ -51,7 +51,8 @@ enum {
 	OP_ATTACH_CAMERA = 31,
 	OP_TWEEN = 32,
 	OP_TIMER = 33,
-	OP_KILL_TWEENS = 34
+	OP_KILL_TWEENS = 34,
+	OP_SLIDE = 35
 };
 
 static const unsigned char *s_tape;
@@ -353,7 +354,7 @@ static void run_range(unsigned from, unsigned to, float delta)
 			float sx = 0.0f;
 			float sy = 0.0f;
 			pad_io_stick(0, &sx, &sy);
-			gs_draw_nudge(sx * rate * delta, sy * rate * delta);
+			sys_io_slide(sx * rate, 0.0f, sy * rate, delta);
 			continue;
 		}
 		if (op == OP_JUST_ACCEPT_SFX) {
@@ -499,6 +500,16 @@ static void run_range(unsigned from, unsigned to, float delta)
 		}
 		if (op == OP_KILL_TWEENS) {
 			sys_io_kill_tweens();
+			continue;
+		}
+		if (op == OP_SLIDE) {
+			if (sp < 3) {
+				return;
+			}
+			const float vz = stack[--sp];
+			const float vy = stack[--sp];
+			const float vx = stack[--sp];
+			sys_io_slide(vx, vy, vz, delta);
 			continue;
 		}
 	}

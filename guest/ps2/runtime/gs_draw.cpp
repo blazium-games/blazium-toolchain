@@ -511,10 +511,30 @@ void gs_draw_set_world_yaw(float yaw)
 
 void gs_draw_nudge(float dx, float dz)
 {
+	gs_draw_nudge3(dx, 0.0f, dz);
+}
+
+void gs_draw_nudge3(float dx, float dy, float dz)
+{
 	g_look_x += dx;
+	g_look_y += dy;
 	g_look_z += dz;
 	g_cam_x += dx;
+	g_cam_y += dy;
 	g_cam_z += dz;
+}
+
+void gs_draw_look_point(float *x, float *y, float *z)
+{
+	if (x) {
+		*x = g_look_x;
+	}
+	if (y) {
+		*y = g_look_y;
+	}
+	if (z) {
+		*z = g_look_z;
+	}
 }
 
 void gs_draw_set_eye(float x, float y, float z)

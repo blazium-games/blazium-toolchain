@@ -124,6 +124,9 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	if !strings.Contains(string(vm), "OP_TWEEN") || !strings.Contains(string(vm), "OP_TIMER") {
 		t.Fatal("script_vm must interpret create_tween / create_timer")
 	}
+	if !strings.Contains(string(vm), "OP_SLIDE") || !strings.Contains(string(vm), "sys_io_slide") {
+		t.Fatal("script_vm must interpret move_and_slide via sys_io_slide")
+	}
 }
 
 func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
@@ -152,6 +155,9 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	}
 	if !strings.Contains(string(sys), "sys_io_tween_start") || !strings.Contains(string(sys), "sys_io_timer_start") {
 		t.Fatal("sys_io.cpp must expose linear tweens and timers")
+	}
+	if !strings.Contains(string(sys), "sys_io_slide") || !strings.Contains(string(sys), "enters_hit") {
+		t.Fatal("sys_io.cpp must slide against HIT00 AABBs")
 	}
 	cmake, err := files.ReadFile("runtime/CMakeLists.txt")
 	if err != nil {

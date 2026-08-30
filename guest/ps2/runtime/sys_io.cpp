@@ -38,6 +38,16 @@ static int s_tm_on[8];
 static float s_tm_left[8];
 static int s_tm_last;
 static int s_hit_n;
+static float s_hit_mn[64][3];
+static float s_hit_mx[64][3];
+static unsigned char s_hit_kit[64];
+static float s_px;
+static float s_py;
+static float s_pz;
+static int s_on_floor;
+static int s_on_wall;
+static int s_on_ceil;
+static int s_player_ok;
 static int s_hud_n;
 static int s_tile_n;
 static int s_nav_n;
@@ -153,6 +163,24 @@ static void apply_hit(const unsigned char *b, unsigned sz)
 		return;
 	}
 	s_hit_n = (int)ru16(b + 6);
+	if (s_hit_n > 64) {
+		s_hit_n = 64;
+	}
+	const unsigned rec = 28;
+	for (int i = 0; i < s_hit_n; i++) {
+		if (8 + (unsigned)(i + 1) * rec > sz) {
+			s_hit_n = i;
+			break;
+		}
+		const unsigned char *r = b + 8 + (unsigned)i * rec;
+		s_hit_kit[i] = r[2];
+		s_hit_mn[i][0] = rf32(r + 4);
+		s_hit_mn[i][1] = rf32(r + 8);
+		s_hit_mn[i][2] = rf32(r + 12);
+		s_hit_mx[i][0] = rf32(r + 16);
+		s_hit_mx[i][1] = rf32(r + 20);
+		s_hit_mx[i][2] = rf32(r + 24);
+	}
 }
 
 static void apply_hud(const unsigned char *b, unsigned sz)
@@ -221,6 +249,10 @@ int sys_io_init(void)
 	s_hp = 3;
 	s_frame = 0;
 	s_nav_i = 0;
+	s_hit_n = 0;
+	s_on_floor = s_on_wall = s_on_ceil = 0;
+	s_player_ok = 0;
+	s_px = s_py = s_pz = 0.0f;
 	memcpy(s_fmv_err, "FMV/IPU not shipped on PS2 ABI 1 (no license-clean decoder)", 59);
 	s_fmv_err[59] = 0;
 	unsigned sz = 0;
@@ -237,6 +269,8 @@ int sys_io_init(void)
 		/* keep buffer for tick — re-read is fine; free now */
 		free(hit);
 	}
+	gs_draw_look_point(&s_px, &s_py, &s_pz);
+	s_player_ok = 1;
 	unsigned char *hud = read_sys("host:HUD00.bin", "cdrom0:\\HUD00.BIN;1", "cdrom0:HUD00.BIN;1", &sz);
 	if (hud) {
 		apply_hud(hud, sz);
@@ -542,9 +576,126 @@ int sys_io_timer_done(int id)
 	return s_tm_on[id] ? 0 : 1;
 }
 
+static int hit_solid(int i)
+{
+	const unsigned char k = s_hit_kit[i];
+	return k != 1 && k != 4 && k != 6 && k != 7 && k != 10;
+}
+
+static int aabb_overlap(float px, float py, float pz, int i)
+{
+	const float hx = 0.35f;
+	const float hy = 0.85f;
+	const float hz = 0.35f;
+	const float mn0 = px - hx;
+	const float mx0 = px + hx;
+	const float mn1 = py;
+	const float mx1 = py + hy;
+	const float mn2 = pz - hz;
+	const float mx2 = pz + hz;
+	if (mx0 < s_hit_mn[i][0] || mn0 > s_hit_mx[i][0]) {
+		return 0;
+	}
+	if (mx1 < s_hit_mn[i][1] || mn1 > s_hit_mx[i][1]) {
+		return 0;
+	}
+	if (mx2 < s_hit_mn[i][2] || mn2 > s_hit_mx[i][2]) {
+		return 0;
+	}
+	return 1;
+}
+
+static int hits_at(float px, float py, float pz)
+{
+	for (int i = 0; i < s_hit_n; i++) {
+		if (hit_solid(i) && aabb_overlap(px, py, pz, i)) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static int enters_hit(float ox, float oy, float oz, float nx, float ny, float nz)
+{
+	for (int i = 0; i < s_hit_n; i++) {
+		if (!hit_solid(i)) {
+			continue;
+		}
+		if (!aabb_overlap(ox, oy, oz, i) && aabb_overlap(nx, ny, nz, i)) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+void sys_io_slide(float vx, float vy, float vz, float delta)
+{
+	if (!s_player_ok) {
+		gs_draw_look_point(&s_px, &s_py, &s_pz);
+		s_player_ok = 1;
+	}
+	s_on_floor = s_on_wall = s_on_ceil = 0;
+	const float dx = vx * delta;
+	const float dy = vy * delta;
+	const float dz = vz * delta;
+	float nx = s_px;
+	float ny = s_py;
+	float nz = s_pz;
+	if (dx != 0.0f) {
+		if (enters_hit(s_px, s_py, s_pz, s_px + dx, s_py, s_pz)) {
+			s_on_wall = 1;
+		} else {
+			nx += dx;
+		}
+	}
+	if (dz != 0.0f) {
+		if (enters_hit(nx, s_py, s_pz, nx, s_py, s_pz + dz)) {
+			s_on_wall = 1;
+		} else {
+			nz += dz;
+		}
+	}
+	if (dy != 0.0f) {
+		if (enters_hit(nx, s_py, nz, nx, s_py + dy, nz)) {
+			if (dy < 0.0f) {
+				s_on_floor = 1;
+			} else {
+				s_on_ceil = 1;
+			}
+		} else {
+			ny += dy;
+		}
+	}
+	if (hits_at(nx, ny - 0.08f, nz)) {
+		s_on_floor = 1;
+	}
+	gs_draw_nudge3(nx - s_px, ny - s_py, nz - s_pz);
+	s_px = nx;
+	s_py = ny;
+	s_pz = nz;
+}
+
+int sys_io_on_floor(void)
+{
+	return s_on_floor;
+}
+
+int sys_io_on_wall(void)
+{
+	return s_on_wall;
+}
+
+int sys_io_on_ceiling(void)
+{
+	return s_on_ceil;
+}
+
 int sys_io_hit_hazard(float x, float z)
 {
-	(void)x;
-	(void)z;
-	return s_hit_n > 0 ? 0 : 0;
+	for (int i = 0; i < s_hit_n; i++) {
+		if (s_hit_kit[i] == 5 && aabb_overlap(x, s_py, z, i)) {
+			return 1;
+		}
+	}
+	return 0;
 }
