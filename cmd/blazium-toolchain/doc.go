@@ -37,7 +37,9 @@
 //	blazium-toolchain [--prefix DIR] ps2 run [--iso FILE.iso] [--timeout 120s] [--ui] GAME.elf
 //	blazium-toolchain [--prefix DIR] ps2 iso --dir TREE --out FILE.iso
 //
-// ps1, ps2, and interdvd are implemented. PS1/PS2 host tools (setup/build/run)
-// are Windows and Linux only; other hosts exit with code 2.
+// ps1, ps2, and interdvd are implemented. The PS2 guest C++ is bundled in
+// this CLI (ps2 export-guest / default ps2 build). PS1/PS2 host tools
+// (setup/build/run/iso) are Windows and Linux only; other hosts exit with
+// code 2. env/status/export-guest still work for inspection.
 // ps3 and ps4 are reserved and exit with code 2.
 package main

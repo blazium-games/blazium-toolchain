@@ -1,8 +1,12 @@
 package fetch
 
 import (
+	"archive/tar"
 	"archive/zip"
+	"compress/gzip"
 	"context"
+
+	"github.com/klauspost/compress/zstd"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -119,7 +123,7 @@ func ExtractArchive(archivePath, destDir string) error {
 	switch {
 	case strings.HasSuffix(lower, ".zip"):
 		return Unzip(archivePath, destDir)
-	case strings.HasSuffix(lower, ".tar.xz"), strings.HasSuffix(lower, ".tgz"), strings.HasSuffix(lower, ".tar.gz"):
+	case strings.HasSuffix(lower, ".tar.xz"), strings.HasSuffix(lower, ".tgz"), strings.HasSuffix(lower, ".tar.gz"), strings.HasSuffix(lower, ".tar.zst"), strings.HasSuffix(lower, ".pkg.tar.zst"):
 		return extractTar(archivePath, destDir)
 	default:
 		return fmt.Errorf("unsupported archive %s", filepath.Base(archivePath))
@@ -127,10 +131,164 @@ func ExtractArchive(archivePath, destDir string) error {
 }
 
 func extractTar(archivePath, destDir string) error {
+	lower := strings.ToLower(archivePath)
+	if strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz") {
+		return extractTarGz(archivePath, destDir)
+	}
+	if strings.HasSuffix(lower, ".tar.zst") || strings.HasSuffix(lower, ".pkg.tar.zst") {
+		return extractTarZstd(archivePath, destDir)
+	}
+	return extractTarSystem(archivePath, destDir)
+}
+
+func extractTarZstd(archivePath, destDir string) error {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return err
 	}
-	cmd := exec.Command("tar", "-xaf", archivePath, "-C", destDir)
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	zr, err := zstd.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer zr.Close()
+	return readTarToDir(zr, destDir)
+}
+
+func extractTarGz(archivePath, destDir string) error {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return err
+	}
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+	return readTarToDir(gz, destDir)
+}
+
+func readTarToDir(r io.Reader, destDir string) error {
+	tr := tar.NewReader(r)
+	destDir, err := filepath.Abs(destDir)
+	if err != nil {
+		return err
+	}
+	var links []tarLink
+	for {
+		hdr, nextErr := tr.Next()
+		if nextErr == io.EOF {
+			return materializeTarLinks(destDir, links)
+		}
+		if nextErr != nil {
+			return nextErr
+		}
+		link, err := extractTarMember(tr, hdr, destDir)
+		if err != nil {
+			return err
+		}
+		if link != nil {
+			links = append(links, *link)
+		}
+	}
+}
+
+type tarLink struct {
+	dest     string
+	linkname string
+}
+
+func extractTarMember(tr *tar.Reader, hdr *tar.Header, destDir string) (*tarLink, error) {
+	name := filepath.FromSlash(hdr.Name)
+	if name == "" || strings.HasPrefix(name, `..\`) || strings.HasPrefix(name, ".."+string(filepath.Separator)) {
+		return nil, fmt.Errorf("refusing tar path %q", hdr.Name)
+	}
+	target := filepath.Join(destDir, name)
+	rel, err := filepath.Rel(destDir, target)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return nil, fmt.Errorf("refusing tar path %q", hdr.Name)
+	}
+	switch hdr.Typeflag {
+	case tar.TypeDir:
+		return nil, os.MkdirAll(target, 0o755)
+	case tar.TypeReg, tar.TypeRegA:
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return nil, err
+		}
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+		if err != nil {
+			return nil, err
+		}
+		_, copyErr := io.Copy(out, tr)
+		closeErr := out.Close()
+		if copyErr != nil {
+			return nil, copyErr
+		}
+		return nil, closeErr
+	case tar.TypeSymlink, tar.TypeLink:
+		if hdr.Linkname == "" {
+			return nil, nil
+		}
+		return &tarLink{dest: target, linkname: hdr.Linkname}, nil
+	default:
+		return nil, nil
+	}
+}
+
+func materializeTarLinks(destDir string, links []tarLink) error {
+	for _, l := range links {
+		if fileExists(l.dest) {
+			continue
+		}
+		src := l.linkname
+		if !filepath.IsAbs(src) {
+			src = filepath.Join(filepath.Dir(l.dest), filepath.FromSlash(l.linkname))
+		}
+		if !fileExists(src) {
+			src = filepath.Join(destDir, filepath.FromSlash(l.linkname))
+		}
+		if !fileExists(src) {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(l.dest), 0o755); err != nil {
+			return err
+		}
+		data, err := os.ReadFile(src)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(l.dest, data, 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
+}
+
+func extractTarSystem(archivePath, destDir string) error {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return err
+	}
+	args := []string{"-xf", archivePath, "-C", destDir}
+	lower := strings.ToLower(archivePath)
+	if strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz") {
+		args = []string{"-xzf", archivePath, "-C", destDir}
+	}
+	if strings.HasSuffix(lower, ".tar.xz") {
+		args = []string{"-xJf", archivePath, "-C", destDir}
+	}
+	cmd := exec.Command("tar", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("tar extract %s: %w: %s", filepath.Base(archivePath), err, strings.TrimSpace(string(out)))

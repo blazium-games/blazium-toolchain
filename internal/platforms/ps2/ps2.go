@@ -55,8 +55,16 @@ func (t *Tool) Info() platforms.Info {
 		Name:        "PlayStation 2",
 		Status:      platforms.StatusSupported,
 		Commands:    []string{"setup", "env", "status", "build", "export-guest", "run", "iso"},
-		Description: "ps2sdk EE guest build + PCSX2. Official Blazium PS2 toolchain (host: Windows and Linux).",
+		Description: ps2InfoDescription(),
 	}
+}
+
+func ps2InfoDescription() string {
+	base := "PlayStation 2 EE guest is bundled in this CLI (ps2sdk graph/draw/dma/packet + PCSX2). Compile/run/iso: Windows and Linux only."
+	if HostSupported() {
+		return base
+	}
+	return base + " This host cannot compile or run; env/status/export-guest still work."
 }
 
 func (t *Tool) Setup(ctx context.Context, opts platforms.SetupOptions) error {
@@ -83,6 +91,9 @@ func (t *Tool) Setup(ctx context.Context, opts platforms.SetupOptions) error {
 	}
 	if !opts.Offline && !compileReady(env) {
 		return fmt.Errorf("%w: compile profile needs EE_GCC, PS2SDK, and PS2DEV", platforms.ErrMissingTool)
+	}
+	if err := ensureWindowsHostDLLs(env["EE_GCC"], opts.Stdout); err != nil {
+		return err
 	}
 	if err := installGuestRuntime(opts.Prefix); err != nil {
 		return err
@@ -334,17 +345,46 @@ func (t *Tool) ensureCompile(ctx context.Context, prefix string, log io.Writer) 
 		return nil
 	}
 	dest := filepath.Join(cache.PlatformDir(prefix, ID), "ps2dev")
-	if walkNamed(dest, hostNames("mips64r5900el-ps2-elf-gcc")...) != "" && findSDKRoot(dest) != "" {
-		return nil
+	if compileTreeComplete(dest) {
+		return ensureWindowsHostDLLs(walkNamed(dest, hostNames("mips64r5900el-ps2-elf-gcc")...), log)
+	}
+	if walkNamed(dest, hostNames("mips64r5900el-ps2-elf-gcc")...) != "" {
+		if log != nil {
+			fmt.Fprintf(log, "ps2dev tree is incomplete (missing cc1); re-extracting\n")
+		}
+		_ = os.RemoveAll(dest)
 	}
 	if log != nil {
 		fmt.Fprintf(log, "fetching ps2dev release from %s\n", url)
 	}
-	return t.fetcher().FetchZip(ctx, url, "", dest, log)
+	if err := t.fetcher().FetchZip(ctx, url, "", dest, log); err != nil {
+		if compileTreeComplete(dest) {
+			if log != nil {
+				fmt.Fprintf(log, "extract reported %v; compile tools are present, continuing\n", err)
+			}
+			return ensureWindowsHostDLLs(walkNamed(dest, hostNames("mips64r5900el-ps2-elf-gcc")...), log)
+		}
+		return err
+	}
+	return ensureWindowsHostDLLs(walkNamed(dest, hostNames("mips64r5900el-ps2-elf-gcc")...), log)
+}
+
+func compileTreeComplete(dest string) bool {
+	if walkNamed(dest, hostNames("mips64r5900el-ps2-elf-gcc")...) == "" {
+		return false
+	}
+	if findSDKRoot(dest) == "" {
+		return false
+	}
+	return walkNamed(dest, hostNames("cc1")...) != ""
 }
 
 func officialTarballURL() string {
-	switch runtime.GOOS {
+	return officialTarballURLFor(runtime.GOOS)
+}
+
+func officialTarballURLFor(goos string) string {
+	switch goos {
 	case "windows":
 		return "https://github.com/ps2dev/ps2dev/releases/download/latest/ps2dev-windows-latest.tar.gz"
 	case "linux":
@@ -355,7 +395,14 @@ func officialTarballURL() string {
 }
 
 func compileReady(env map[string]string) bool {
-	return fileExists(env["EE_GCC"]) && dirExists(env["PS2SDK"]) && dirExists(filepath.Join(env["PS2SDK"], "ee", "include"))
+	if !fileExists(env["EE_GCC"]) || !dirExists(env["PS2SDK"]) || !dirExists(filepath.Join(env["PS2SDK"], "ee", "include")) {
+		return false
+	}
+	root := env["PS2DEV"]
+	if root == "" {
+		root = filepath.Dir(env["EE_GCC"])
+	}
+	return walkNamed(root, hostNames("cc1")...) != "" || walkNamed(filepath.Dir(env["EE_GCC"]), hostNames("cc1")...) != ""
 }
 
 func needsDev(profile string) bool {

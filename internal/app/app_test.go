@@ -123,6 +123,17 @@ func TestListJSONHasPS1(t *testing.T) {
 	if !ps2ok {
 		t.Fatalf("missing supported ps2 in %s", out.String())
 	}
+	for _, info := range list {
+		if info.ID != "ps2" {
+			continue
+		}
+		if !strings.Contains(info.Description, "Windows") || !strings.Contains(info.Description, "Linux") {
+			t.Fatalf("ps2 description must name Windows/Linux: %s", info.Description)
+		}
+		if !strings.Contains(info.Description, "bundled") {
+			t.Fatalf("ps2 description must say guest is bundled: %s", info.Description)
+		}
+	}
 	for _, want := range []string{"ps3", "ps4"} {
 		var found bool
 		for _, info := range list {
@@ -365,6 +376,21 @@ func TestInterDVDISOAndMeta(t *testing.T) {
 	}
 }
 
+func TestListTextMentionsPS2Host(t *testing.T) {
+	var out bytes.Buffer
+	code := Run(context.Background(), []string{"list"}, &out, &bytes.Buffer{})
+	if code != ExitOK {
+		t.Fatalf("exit %d", code)
+	}
+	body := out.String()
+	if !strings.Contains(body, "ps2") {
+		t.Fatalf("list missing ps2: %s", body)
+	}
+	if !strings.Contains(body, "Windows/Linux") && !strings.Contains(body, "compile/run unavailable") {
+		t.Fatalf("list must mention PS2 host restriction: %s", body)
+	}
+}
+
 func TestExportGuestWritesCPP(t *testing.T) {
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "guest")
@@ -391,6 +417,35 @@ func TestExportGuestWritesCPP(t *testing.T) {
 	}
 	if !strings.Contains(string(cmake), "extra/*.cpp") {
 		t.Fatalf("CMakeLists missing extra glob: %s", cmake)
+	}
+}
+
+func TestExportGuestWritesPS2(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "guest")
+	var out, errb bytes.Buffer
+	code := Run(context.Background(), []string{"--json", "ps2", "export-guest", "--out", dest}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("export-guest %d %s", code, errb.String())
+	}
+	var m map[string]any
+	if err := json.Unmarshal(out.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["out"] != dest {
+		t.Fatalf("%v", m)
+	}
+	for _, name := range []string{"CMakeLists.txt", "Makefile", "main.cpp"} {
+		if _, err := os.Stat(filepath.Join(dest, name)); err != nil {
+			t.Fatalf("missing %s: %v", name, err)
+		}
+	}
+	main, err := os.ReadFile(filepath.Join(dest, "main.cpp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(main), "BLAZIUM_PS2_COOK_ABI") {
+		t.Fatalf("main.cpp missing cook ABI: %s", main)
 	}
 }
 

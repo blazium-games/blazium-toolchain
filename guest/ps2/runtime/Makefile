@@ -13,3 +13,6 @@ else
 include $(PS2SDK)/samples/Makefile.pref
 include $(PS2SDK)/samples/Makefile.eeglobal
 endif
+
+# Windows cmd mkdir is not GNU mkdir -p; objects live next to sources.
+DIR_GUARD =

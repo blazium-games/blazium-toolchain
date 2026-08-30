@@ -1,8 +1,10 @@
 package fetch
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -57,6 +59,94 @@ func TestUnzipRejectsTraversal(t *testing.T) {
 	_ = f.Close()
 	if err := Unzip(zipPath, filepath.Join(dir, "out")); err == nil {
 		t.Fatal("expected traversal error")
+	}
+}
+
+func TestExtractTarGzSkipsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	archive := filepath.Join(dir, "sdk.tar.gz")
+	f, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	body := []byte("gcc")
+	if err := tw.WriteHeader(&tar.Header{Name: "ee/bin/mips64r5900el-ps2-elf-gcc", Mode: 0755, Size: int64(len(body))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(body); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.WriteHeader(&tar.Header{Name: "ps2sdk/ports/bin/bzcat", Typeflag: tar.TypeSymlink, Linkname: "bzip2", Mode: 0755}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(dir, "out")
+	if err := ExtractArchive(archive, dest); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(dest, "ee", "bin", "mips64r5900el-ps2-elf-gcc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "gcc" {
+		t.Fatalf("got %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "ps2sdk", "ports", "bin", "bzcat")); err == nil {
+		got, err := os.ReadFile(filepath.Join(dest, "ps2sdk", "ports", "bin", "bzcat"))
+		if err != nil || string(got) != "gcc" {
+			t.Fatalf("hard/symlink should copy target or be skipped, got %q err %v", got, err)
+		}
+	}
+}
+
+func TestExtractTarGzMaterializesHardlink(t *testing.T) {
+	dir := t.TempDir()
+	archive := filepath.Join(dir, "sdk.tar.gz")
+	f, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	body := []byte("real-gcc")
+	if err := tw.WriteHeader(&tar.Header{Name: "ee/bin/gcc-15.exe", Mode: 0755, Size: int64(len(body))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(body); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.WriteHeader(&tar.Header{Name: "ee/bin/gcc.exe", Typeflag: tar.TypeLink, Linkname: "ee/bin/gcc-15.exe", Mode: 0755}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(dir, "out")
+	if err := ExtractArchive(archive, dest); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(dest, "ee", "bin", "gcc.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "real-gcc" {
+		t.Fatalf("got %q", got)
 	}
 }
 

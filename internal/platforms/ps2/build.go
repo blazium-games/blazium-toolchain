@@ -125,6 +125,9 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 		"PS2DEV": or(env["PS2DEV"], filepath.Dir(env["PS2SDK"])),
 		"EE_GCC": env["EE_GCC"],
 	}
+	if mkdir := gnuMkdir(); mkdir != "" {
+		extraEnv["MKDIR"] = mkdir
+	}
 
 	if fileExists(filepath.Join(src, "Makefile")) || fileExists(filepath.Join(src, "Makefile.sample")) {
 		if err := t.buildMake(ctx, src, buildDir, extraPath, extraEnv, opts); err != nil {
@@ -211,6 +214,24 @@ func (t *Tool) runEnv(ctx context.Context, name string, args, extraPath []string
 		return er.RunEnv(ctx, name, args, extraPath, extraEnv, writerOrDiscard(stdout), writerOrDiscard(stderr))
 	}
 	return r.Run(ctx, name, args, writerOrDiscard(stdout), writerOrDiscard(stderr))
+}
+
+func gnuMkdir() string {
+	if p := lookFile("mkdir"); p != "" {
+		low := strings.ToLower(p)
+		if !strings.Contains(low, `\system32\`) && !strings.Contains(low, `/system32/`) {
+			return p
+		}
+	}
+	for _, p := range []string{
+		`C:\Program Files\Git\usr\bin\mkdir.exe`,
+		`C:\Program Files (x86)\Git\usr\bin\mkdir.exe`,
+	} {
+		if fileExists(p) {
+			return p
+		}
+	}
+	return ""
 }
 
 func resolveSample(env map[string]string, sample string) (string, error) {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	guest "github.com/blazium-games/blazium-toolchain/guest/ps2"
@@ -24,6 +26,16 @@ func plantCompileTools(t *testing.T, prefix string) {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(sdk, "samples"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cc1 := filepath.Join(prefix, "ps2", "ps2dev", "ee", "libexec", "gcc", "cc1")
+	if runtime.GOOS == "windows" {
+		cc1 += ".exe"
+	}
+	if err := os.MkdirAll(filepath.Dir(cc1), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cc1, []byte("cc1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -82,6 +94,12 @@ func TestInfoSupported(t *testing.T) {
 	}
 	if !exp {
 		t.Fatalf("commands %v", info.Commands)
+	}
+	if !strings.Contains(info.Description, "Windows") || !strings.Contains(info.Description, "Linux") {
+		t.Fatalf("description must name Windows/Linux: %s", info.Description)
+	}
+	if !strings.Contains(info.Description, "bundled") {
+		t.Fatalf("description must say guest is bundled: %s", info.Description)
 	}
 }
 

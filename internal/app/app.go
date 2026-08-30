@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -127,7 +128,16 @@ func cmdList(jsonOut bool, w io.Writer) int {
 		return ExitOK
 	}
 	for _, info := range list {
-		fmt.Fprintf(w, "%-6s %-12s %s\n", info.ID, info.Status, info.Name)
+		note := ""
+		switch info.ID {
+		case "ps1", "ps2":
+			if ps2.HostSupported() {
+				note = "  Windows/Linux; guest bundled in this CLI"
+			} else {
+				note = "  compile/run unavailable on this host (env/status/export-guest only)"
+			}
+		}
+		fmt.Fprintf(w, "%-6s %-12s %s%s\n", info.ID, info.Status, info.Name, note)
 	}
 	return ExitOK
 }
@@ -478,7 +488,11 @@ func mapErr(err error, stderr io.Writer) int {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, strings.TrimSpace(`
+	ps2Line := "ps2       supported (PlayStation 2; Windows/Linux; guest bundled in this CLI)"
+	if !ps2.HostSupported() {
+		ps2Line = fmt.Sprintf("ps2       supported (PlayStation 2; compile/run unavailable on %s; env/status/export-guest only)", runtime.GOOS)
+	}
+	fmt.Fprint(w, strings.TrimSpace(fmt.Sprintf(`
 blazium-toolchain — official Blazium console toolchain manager
 
 Usage:
@@ -488,12 +502,12 @@ Usage:
 
 Platforms:
   ps1       supported (PlayStation 1)
-  ps2       supported (PlayStation 2)
+  %s
   interdvd  supported (Interactive DVD ISO9660+UDF)
   ps3       planned
   ps4       planned
 
-PS1/PS2 host tools: Windows and Linux only.
+PS1/PS2 host tools: Windows and Linux only. setup/build/run/iso exit 2 on other OSes.
 
 PS1 commands:
   setup [--profile compile|dev|iso] [--offline]
@@ -528,5 +542,5 @@ Interactive DVD commands:
 
 License: GPL-3.0-or-later (this repo may contain GCC, PSn00bSDK, mkpsxiso, pcsx-redux).
 The 3rd-party installer should invoke this binary (not the Blazium editor).
-`)+"\n")
+`, ps2Line)) + "\n")
 }
