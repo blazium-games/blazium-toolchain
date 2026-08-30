@@ -62,14 +62,17 @@ func TestListJSONHasPS1(t *testing.T) {
 	for _, info := range list {
 		if info.ID == "ps1" && info.Status == platforms.StatusSupported {
 			ps1 = true
-			var fmv bool
+			var fmv, exp bool
 			for _, c := range info.Commands {
 				if c == "fmv" {
 					fmv = true
 				}
+				if c == "export-guest" {
+					exp = true
+				}
 			}
-			if !fmv {
-				t.Fatalf("ps1 commands missing fmv: %v", info.Commands)
+			if !fmv || !exp {
+				t.Fatalf("ps1 commands missing fmv/export-guest: %v", info.Commands)
 			}
 		}
 	}
@@ -333,5 +336,34 @@ func TestInterDVDISOAndMeta(t *testing.T) {
 	code = Run(context.Background(), []string{"ps1", "iso"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if code != ExitUsage {
 		t.Fatalf("ps1 iso without xml exit %d", code)
+	}
+}
+
+func TestExportGuestWritesCPP(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "guest")
+	var out, errb bytes.Buffer
+	code := Run(context.Background(), []string{"--json", "ps1", "export-guest", "--out", dest}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("export-guest %d %s", code, errb.String())
+	}
+	var m map[string]any
+	if err := json.Unmarshal(out.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["out"] != dest {
+		t.Fatalf("%v", m)
+	}
+	for _, name := range []string{"CMakeLists.txt", "main.cpp", "script_vm.cpp", "script_vm.h", "fmv_play.cpp"} {
+		if _, err := os.Stat(filepath.Join(dest, name)); err != nil {
+			t.Fatalf("missing %s: %v", name, err)
+		}
+	}
+	cmake, err := os.ReadFile(filepath.Join(dest, "CMakeLists.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(cmake), "extra/*.cpp") {
+		t.Fatalf("CMakeLists missing extra glob: %s", cmake)
 	}
 }

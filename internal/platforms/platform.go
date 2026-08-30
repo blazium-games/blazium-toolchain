@@ -55,9 +55,11 @@ type SetupOptions struct {
 // BuildOptions compile a guest with the platform SDK (spawn only).
 type BuildOptions struct {
 	CommonOptions
-	Src    string
-	Out    string
-	Sample string // template | gte; used when Src is empty
+	Src       string
+	Out       string
+	Sample    string // template | gte; used when Src is empty
+	Overlay   string // optional extra/replacement *.cpp on top of Src or the bundled stub
+	ExportSrc string // write the resolved guest C++ tree here (export-guest snapshot)
 	Tim    string // optional cooked TIM to embed (P3+)
 	Mesh   string // optional cooked SVECTOR mesh to embed (P4+)
 	Vag    string // optional cooked VAG to embed (P5+)

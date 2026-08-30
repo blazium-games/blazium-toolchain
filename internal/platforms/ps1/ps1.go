@@ -60,7 +60,7 @@ func (t *Tool) Info() platforms.Info {
 		ID:          ID,
 		Name:        "PlayStation 1",
 		Status:      platforms.StatusSupported,
-		Commands:    []string{"setup", "env", "status", "build", "run", "iso", "fmv"},
+		Commands:    []string{"setup", "env", "status", "build", "export-guest", "run", "iso", "fmv"},
 		Description: "PSn00bSDK guest build + pcsx-redux. Official Blazium PS1 toolchain (host: Windows and Linux).",
 	}
 }

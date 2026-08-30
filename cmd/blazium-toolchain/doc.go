@@ -11,8 +11,13 @@
 //	blazium-toolchain [--json] [--prefix DIR] ps1 env
 //	blazium-toolchain [--json] [--prefix DIR] ps1 status
 //	blazium-toolchain [--prefix DIR] ps1 build --out FILE [--src DIR | --sample template|gte]
+//	  [--overlay DIR] [--export-src DIR]
 //	  [--tim|--mesh|--vag|--sprite|--script|--gdbc|--luau|--str|--xa|--node|--hud|--tile]
 //	  --src is optional; the bundled MIT guest stub is the default.
+//	  --overlay copies extra or replacement *.cpp on top of the stub (or --src).
+//	  --export-src writes the resolved guest C++ tree (same files as export-guest plus overlay).
+//	blazium-toolchain [--prefix DIR] ps1 export-guest [--out DIR]
+//	  writes bundled guest *.cpp / *.h / CMakeLists.txt (default: prefix/ps1/guest/runtime).
 //	blazium-toolchain [--prefix DIR] ps1 run [--iso CUE] [--timeout 120s] [--ui] GAME.EXE
 //	blazium-toolchain [--prefix DIR] ps1 iso --xml FILE [--out PATH]
 //	blazium-toolchain [--json] [--prefix DIR] ps1 fmv

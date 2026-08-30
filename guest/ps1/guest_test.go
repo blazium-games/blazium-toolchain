@@ -37,6 +37,45 @@ func TestEmbeddedRuntimeComplete(t *testing.T) {
 	}
 }
 
+func TestOverlayReplacesAndAdds(t *testing.T) {
+	dir := t.TempDir()
+	if err := Install(dir); err != nil {
+		t.Fatal(err)
+	}
+	over := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(over, "extra"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(over, "main.cpp"), []byte("// overlay main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(over, "extra", "hooks.cpp"), []byte("// extra hook\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(over, "skip.exe"), []byte("no"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Overlay(dir, over); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "main.cpp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "// overlay main\n" {
+		t.Fatalf("main.cpp not replaced: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "extra", "hooks.cpp")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "skip.exe")); err == nil {
+		t.Fatal("exe should not copy")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "script_vm.cpp")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLockstepWithEditorRuntime(t *testing.T) {
 	if os.Getenv("BLAZIUM_EDITOR_LOCKSTEP") != "1" {
 		t.Skip("set BLAZIUM_EDITOR_LOCKSTEP=1 to compare guest sources with a sibling editor tree")

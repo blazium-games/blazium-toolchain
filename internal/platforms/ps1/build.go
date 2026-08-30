@@ -43,11 +43,40 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 
 	src := opts.Src
 	sample := strings.ToLower(strings.TrimSpace(opts.Sample))
+	overlay := strings.TrimSpace(opts.Overlay)
+	if overlay == "" {
+		overlay = strings.TrimSpace(os.Getenv("BLAZIUM_PS1_OVERLAY"))
+	}
+	if src != "" && !fileExists(filepath.Join(src, "CMakeLists.txt")) {
+		if overlay == "" {
+			overlay = src
+		}
+		src = ""
+	}
 	if src == "" && sample != "" {
 		src, err = resolveSample(opts.Prefix, sample)
 		if err != nil {
 			return err
 		}
+	}
+	if overlay != "" && sample == "" {
+		merge := filepath.Join(cache.PlatformDir(opts.Prefix, ID), "work", "guest-src")
+		if err := os.RemoveAll(merge); err != nil {
+			return err
+		}
+		if src != "" {
+			if err := guest.Overlay(merge, src); err != nil {
+				return err
+			}
+		} else {
+			if err := guest.Install(merge); err != nil {
+				return err
+			}
+		}
+		if err := guest.Overlay(merge, overlay); err != nil {
+			return err
+		}
+		src = merge
 	}
 	if src == "" {
 		if err := installGuestRuntime(opts.Prefix); err != nil {
@@ -57,6 +86,17 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	}
 	if src == "" || opts.Out == "" {
 		return fmt.Errorf("%w: build requires --out (bundled guest is used when --src and --sample are omitted)", platforms.ErrUsage)
+	}
+	if dest := strings.TrimSpace(opts.ExportSrc); dest != "" {
+		if err := os.RemoveAll(dest); err != nil {
+			return err
+		}
+		if err := guest.Overlay(dest, src); err != nil {
+			return fmt.Errorf("export-src: %w", err)
+		}
+		if opts.Stdout != nil {
+			fmt.Fprintf(opts.Stdout, "exported guest sources %s\n", dest)
+		}
 	}
 
 	target := cmakeTarget(sample, src)
@@ -308,6 +348,12 @@ func cmakeTarget(sample, src string) string {
 	}
 	if sample == "template" || strings.EqualFold(filepath.Base(src), "template") {
 		return "template"
+	}
+	if raw, err := os.ReadFile(filepath.Join(src, "CMakeLists.txt")); err == nil {
+		text := string(raw)
+		if strings.Contains(text, "psn00bsdk_add_executable(runtime") {
+			return "runtime"
+		}
 	}
 	base := filepath.Base(src)
 	if base == "" || base == "." || base == string(filepath.Separator) {

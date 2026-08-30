@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	guest "github.com/blazium-games/blazium-toolchain/guest/ps1"
 	"github.com/blazium-games/blazium-toolchain/internal/cache"
 	"github.com/blazium-games/blazium-toolchain/internal/embedfs"
 	"github.com/blazium-games/blazium-toolchain/internal/iso"
@@ -93,7 +94,7 @@ func Run(ctx context.Context, argv []string, stdout, stderr io.Writer) int {
 		return ExitFail
 	}
 	if len(rest) == 0 {
-		fmt.Fprintf(stderr, "usage: blazium-toolchain %s <setup|env|status|build|run|iso|fmv|meta>\n", platID)
+		fmt.Fprintf(stderr, "usage: blazium-toolchain %s <setup|env|status|build|export-guest|run|iso|fmv|meta>\n", platID)
 		return ExitUsage
 	}
 	return dispatch(ctx, p, rest, common(*prefix, *jsonOut, stdout, stderr), stdout, stderr)
@@ -141,6 +142,8 @@ func dispatch(ctx context.Context, p platforms.Platform, args []string, base pla
 		err = runStatus(p, base, stdout)
 	case "build":
 		err = runBuild(ctx, p, rest, base)
+	case "export-guest":
+		err = runExportGuest(p, rest, base, stdout)
 	case "run":
 		err = runRun(ctx, p, rest, base)
 	case "iso":
@@ -197,9 +200,11 @@ func runStatus(p platforms.Platform, base platforms.CommonOptions, stdout io.Wri
 func runBuild(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
 	fs := flag.NewFlagSet("build", flag.ContinueOnError)
 	fs.SetOutput(base.Stderr)
-	src := fs.String("src", "", "guest CMake source dir")
+	src := fs.String("src", "", "guest CMake source dir (full replace of the bundled stub)")
 	out := fs.String("out", "", "output PS-X EXE path")
 	sample := fs.String("sample", "", "official SDK sample: template or gte (when --src is empty)")
+	overlay := fs.String("overlay", "", "extra or replacement *.cpp on top of the bundled stub (or --src); also BLAZIUM_PS1_OVERLAY")
+	exportSrc := fs.String("export-src", "", "write the resolved guest C++ tree here")
 	tim := fs.String("tim", "", "optional cooked TIM to embed in the guest")
 	mesh := fs.String("mesh", "", "optional cooked SVECTOR mesh to embed in the guest")
 	vag := fs.String("vag", "", "optional cooked VAG to embed in the guest")
@@ -222,7 +227,38 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Tim: *tim, Mesh: *mesh, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Overlay: *overlay, ExportSrc: *exportSrc, Tim: *tim, Mesh: *mesh, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way})
+}
+
+func runExportGuest(p platforms.Platform, args []string, base platforms.CommonOptions, stdout io.Writer) error {
+	if p.Info().ID != ps1.ID {
+		return fmt.Errorf("%w: export-guest is a ps1 command", platforms.ErrUsage)
+	}
+	fs := flag.NewFlagSet("export-guest", flag.ContinueOnError)
+	fs.SetOutput(base.Stderr)
+	out := fs.String("out", "", "directory to write bundled guest *.cpp (default: prefix/ps1/guest/runtime)")
+	if err := fs.Parse(args); err != nil {
+		return platforms.ErrUsage
+	}
+	dest := strings.TrimSpace(*out)
+	if dest == "" {
+		dest = ps1.GuestDir(base.Prefix)
+	}
+	if err := guest.Install(dest); err != nil {
+		return err
+	}
+	if base.JSON {
+		return json.NewEncoder(stdout).Encode(map[string]any{
+			"out":   dest,
+			"abi":   guest.CookABI,
+			"files": guest.RuntimeNames,
+		})
+	}
+	fmt.Fprintf(stdout, "exported guest sources %s\n", dest)
+	for _, name := range guest.RuntimeNames {
+		fmt.Fprintf(stdout, "  %s\n", name)
+	}
+	return nil
 }
 
 func runRun(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
@@ -430,7 +466,9 @@ PS1 commands:
   setup [--profile compile|dev|iso] [--offline]
   env
   status
-  build --out FILE [--src DIR | --sample template|gte] [--tim|--mesh|--vag|--sprite|--script|--gdbc|--luau|--str|--xa|--node|--hud|--tile|--scene|--anim|--cam|--hit|--nav|--path|--way]
+  build --out FILE [--src DIR | --sample template|gte] [--overlay DIR] [--export-src DIR]
+    [--tim|--mesh|--vag|--sprite|--script|--gdbc|--luau|--str|--xa|--node|--hud|--tile|--scene|--anim|--cam|--hit|--nav|--path|--way]
+  export-guest [--out DIR]
   run [--iso CUE] [--timeout 120s] [--ui] [GAME.EXE]
   iso --xml FILE [--out PATH]
   fmv
