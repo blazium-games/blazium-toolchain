@@ -54,6 +54,54 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "resolved $V"
 
+  ps2-compile:
+    name: PS2 compile hello (${{ matrix.os }})
+    needs: [test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bin: blazium-toolchain
+          - os: windows-latest
+            bin: blazium-toolchain.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.8"
+      - name: Install make (Windows)
+        if: runner.os == 'Windows'
+        run: choco install make --yes --no-progress
+      - name: Build CLI
+        run: go build -o ${{ matrix.bin }} ./cmd/blazium-toolchain
+      - name: ps2 setup compile
+        run: ./${{ matrix.bin }} ps2 setup --profile compile
+      - name: ps2 build hello
+        run: ./${{ matrix.bin }} ps2 build --out hello.elf
+      - name: Verify MIPS ELF and size gates
+        shell: pwsh
+        run: |
+          $bin = "${{ matrix.bin }}"
+          if (-not (Test-Path -LiteralPath $bin)) { throw "missing $bin" }
+          $bytes = [System.IO.File]::ReadAllBytes("hello.elf")
+          if ($bytes.Length -lt 20 -or $bytes[0] -ne 0x7F -or [Text.Encoding]::ASCII.GetString($bytes, 1, 3) -ne "ELF") {
+            throw "hello.elf is not an ELF"
+          }
+          $mach = [BitConverter]::ToUInt16($bytes, 18)
+          if ($mach -ne 8 -and $mach -ne 0) { throw "hello.elf e_machine=$mach (want MIPS=8)" }
+          $info = & "./$bin" ps2 elf-info hello.elf
+          if ($LASTEXITCODE -ne 0) { throw "ps2 elf-info failed" }
+          $text = [int64]0
+          foreach ($line in @($info)) {
+            if ("$line" -match 'text_bytes=(\d+)') { $text = [int64]$Matches[1] }
+          }
+          if ($text -le 0) { throw "elf-info missing text_bytes= ($info)" }
+          if ($text -gt 524288) { throw "hello.elf .text $text exceeds 512 KiB" }
+          if ($bytes.Length -gt 2097152) { throw "hello.elf file $($bytes.Length) exceeds 2 MiB" }
+          Write-Host "hello.elf ok text_bytes=$text file_bytes=$($bytes.Length)"
+
   build:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
     needs: [test, resolve-version]
@@ -101,7 +149,7 @@ jobs:
 
   github-release:
     name: GitHub Release
-    needs: [resolve-version, build]
+    needs: [resolve-version, build, ps2-compile]
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:

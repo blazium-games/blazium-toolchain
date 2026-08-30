@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -265,6 +266,64 @@ func TestUnknownCommand(t *testing.T) {
 	code := Run(context.Background(), []string{"ps1", "frobnicate"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if code != ExitUsage {
 		t.Fatalf("exit %d", code)
+	}
+}
+
+func TestPS2ElfInfo(t *testing.T) {
+	const ehSize, shSize, shNum, textSize = 52, 40, 3, 16
+	shstrtab := []byte("\x00.text\x00.shstrtab\x00")
+	shoff := ehSize
+	shstrtabOff := shoff + shSize*shNum
+	textOff := shstrtabOff + len(shstrtab)
+	raw := make([]byte, textOff+textSize)
+	raw[0], raw[1], raw[2], raw[3] = 0x7f, 'E', 'L', 'F'
+	raw[4], raw[5], raw[6] = 1, 1, 1
+	binary.LittleEndian.PutUint16(raw[16:], 2)
+	binary.LittleEndian.PutUint16(raw[18:], 8)
+	binary.LittleEndian.PutUint32(raw[20:], 1)
+	binary.LittleEndian.PutUint32(raw[32:], uint32(shoff))
+	binary.LittleEndian.PutUint16(raw[40:], ehSize)
+	binary.LittleEndian.PutUint16(raw[46:], shSize)
+	binary.LittleEndian.PutUint16(raw[48:], shNum)
+	binary.LittleEndian.PutUint16(raw[50:], 2)
+	writeSH := func(idx int, name, typ, off, size uint32) {
+		o := shoff + idx*shSize
+		binary.LittleEndian.PutUint32(raw[o:], name)
+		binary.LittleEndian.PutUint32(raw[o+4:], typ)
+		binary.LittleEndian.PutUint32(raw[o+16:], off)
+		binary.LittleEndian.PutUint32(raw[o+20:], size)
+	}
+	writeSH(1, 1, 1, uint32(textOff), textSize)
+	writeSH(2, 7, 3, uint32(shstrtabOff), uint32(len(shstrtab)))
+	copy(raw[shstrtabOff:], shstrtab)
+	path := filepath.Join(t.TempDir(), "hello.elf")
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	code := Run(context.Background(), []string{"ps2", "elf-info", path}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("exit %d %s", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "text_bytes=16") {
+		t.Fatalf("body %s", out.String())
+	}
+	out.Reset()
+	errb.Reset()
+	code = Run(context.Background(), []string{"--json", "ps2", "elf-info", path}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("json exit %d %s", code, errb.String())
+	}
+	var m map[string]any
+	if err := json.Unmarshal(out.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if int(m["text_bytes"].(float64)) != 16 {
+		t.Fatalf("%v", m)
+	}
+	code = Run(context.Background(), []string{"ps1", "elf-info", path}, &bytes.Buffer{}, &bytes.Buffer{})
+	if code != ExitUsage {
+		t.Fatalf("ps1 elf-info exit %d", code)
 	}
 }
 

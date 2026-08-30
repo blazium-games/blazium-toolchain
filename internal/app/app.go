@@ -98,7 +98,7 @@ func Run(ctx context.Context, argv []string, stdout, stderr io.Writer) int {
 		return ExitFail
 	}
 	if len(rest) == 0 {
-		fmt.Fprintf(stderr, "usage: blazium-toolchain %s <setup|env|status|build|export-guest|run|iso|fmv|meta>\n", platID)
+		fmt.Fprintf(stderr, "usage: blazium-toolchain %s <setup|env|status|build|export-guest|run|iso|elf-info|fmv|meta>\n", platID)
 		return ExitUsage
 	}
 	return dispatch(ctx, p, rest, common(*prefix, *jsonOut, stdout, stderr), stdout, stderr)
@@ -161,6 +161,8 @@ func dispatch(ctx context.Context, p platforms.Platform, args []string, base pla
 		err = runRun(ctx, p, rest, base)
 	case "iso":
 		err = runISO(ctx, p, rest, base)
+	case "elf-info":
+		err = runElfInfo(p, rest, base, stdout)
 	case "fmv":
 		err = runFMV(p, rest, base, stdout)
 	case "meta":
@@ -409,6 +411,34 @@ func runISO(ctx context.Context, p platforms.Platform, args []string, base platf
 	})
 }
 
+func runElfInfo(p platforms.Platform, args []string, base platforms.CommonOptions, stdout io.Writer) error {
+	if p.Info().ID != ps2.ID {
+		return fmt.Errorf("%w: elf-info is a ps2 command", platforms.ErrUsage)
+	}
+	if len(args) < 1 || strings.TrimSpace(args[0]) == "" {
+		return fmt.Errorf("%w: ps2 elf-info <elf>", platforms.ErrUsage)
+	}
+	path := args[0]
+	text, err := ps2.TextSectionSize(path)
+	if err != nil {
+		return err
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if base.JSON {
+		return json.NewEncoder(stdout).Encode(map[string]any{
+			"path":       path,
+			"text_bytes": text,
+			"file_bytes": st.Size(),
+		})
+	}
+	fmt.Fprintf(stdout, "text_bytes=%d\n", text)
+	fmt.Fprintf(stdout, "file_bytes=%d\n", st.Size())
+	return nil
+}
+
 func runEncode(ctx context.Context, p platforms.Platform, name string, args []string, base platforms.CommonOptions) error {
 	tool, ok := p.(*interdvd.Tool)
 	if !ok {
@@ -530,6 +560,7 @@ PS2 commands:
   export-guest [--out DIR]
   run [--iso FILE.iso] [--timeout 120s] [--ui] [GAME.elf]
   iso --dir TREE --out FILE.iso
+  elf-info FILE.elf
 
 Interactive DVD commands:
   setup [--offline]

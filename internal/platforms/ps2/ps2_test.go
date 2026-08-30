@@ -86,13 +86,16 @@ func TestInfoSupported(t *testing.T) {
 	if info.ID != "ps2" || info.Status != platforms.StatusSupported {
 		t.Fatalf("%+v", info)
 	}
-	var exp bool
+	var exp, elfInfo bool
 	for _, c := range info.Commands {
 		if c == "export-guest" {
 			exp = true
 		}
+		if c == "elf-info" {
+			elfInfo = true
+		}
 	}
-	if !exp {
+	if !exp || !elfInfo {
 		t.Fatalf("commands %v", info.Commands)
 	}
 	if !strings.Contains(info.Description, "Windows") || !strings.Contains(info.Description, "Linux") {
