@@ -97,6 +97,17 @@ int sys_io_load_hud(int pack);
 int sys_io_unload_hud(void);
 int sys_io_hud_loaded(void);
 void sys_io_spawn_ofs(float x, float y, float z);
+void sys_io_move_6dof(float ax, float ay, float az, float pitch, float yaw, float roll, float speed, float delta);
+void sys_io_set_steer(float steer);
+void sys_io_set_thrust(float thrust);
+void sys_io_set_eye_height(float h);
+int sys_io_load_particles(int pack);
+int sys_io_unload_particles(void);
+int sys_io_particles_loaded(void);
+void sys_io_path_follow(float speed, float delta);
+void sys_io_set_path_offset(float t);
+int sys_io_navmesh_next(int from, int to);
+int sys_io_prefetch(int pack);
 
 #ifdef __cplusplus
 }

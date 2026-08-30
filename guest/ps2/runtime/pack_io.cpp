@@ -14,6 +14,7 @@
 #define PS2_LAYERS 16
 #define PS2_EE_LIMIT (24u * 1024u * 1024u)
 #define PS2_GS_LIMIT (4u * 1024u * 1024u)
+#define PS2_EXTRA_EE_CAP (2u * 1024u * 1024u)
 #define PS2_POKE_N (24u * 1024u)
 
 static unsigned char s_poke[PS2_POKE_N];
@@ -509,9 +510,34 @@ int pack_io_can_fit(int pack)
 	}
 	const unsigned ee = pack_io_cost_ee(pack);
 	const unsigned gs = pack_io_cost_gs(pack);
+	if (ee > PS2_EXTRA_EE_CAP) {
+		return 0;
+	}
 	if (used_ee() + ee > PS2_EE_LIMIT || used_gs() + gs > PS2_GS_LIMIT) {
 		return 0;
 	}
+	return 1;
+}
+
+int pack_io_prefetch(int pack)
+{
+	if (pack < 1) {
+		return 0;
+	}
+	if (!pack_io_can_fit(pack) && !pack_io_is_loaded(pack)) {
+		return 0;
+	}
+	char host[40];
+	char iso_bs[48];
+	char iso[48];
+	sprintf(host, "host:MESH%02d.bin", pack);
+	sprintf(iso_bs, "cdrom0:\\MESH%02d.BIN;1", pack);
+	sprintf(iso, "cdrom0:MESH%02d.BIN;1", pack);
+	FILE *f = open_named(host, iso_bs, iso);
+	if (!f) {
+		return 0;
+	}
+	fclose(f);
 	return 1;
 }
 

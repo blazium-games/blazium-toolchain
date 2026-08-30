@@ -70,6 +70,8 @@ static float g_look_x = 0.0f;
 static float g_look_y = 1.5f;
 static float g_look_z = 0.0f;
 static float g_fov = 55.0f;
+static int g_ortho;
+static float g_eye_h;
 static float g_world_yaw = 0.0f;
 static float g_pitch = 0.0f;
 static float g_yaw = 0.0f;
@@ -398,6 +400,27 @@ static void perspective(Mat4 *o, float fov_deg, float aspect, float zn, float zf
 	o->m[11] = -1.0f;
 	o->m[14] = (2.0f * zf * zn) / (zn - zf);
 	o->m[15] = 0.0f;
+}
+
+static void ortho_proj(Mat4 *o, float aspect, float zn, float zf)
+{
+	const float h = 8.0f;
+	const float w = h * aspect;
+	mat_ident(o);
+	o->m[0] = 1.0f / w;
+	o->m[5] = 1.0f / h;
+	o->m[10] = 2.0f / (zn - zf);
+	o->m[14] = (zf + zn) / (zn - zf);
+}
+
+void gs_draw_set_ortho(int on)
+{
+	g_ortho = on ? 1 : 0;
+}
+
+void gs_draw_set_eye_height(float h)
+{
+	g_eye_h = h;
 }
 
 static void xform(const Mat4 *m, float x, float y, float z, float *ox, float *oy, float *oz, float *ow)
@@ -731,7 +754,7 @@ void gs_draw_shake(float x, float y, float z)
 static void eye_now(float *x, float *y, float *z)
 {
 	*x = g_cam_x + g_attach_x + g_shake_x;
-	*y = g_cam_y + g_attach_y + g_shake_y;
+	*y = g_cam_y + g_attach_y + g_shake_y + g_eye_h;
 	*z = g_cam_z + g_attach_z + g_shake_z;
 }
 
@@ -885,7 +908,11 @@ void gs_draw_fill_mvp(float out[16], int width, int height)
 	float ex = 0.0f, ey = 0.0f, ez = 0.0f;
 	eye_now(&ex, &ey, &ez);
 	look_at(&view, ex, ey, ez, g_look_x, g_look_y, g_look_z);
-	perspective(&proj, g_fov, (float)width / (float)(height ? height : 1), 0.25f, 400.0f);
+	if (g_ortho) {
+		ortho_proj(&proj, (float)width / (float)(height ? height : 1), 0.25f, 400.0f);
+	} else {
+		perspective(&proj, g_fov, (float)width / (float)(height ? height : 1), 0.25f, 400.0f);
+	}
 	mat_mul(&view, &world, &tmp);
 	mat_mul(&proj, &tmp, &mvp);
 	memcpy(out, mvp.m, sizeof(mvp.m));
@@ -970,7 +997,11 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 	float ex = 0.0f, ey = 0.0f, ez = 0.0f;
 	eye_now(&ex, &ey, &ez);
 	look_at(&view, ex, ey, ez, g_look_x, g_look_y, g_look_z);
-	perspective(&proj, g_fov, (float)frame->width / (float)frame->height, 0.25f, 400.0f);
+	if (g_ortho) {
+		ortho_proj(&proj, (float)frame->width / (float)(frame->height ? frame->height : 1), 0.25f, 400.0f);
+	} else {
+		perspective(&proj, g_fov, (float)frame->width / (float)frame->height, 0.25f, 400.0f);
+	}
 	mat_mul(&view, &world, &tmp);
 	mat_mul(&proj, &tmp, &mvp);
 

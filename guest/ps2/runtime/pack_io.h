@@ -28,6 +28,7 @@ int pack_io_unload(int pack);
 int pack_io_is_loaded(int pack);
 int pack_io_loaded_count(void);
 int pack_io_can_fit(int pack);
+int pack_io_prefetch(int pack);
 unsigned pack_io_ee_used(void);
 unsigned pack_io_ee_free(void);
 unsigned pack_io_ee_limit(void);

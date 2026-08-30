@@ -34,6 +34,8 @@ void gs_draw_look_point(float *x, float *y, float *z);
 void gs_draw_set_eye(float x, float y, float z);
 // Camera3D: Godot Y-up YXZ euler, look along local -Z. fov_deg is the cooked FOV.
 void gs_draw_set_camera(float x, float y, float z, float pitch, float yaw, float roll, float fov_deg);
+void gs_draw_set_ortho(int on);
+void gs_draw_set_eye_height(float h);
 void gs_draw_look(float yaw, float pitch, float roll);
 void gs_draw_look_delta(float dyaw, float dpitch);
 void gs_draw_orbit_sph(float yaw, float pitch, float dist);

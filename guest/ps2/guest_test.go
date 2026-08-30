@@ -68,6 +68,9 @@ func TestGuestPack1AndDisp(t *testing.T) {
 	if !strings.Contains(src, "PS2_LAYERS") || !strings.Contains(src, "s_cost_ee") || !strings.Contains(src, "pack_io_can_fit") {
 		t.Fatal("pack_io.cpp must RAM-gate 16 layers with STREAM ee/gs costs")
 	}
+	if !strings.Contains(src, "PS2_EXTRA_EE_CAP") || !strings.Contains(src, "pack_io_prefetch") {
+		t.Fatal("pack_io.cpp must cap extra packs at 2 MiB and prefetch host then cdrom0")
+	}
 	main, err := files.ReadFile("runtime/main.cpp")
 	if err != nil {
 		t.Fatal(err)
@@ -163,6 +166,9 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	if !strings.Contains(string(vm), "NAT_HURT") || !strings.Contains(string(vm), "NAT_POKE") || !strings.Contains(string(vm), "NAT_GET_PRESSURE") {
 		t.Fatal("script_vm must interpret hurt / poke / get_pressure")
 	}
+	if !strings.Contains(string(vm), "NAT_MOVE_6DOF") || !strings.Contains(string(vm), "NAT_LOAD_PARTICLES") || !strings.Contains(string(vm), "NAT_PATH_FOLLOW") {
+		t.Fatal("script_vm must interpret move_6dof / load_particles / path_follow")
+	}
 	if !strings.Contains(string(vm), "OP_JMP") || !strings.Contains(string(vm), "OP_CALL_NATIVE") {
 		t.Fatal("script_vm must interpret JMP / CALL_NATIVE")
 	}
@@ -178,6 +184,9 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	}
 	if !strings.Contains(string(gs), "gs_draw_set_camera") || !strings.Contains(string(gs), "euler_yxz_negz") {
 		t.Fatal("gs_draw.cpp must apply Camera3D look-at from YXZ euler")
+	}
+	if !strings.Contains(string(gs), "gs_draw_set_ortho") || !strings.Contains(string(gs), "ortho_proj") {
+		t.Fatal("gs_draw.cpp must support Camera2D ortho")
 	}
 	if !strings.Contains(string(gs), "gs_draw_look") || !strings.Contains(string(gs), "gs_draw_orbit_sph") || !strings.Contains(string(gs), "gs_draw_shake") {
 		t.Fatal("gs_draw.cpp must expose look/orbit/shake")
@@ -218,6 +227,15 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	}
 	if !strings.Contains(string(sys), "SPRT") || !strings.Contains(string(sys), "apply_sprt") {
 		t.Fatal("sys_io.cpp must load SPRT sidecars")
+	}
+	if !strings.Contains(string(sys), "sys_io_move_6dof") || !strings.Contains(string(sys), "sys_io_path_follow") {
+		t.Fatal("sys_io.cpp must expose move_6dof / path_follow")
+	}
+	if !strings.Contains(string(sys), "apply_part") || !strings.Contains(string(sys), "PART") {
+		t.Fatal("sys_io.cpp must load PART sidecars")
+	}
+	if !strings.Contains(string(sys), "apply_navm") || !strings.Contains(string(sys), "NAVM") {
+		t.Fatal("sys_io.cpp must load NAVM sidecars")
 	}
 	vu1, err := files.ReadFile("runtime/vu1_draw.cpp")
 	if err != nil {

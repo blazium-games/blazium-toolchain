@@ -116,7 +116,21 @@ enum {
 	NAT_PEEK = 96,
 	NAT_SPAWN = 97,
 	NAT_OVERLAPS_ENTERED = 98,
-	NAT_SET_FLIP = 99
+	NAT_SET_FLIP = 99,
+	NAT_MOVE_6DOF = 100,
+	NAT_LOAD_PARTICLES = 101,
+	NAT_UNLOAD_PARTICLES = 102,
+	NAT_CAN_LOAD_PARTICLES = 103,
+	NAT_IS_PARTICLES_LOADED = 104,
+	NAT_PATH_FOLLOW = 105,
+	NAT_SET_PATH_OFFSET = 106,
+	NAT_SET_THRUST = 107,
+	NAT_SET_STEER = 108,
+	NAT_SET_EYE_HEIGHT = 109,
+	NAT_PREFETCH_SCENE = 110,
+	NAT_NAVMESH = 111,
+	NAT_TWEEN_PLAY = 112,
+	NAT_TWEEN_KILL = 113
 };
 
 static char s_str[8][128];
@@ -978,6 +992,72 @@ static void run_range(unsigned from, unsigned to, float delta)
 				if (sp < 8) {
 					stack[sp++] = 1.0f;
 				}
+			} else if (nid == NAT_MOVE_6DOF && sp >= 7) {
+				const float speed = stack[--sp];
+				const float roll = stack[--sp];
+				const float yaw = stack[--sp];
+				const float pitch = stack[--sp];
+				const float az = stack[--sp];
+				const float ay = stack[--sp];
+				const float ax = stack[--sp];
+				sys_io_move_6dof(ax, ay, az, pitch, yaw, roll, speed, delta);
+				if (sp < 8) {
+					stack[sp++] = 1.0f;
+				}
+			} else if (nid == NAT_LOAD_PARTICLES && sp < 8) {
+				int pack = pack_io_current();
+				if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+					pack = pack_io_find_path(s_str[s_last_str]);
+				}
+				stack[sp++] = sys_io_load_particles(pack) ? 1.0f : 0.0f;
+			} else if (nid == NAT_UNLOAD_PARTICLES && sp < 8) {
+				stack[sp++] = sys_io_unload_particles() ? 1.0f : 0.0f;
+			} else if (nid == NAT_CAN_LOAD_PARTICLES && sp < 8) {
+				int pack = pack_io_current();
+				if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+					pack = pack_io_find_path(s_str[s_last_str]);
+				}
+				stack[sp++] = (pack_io_is_loaded(pack) || pack_io_can_fit(pack)) ? 1.0f : 0.0f;
+			} else if (nid == NAT_IS_PARTICLES_LOADED && sp < 8) {
+				stack[sp++] = sys_io_particles_loaded() ? 1.0f : 0.0f;
+			} else if (nid == NAT_PATH_FOLLOW && sp >= 1) {
+				sys_io_path_follow(stack[--sp], delta);
+				if (sp < 8) {
+					stack[sp++] = 1.0f;
+				}
+			} else if (nid == NAT_SET_PATH_OFFSET && sp >= 1) {
+				sys_io_set_path_offset(stack[--sp]);
+				if (sp < 8) {
+					stack[sp++] = 1.0f;
+				}
+			} else if (nid == NAT_SET_THRUST && sp >= 1) {
+				sys_io_set_thrust(stack[--sp]);
+				if (sp < 8) {
+					stack[sp++] = 1.0f;
+				}
+			} else if (nid == NAT_SET_STEER && sp >= 1) {
+				sys_io_set_steer(stack[--sp]);
+				if (sp < 8) {
+					stack[sp++] = 1.0f;
+				}
+			} else if (nid == NAT_SET_EYE_HEIGHT && sp >= 1) {
+				sys_io_set_eye_height(stack[--sp]);
+				if (sp < 8) {
+					stack[sp++] = 1.0f;
+				}
+			} else if (nid == NAT_PREFETCH_SCENE && sp < 8) {
+				int pack = pack_io_current();
+				if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+					pack = pack_io_find_path(s_str[s_last_str]);
+				}
+				stack[sp++] = sys_io_prefetch(pack) ? 1.0f : 0.0f;
+			} else if (nid == NAT_NAVMESH && sp < 8) {
+				stack[sp++] = (float)sys_io_navmesh_next(0, 1);
+			} else if (nid == NAT_TWEEN_PLAY && sp < 8) {
+				stack[sp++] = (float)sys_io_tween_start(0.0f, 1.0f, 0.5f, 0);
+			} else if (nid == NAT_TWEEN_KILL && sp < 8) {
+				sys_io_kill_tweens();
+				stack[sp++] = 1.0f;
 			} else if (sp < 8) {
 				stack[sp++] = (float)sys_io_get_hp();
 			}
