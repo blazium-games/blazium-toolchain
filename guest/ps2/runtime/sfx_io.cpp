@@ -1,4 +1,6 @@
-// MIT IMA ADPCM of ABI 1 "SFX ". Load host: then cdrom0:. freesd IRX; no audsrv.
+// MIT IMA ADPCM of ABI 1 "SFX ". Load host: then cdrom0:.
+// Voice: sdrdrv SIF RPC (rSdInit / sce_SDR_DEV) + freesd. Do not include
+// libsd.h/libsdr.h or call sceSdInit/sceSdRemote (this -lsdr lacks those).
 
 #include "sfx_io.h"
 
@@ -14,16 +16,36 @@
 #include <loadfile.h>
 #define BLAZIUM_PS2_HAS_LOADFILE 1
 #endif
+#if __has_include(<iopheap.h>)
+#include <iopheap.h>
+#define BLAZIUM_PS2_HAS_IOPHEAP 1
 #endif
-
-#ifdef BLAZIUM_PS2_HAS_LIBSD
-/* Do not call sceSdInit: this newlib -lsdr does not export it. */
+#if __has_include(<kernel.h>)
+#include <kernel.h>
+#endif
+#if __has_include(<libsdr-common.h>) && __has_include(<sifrpc.h>)
+extern "C" {
+#include <libsd-common.h>
+#include <libsdr-common.h>
+#include <sifrpc.h>
+#if __has_include(<sifdma.h>)
+#include <sifdma.h>
+#endif
+}
+#define BLAZIUM_PS2_HAS_LIBSDR 1
+#endif
 #endif
 
 #ifdef BLAZIUM_PS2_HAS_IRX_FREESD
 extern "C" {
 extern const unsigned char irx_freesd[];
 extern const unsigned int size_irx_freesd;
+}
+#endif
+#ifdef BLAZIUM_PS2_HAS_IRX_SDRDRV
+extern "C" {
+extern const unsigned char irx_sdrdrv[];
+extern const unsigned int size_irx_sdrdrv;
 }
 #endif
 
@@ -47,10 +69,17 @@ static const int s_ima_index[16] = {
 static short *s_pcm;
 static int s_pcm_n;
 static int s_rate;
+static unsigned char *s_vag;
+static unsigned s_vag_sz;
 static int s_ready;
 static int s_played;
 static int s_audible;
 static int s_sd_ok;
+#ifdef BLAZIUM_PS2_HAS_LIBSDR
+static SifRpcClientData_t s_sd_cd __attribute__((aligned(64)));
+static int s_sbuff[16] __attribute__((aligned(64)));
+static int s_sd_bound;
+#endif
 
 static unsigned ru16(const unsigned char *p)
 {
@@ -152,17 +181,159 @@ static int decode_ima(const unsigned char *nibbles, unsigned nbytes)
 	return 1;
 }
 
+static int encode_vag(const short *pcm, int n)
+{
+	if (!pcm || n < 1) {
+		return 0;
+	}
+	if (n > 11200) {
+		n = 11200;
+	}
+	const int blocks = (n + 27) / 28;
+	s_vag_sz = (unsigned)blocks * 16;
+	s_vag = (unsigned char *)malloc(s_vag_sz + 16);
+	if (!s_vag) {
+		s_vag_sz = 0;
+		return 0;
+	}
+	memset(s_vag, 0, s_vag_sz);
+	for (int b = 0; b < blocks; b++) {
+		unsigned char *blk = s_vag + b * 16;
+		int maxabs = 0;
+		short samp[28];
+		for (int i = 0; i < 28; i++) {
+			const int idx = b * 28 + i;
+			const short s = (idx < n) ? pcm[idx] : 0;
+			samp[i] = s;
+			int a = s < 0 ? -s : s;
+			if (a > maxabs) {
+				maxabs = a;
+			}
+		}
+		int shift = 12;
+		while (shift > 0 && (maxabs >> (12 - shift)) > 7) {
+			shift--;
+		}
+		if (shift < 0) {
+			shift = 0;
+		}
+		blk[0] = (unsigned char)(shift & 0x0f);
+		blk[1] = (b == blocks - 1) ? 1 : 0;
+		for (int i = 0; i < 14; i++) {
+			int n0 = samp[i * 2] >> (12 - shift);
+			int n1 = samp[i * 2 + 1] >> (12 - shift);
+			if (n0 > 7) {
+				n0 = 7;
+			}
+			if (n0 < -8) {
+				n0 = -8;
+			}
+			if (n1 > 7) {
+				n1 = 7;
+			}
+			if (n1 < -8) {
+				n1 = -8;
+			}
+			blk[2 + i] = (unsigned char)((n0 & 0x0f) | ((n1 & 0x0f) << 4));
+		}
+	}
+	return 1;
+}
+
+static void load_sound_irx(void)
+{
+#ifdef BLAZIUM_PS2_HAS_LOADFILE
+#ifdef BLAZIUM_PS2_HAS_IRX_FREESD
+	SifExecModuleBuffer((void *)irx_freesd, (int)size_irx_freesd, 0, NULL, NULL);
+#endif
+#ifdef BLAZIUM_PS2_HAS_IRX_SDRDRV
+	SifExecModuleBuffer((void *)irx_sdrdrv, (int)size_irx_sdrdrv, 0, NULL, NULL);
+#endif
+#endif
+}
+
+#ifdef BLAZIUM_PS2_HAS_LIBSDR
+static int sdr_bind(void)
+{
+	if (s_sd_bound) {
+		return 1;
+	}
+	memset(&s_sd_cd, 0, sizeof(s_sd_cd));
+	for (;;) {
+		if (sceSifBindRpc(&s_sd_cd, sce_SDR_DEV, 0) < 0) {
+			return 0;
+		}
+		if (s_sd_cd.server != NULL) {
+			s_sd_bound = 1;
+			return 1;
+		}
+		nopdelay();
+	}
+}
+
+static int sdr_cmd(int cmd, int a1, int a2, int a3, int a4, int a5)
+{
+	if (!sdr_bind()) {
+		return -1;
+	}
+	s_sbuff[0] = (int)(unsigned long)s_sbuff;
+	s_sbuff[1] = a1;
+	s_sbuff[2] = a2;
+	s_sbuff[3] = a3;
+	s_sbuff[4] = a4;
+	s_sbuff[5] = a5;
+	if (sceSifCallRpc(&s_sd_cd, cmd, 0, &s_sbuff[0], sizeof(s_sbuff), &s_sbuff[0], 16, NULL, NULL) < 0) {
+		return -1;
+	}
+	return s_sbuff[0];
+}
+
+static int sdr_trans_to_iop(void *ee, void *iop, unsigned size)
+{
+	SifDmaTransfer_t dmat;
+	dmat.src = ee;
+	dmat.dest = iop;
+	dmat.size = size;
+	dmat.attr = 0;
+	int id = 0;
+	while (!(id = sceSifSetDma(&dmat, 1))) {
+	}
+	while (sceSifDmaStat(id) >= 0) {
+	}
+	return 0;
+}
+#endif
+
+static int init_sdr(void)
+{
+#ifdef BLAZIUM_PS2_HAS_LIBSDR
+	if (!sdr_bind()) {
+		return 0;
+	}
+	sdr_cmd(rSdInit, 0, 0, 0, 0, 0);
+	sdr_cmd(rSdSetParam, SD_PARAM_MVOLL, 0x3fff, 0, 0, 0);
+	sdr_cmd(rSdSetParam, SD_PARAM_MVOLR, 0x3fff, 0, 0, 0);
+	sdr_cmd(rSdSetSwitch, SD_SWITCH_VMIXL, 1, 0, 0, 0);
+	sdr_cmd(rSdSetSwitch, SD_SWITCH_VMIXR, 1, 0, 0, 0);
+	return 1;
+#else
+	return 0;
+#endif
+}
+
 int sfx_io_init(void)
 {
 	s_ready = 0;
 	s_played = 0;
 	s_audible = 0;
 	s_sd_ok = 0;
-#ifdef BLAZIUM_PS2_HAS_IRX_FREESD
-#ifdef BLAZIUM_PS2_HAS_LOADFILE
-	SifExecModuleBuffer((void *)irx_freesd, (int)size_irx_freesd, 0, NULL, NULL);
+	s_vag = 0;
+	s_vag_sz = 0;
+#ifdef BLAZIUM_PS2_HAS_LIBSDR
+	s_sd_bound = 0;
 #endif
-#endif
+	load_sound_irx();
+	s_sd_ok = init_sdr();
 	unsigned char *blob = 0;
 	unsigned sz = 0;
 	if (!load_blob(&blob, &sz)) {
@@ -184,6 +355,9 @@ int sfx_io_init(void)
 	}
 	const int ok = decode_ima(blob + 12, nbytes);
 	free(blob);
+	if (ok) {
+		encode_vag(s_pcm, s_pcm_n);
+	}
 	s_ready = ok;
 	return ok;
 }
@@ -194,22 +368,51 @@ void sfx_io_play(void)
 		return;
 	}
 	s_played = 1;
-#ifdef BLAZIUM_PS2_HAS_LIBSD
-	/* PCM is decoded on the EE. Voice DMA is not linked (sceSdInit missing
-	   from -lsdr). Cook WARNINGS.txt tells the developer play may be silent. */
-	s_sd_ok = 1;
 	s_audible = 0;
-	(void)s_rate;
-	(void)s_pcm_n;
-#else
-	(void)s_rate;
-	(void)s_pcm_n;
+#ifdef BLAZIUM_PS2_HAS_LIBSDR
+#ifdef BLAZIUM_PS2_HAS_IOPHEAP
+	if (!s_sd_ok || !s_vag || s_vag_sz < 16) {
+		return;
+	}
+	void *iop = SifAllocIopHeap((int)s_vag_sz);
+	if (!iop) {
+		return;
+	}
+#ifdef BLAZIUM_PS2_HAS_LOADFILE
+	FlushCache(0);
 #endif
+	if (sdr_trans_to_iop(s_vag, iop, s_vag_sz) < 0) {
+		SifFreeIopHeap(iop);
+		return;
+	}
+	const int pitch = s_rate > 0 ? (s_rate * 4096) / 44100 : 2048;
+	const int voice = SD_VOICE(0, 0);
+	sdr_cmd(rSdVoiceTrans, 0, SD_TRANS_WRITE | SD_TRANS_MODE_DMA, (int)(unsigned long)iop, 0x5000, (int)s_vag_sz);
+	sdr_cmd(rSdVoiceTransStatus, 0, 1, 0, 0, 0);
+	sdr_cmd(rSdSetParam, SD_VPARAM_VOLL | voice, 0x3fff, 0, 0, 0);
+	sdr_cmd(rSdSetParam, SD_VPARAM_VOLR | voice, 0x3fff, 0, 0, 0);
+	sdr_cmd(rSdSetParam, SD_VPARAM_PITCH | voice, pitch, 0, 0, 0);
+	sdr_cmd(rSdSetParam, SD_VPARAM_ADSR1 | voice, SD_SET_ADSR1(0, 0x7f, 0xf, 0xf), 0, 0, 0);
+	sdr_cmd(rSdSetParam, SD_VPARAM_ADSR2 | voice, SD_SET_ADSR2(0, 0, 0, 0x10), 0, 0, 0);
+	sdr_cmd(rSdSetAddr, SD_VADDR_SSA | voice, 0x5000, 0, 0, 0);
+	sdr_cmd(rSdSetSwitch, SD_SWITCH_KON, 1, 0, 0, 0);
+	SifFreeIopHeap(iop);
+	s_audible = 1;
+	return;
+#endif
+#endif
+	(void)s_rate;
+	(void)s_pcm_n;
 }
 
 void sfx_io_stop(void)
 {
 	s_played = 0;
+#ifdef BLAZIUM_PS2_HAS_LIBSDR
+	if (s_sd_ok) {
+		sdr_cmd(rSdSetSwitch, SD_SWITCH_KOFF, 1, 0, 0, 0);
+	}
+#endif
 }
 
 int sfx_io_ready(void)

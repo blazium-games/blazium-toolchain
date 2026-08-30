@@ -70,8 +70,14 @@ func TestGuestPack1AndDisp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(sfx), "SdInit") && !strings.Contains(string(sfx), "sfx_io_audible") {
-		t.Fatal("sfx_io.cpp must attempt SPU2 voice or expose audible")
+	if !strings.Contains(string(sfx), "sfx_io_audible") || !strings.Contains(string(sfx), "rSdInit") || !strings.Contains(string(sfx), "sce_SDR_DEV") {
+		t.Fatal("sfx_io.cpp must use sdrdrv RPC (rSdInit / sce_SDR_DEV) and expose sfx_io_audible")
+	}
+	if strings.Contains(string(sfx), "#include <libsd.h>") || strings.Contains(string(sfx), "#include <libsdr.h>") || strings.Contains(string(sfx), "sceSdInit(") || strings.Contains(string(sfx), "sceSdRemote(") {
+		t.Fatal("sfx_io.cpp must not include libsd.h/libsdr.h or call sceSdInit/sceSdRemote")
+	}
+	if !strings.Contains(string(sfx), "sdrdrv") && !strings.Contains(string(sfx), "SDRDRV") {
+		t.Fatal("sfx_io.cpp must load sdrdrv IRX for the libsdr RPC server")
 	}
 }
 

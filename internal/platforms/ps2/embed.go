@@ -105,6 +105,7 @@ func irxSlices() []irxSlice {
 		{name: "fileXio.irx", bin: "fileXio.irx", symbol: "irx_fileXio", define: "BLAZIUM_PS2_HAS_IRX_FILEXIO"},
 		{name: "iomanX.irx", bin: "iomanX.irx", symbol: "irx_iomanX", define: "BLAZIUM_PS2_HAS_IRX_IOMANX"},
 		{name: "freesd.irx", bin: "freesd.irx", symbol: "irx_freesd", define: "BLAZIUM_PS2_HAS_IRX_FREESD"},
+		{name: "sdrdrv.irx", bin: "sdrdrv.irx", symbol: "irx_sdrdrv", define: "BLAZIUM_PS2_HAS_IRX_SDRDRV"},
 	}
 }
 
@@ -136,7 +137,7 @@ func findSDKIRX(sdk, name string) string {
 	return hit
 }
 
-// stageIrxEmbed copies fileXio/iomanX/freesd IRX from PS2SDK and writes irx_embed.S
+// stageIrxEmbed copies fileXio/iomanX/freesd/sdrdrv IRX from PS2SDK and writes irx_embed.S
 // (bin2c-equivalent .incbin, same work-dir pattern as cook slices). Missing IRX is OK.
 func stageIrxEmbed(dest, sdk string) error {
 	var present []irxSlice

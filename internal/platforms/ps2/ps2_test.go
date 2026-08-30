@@ -247,6 +247,9 @@ func TestStageIrxEmbed(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(irxDir, "freesd.irx"), []byte("FSD"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(irxDir, "sdrdrv.irx"), []byte("SDR"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	dest := filepath.Join(t.TempDir(), "src")
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		t.Fatal(err)
@@ -254,7 +257,7 @@ func TestStageIrxEmbed(t *testing.T) {
 	if err := stageIrxEmbed(dest, sdk); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"fileXio.irx", "freesd.irx", "irx_embed.S", "irx_flags.h", "irx.mk"} {
+	for _, name := range []string{"fileXio.irx", "freesd.irx", "sdrdrv.irx", "irx_embed.S", "irx_flags.h", "irx.mk"} {
 		if _, err := os.Stat(filepath.Join(dest, name)); err != nil {
 			t.Fatalf("missing %s: %v", name, err)
 		}
@@ -263,14 +266,14 @@ func TestStageIrxEmbed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(asm), "fileXio.irx") || !strings.Contains(string(asm), "freesd.irx") {
+	if !strings.Contains(string(asm), "fileXio.irx") || !strings.Contains(string(asm), "freesd.irx") || !strings.Contains(string(asm), "sdrdrv.irx") {
 		t.Fatalf("asm: %s", asm)
 	}
 	hdr, err := os.ReadFile(filepath.Join(dest, "irx_flags.h"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(hdr), "BLAZIUM_PS2_HAS_IRX_FILEXIO") || !strings.Contains(string(hdr), "BLAZIUM_PS2_HAS_IRX_FREESD") {
+	if !strings.Contains(string(hdr), "BLAZIUM_PS2_HAS_IRX_FILEXIO") || !strings.Contains(string(hdr), "BLAZIUM_PS2_HAS_IRX_FREESD") || !strings.Contains(string(hdr), "BLAZIUM_PS2_HAS_IRX_SDRDRV") {
 		t.Fatalf("flags: %s", hdr)
 	}
 }
