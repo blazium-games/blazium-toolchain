@@ -97,6 +97,23 @@ func TestListJSONHasPS1(t *testing.T) {
 	if !interdvd {
 		t.Fatalf("missing interdvd in %s", out.String())
 	}
+	for _, info := range list {
+		if info.ID != "interdvd" {
+			continue
+		}
+		var ffmpeg, ffprobe bool
+		for _, c := range info.Commands {
+			if c == "ffmpeg" {
+				ffmpeg = true
+			}
+			if c == "ffprobe" {
+				ffprobe = true
+			}
+		}
+		if !ffmpeg || !ffprobe {
+			t.Fatalf("interdvd commands missing ffmpeg/ffprobe: %v", info.Commands)
+		}
+	}
 	for _, want := range []string{"ps2", "ps3", "ps4"} {
 		var found bool
 		for _, info := range list {
@@ -365,5 +382,47 @@ func TestExportGuestWritesCPP(t *testing.T) {
 	}
 	if !strings.Contains(string(cmake), "extra/*.cpp") {
 		t.Fatalf("CMakeLists missing extra glob: %s", cmake)
+	}
+}
+
+func TestInterDVDEnvStatusAndMissingFFmpeg(t *testing.T) {
+	prefix := t.TempDir()
+	var out, errb bytes.Buffer
+	code := Run(context.Background(), []string{"--prefix", prefix, "--json", "interdvd", "env"}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("env %d %s", code, errb.String())
+	}
+	var env map[string]string
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env["ISO_TOOL"] != "builtin" || env["SCHEMA"] != "blazium.interdvd.meta/v1" {
+		t.Fatalf("%v", env)
+	}
+	out.Reset()
+	errb.Reset()
+	code = Run(context.Background(), []string{"--prefix", prefix, "--json", "interdvd", "status"}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("status %d %s", code, errb.String())
+	}
+	var st map[string]any
+	if err := json.Unmarshal(out.Bytes(), &st); err != nil {
+		t.Fatal(err)
+	}
+	if ready, _ := st["encode_ready"].(bool); ready {
+		t.Fatalf("encode_ready %s", out.String())
+	}
+	if ready, _ := st["iso_ready"].(bool); !ready {
+		t.Fatalf("iso_ready %s", out.String())
+	}
+	errb.Reset()
+	code = Run(context.Background(), []string{"--prefix", prefix, "interdvd", "ffmpeg", "--", "-version"}, &bytes.Buffer{}, &errb)
+	if code != ExitTool {
+		t.Fatalf("ffmpeg missing exit %d %s", code, errb.String())
+	}
+	errb.Reset()
+	code = Run(context.Background(), []string{"--prefix", prefix, "interdvd", "ffprobe", "--", "-version"}, &bytes.Buffer{}, &errb)
+	if code != ExitTool {
+		t.Fatalf("ffprobe missing exit %d %s", code, errb.String())
 	}
 }

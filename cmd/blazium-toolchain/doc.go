@@ -21,6 +21,11 @@
 //	blazium-toolchain [--prefix DIR] ps1 run [--iso CUE] [--timeout 120s] [--ui] GAME.EXE
 //	blazium-toolchain [--prefix DIR] ps1 iso --xml FILE [--out PATH]
 //	blazium-toolchain [--json] [--prefix DIR] ps1 fmv
+//	blazium-toolchain [--json] [--prefix DIR] interdvd setup [--offline]
+//	blazium-toolchain [--json] [--prefix DIR] interdvd env
+//	blazium-toolchain [--json] [--prefix DIR] interdvd status
+//	blazium-toolchain [--prefix DIR] interdvd ffmpeg -- <args>
+//	blazium-toolchain [--prefix DIR] interdvd ffprobe -- <args>
 //	blazium-toolchain interdvd iso --dir DIR --out FILE [--meta FILE] [--write-meta FILE]
 //	blazium-toolchain interdvd meta init --out FILE
 //	blazium-toolchain interdvd meta validate --meta FILE
