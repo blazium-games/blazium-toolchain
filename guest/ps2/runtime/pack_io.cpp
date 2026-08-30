@@ -199,7 +199,11 @@ static void set_user_err(const char *msg)
 
 static FILE *open_save(const char *mode)
 {
-	FILE *f = fopen("host:SAVE.BIN", mode);
+	FILE *f = fopen("host:SAVE0.BIN", mode);
+	if (f) {
+		return f;
+	}
+	f = fopen("host:SAVE.BIN", mode);
 	if (f) {
 		return f;
 	}

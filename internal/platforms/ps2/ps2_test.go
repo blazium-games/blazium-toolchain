@@ -296,3 +296,28 @@ func TestBiosReady(t *testing.T) {
 		t.Fatal("bin should count")
 	}
 }
+
+func TestBiosReadyNestedPrefers39001(t *testing.T) {
+	root := t.TempDir()
+	other := filepath.Join(root, "SCPH-70012_BIOS_V12_USA")
+	pref := filepath.Join(root, "SCPH-39001_BIOS_V7_USA")
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(pref, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(other, "other.bin"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pref, "scph39001.bin"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !biosReady(map[string]string{"PS2_BIOS_DIR": root}) {
+		t.Fatal("nested bin should count")
+	}
+	hit := findBiosDir(root)
+	if hit != pref && filepath.Base(hit) != filepath.Base(pref) {
+		t.Fatalf("prefer 39001, got %q", hit)
+	}
+}

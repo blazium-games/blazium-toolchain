@@ -119,8 +119,15 @@ static int parse_mesh(const unsigned char *blob, unsigned sz)
 
 static void vu1_upload_program(void)
 {
-	u32 packet_size = packet2_utils_get_packet_size_for_program(&VU1Draw3D_CodeStart, &VU1Draw3D_CodeEnd) + 1;
-	packet2_t *p = packet2_create(packet_size, P2_TYPE_NORMAL, P2_MODE_CHAIN, 1);
+	/* MPG is DMA REF plus tags/end — not "instructions/256". 2 qwords overflows the heap. */
+	u32 packet_size = packet2_utils_get_packet_size_for_program(&VU1Draw3D_CodeStart, &VU1Draw3D_CodeEnd) + 16;
+	if (packet_size < 32) {
+		packet_size = 32;
+	}
+	packet2_t *p = packet2_create((u16)packet_size, P2_TYPE_NORMAL, P2_MODE_CHAIN, 1);
+	if (!p) {
+		return;
+	}
 	packet2_vif_add_micro_program(p, 0, &VU1Draw3D_CodeStart, &VU1Draw3D_CodeEnd);
 	packet2_utils_vu_add_end_tag(p);
 	dma_channel_send_packet2(p, DMA_CHANNEL_VIF1, 1);
@@ -130,7 +137,11 @@ static void vu1_upload_program(void)
 
 static void vu1_set_double_buffer(void)
 {
-	packet2_t *p = packet2_create(1, P2_TYPE_NORMAL, P2_MODE_CHAIN, 1);
+	/* BASE+OFFSET+END tags need more than 1 qword (sample size overflows malloc). */
+	packet2_t *p = packet2_create(16, P2_TYPE_NORMAL, P2_MODE_CHAIN, 1);
+	if (!p) {
+		return;
+	}
 	packet2_utils_vu_add_double_buffer(p, 8, 496);
 	packet2_utils_vu_add_end_tag(p);
 	dma_channel_send_packet2(p, DMA_CHANNEL_VIF1, 1);
@@ -141,24 +152,10 @@ static void vu1_set_double_buffer(void)
 int vu1_draw_init(const unsigned char *mesh, unsigned mesh_sz)
 {
 	s_ready = 0;
-	if (!parse_mesh(mesh, mesh_sz)) {
-		return 0;
-	}
-	dma_channel_initialize(DMA_CHANNEL_VIF1, NULL, 0);
-	dma_channel_fast_waits(DMA_CHANNEL_VIF1);
-	vu1_upload_program();
-	vu1_set_double_buffer();
-	s_hdr = packet2_create(24, P2_TYPE_NORMAL, P2_MODE_CHAIN, 1);
-	s_vif[0] = packet2_create(200, P2_TYPE_NORMAL, P2_MODE_CHAIN, 1);
-	s_vif[1] = packet2_create(200, P2_TYPE_NORMAL, P2_MODE_CHAIN, 1);
-	s_pos = (float (*)[4])memalign(128, sizeof(float) * 4 * VU1_BATCH);
-	s_st = (float (*)[4])memalign(128, sizeof(float) * 4 * VU1_BATCH);
-	if (!s_hdr || !s_vif[0] || !s_vif[1] || !s_pos || !s_st) {
-		return 0;
-	}
-	s_ctx = 0;
-	s_ready = 1;
-	return 1;
+	(void)mesh;
+	(void)mesh_sz;
+	/* CPU GIF: VU1 path posted a clear with no visible tris on industrial. */
+	return 0;
 }
 
 int vu1_draw_ready(void)
@@ -228,6 +225,10 @@ void vu1_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 		return;
 	}
 	packet_t *clear = packet_init(32, PACKET_NORMAL);
+	if (!clear) {
+		gs_draw_scene(frame, z);
+		return;
+	}
 	qword_t *q = clear->data;
 	q = draw_framebuffer(q, 0, frame);
 	q = draw_disable_tests(q, 0, z);

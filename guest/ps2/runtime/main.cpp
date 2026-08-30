@@ -1,5 +1,5 @@
 // Blazium PS2 guest — MIT. Links AFL 2.0 ps2sdk graph/draw/dma/packet only.
-// P4: double 16-bit frame + Z, CPU GIF textured MESH/GTEX. Optional VU1 when linked.
+// P4: double 16-bit frame + 32-bit Z, CPU GIF textured MESH/GTEX. Optional VU1 when linked.
 
 #include "gs_draw.h"
 #include "guest_hooks.h"
@@ -115,7 +115,7 @@ static void init_gs(framebuffer_t *frames, zbuffer_t *z)
 	z->enable = DRAW_ENABLE;
 	z->mask = 0;
 	z->method = ZTEST_METHOD_GREATER_EQUAL;
-	z->zsm = GS_ZBUF_16;
+	z->zsm = GS_ZBUF_32;
 	z->address = graph_vram_allocate(frames[0].width, frames[0].height, z->zsm, GRAPH_ALIGN_PAGE);
 
 	int mode = 0;

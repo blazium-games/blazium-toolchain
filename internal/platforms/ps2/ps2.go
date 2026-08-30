@@ -144,6 +144,19 @@ func (t *Tool) Env(opts platforms.CommonOptions) (platforms.EnvMap, error) {
 	if st.Env == nil {
 		st.Env = map[string]string{}
 	}
+	if st.Env["PS2_BIOS_DIR"] == "" || !biosReady(st.Env) || st.Env["PCSX2_EXE"] == "" || !fileExists(st.Env["PCSX2_EXE"]) {
+		fresh, _ := t.discover(opts.Prefix)
+		if st.Env["PS2_BIOS_DIR"] == "" || !biosReady(st.Env) {
+			if fresh["PS2_BIOS_DIR"] != "" {
+				st.Env["PS2_BIOS_DIR"] = fresh["PS2_BIOS_DIR"]
+			}
+		}
+		if st.Env["PCSX2_EXE"] == "" || !fileExists(st.Env["PCSX2_EXE"]) {
+			if fresh["PCSX2_EXE"] != "" {
+				st.Env["PCSX2_EXE"] = fresh["PCSX2_EXE"]
+			}
+		}
+	}
 	return st.Env, nil
 }
 
@@ -344,9 +357,24 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 	}
 	if env["PS2_BIOS_DIR"] == "" {
 		canon := filepath.Join(plat, "bios")
-		if biosReady(map[string]string{"PS2_BIOS_DIR": canon}) {
-			env["PS2_BIOS_DIR"] = absOr(canon)
+		if hit := findBiosDir(canon); hit != "" {
+			env["PS2_BIOS_DIR"] = hit
+		} else {
+			for _, stuff := range siblingPS2Stuff() {
+				for _, name := range []string{"ps2 bios usa", "bios"} {
+					if hit := findBiosDir(filepath.Join(stuff, name)); hit != "" {
+						env["PS2_BIOS_DIR"] = hit
+						notes = append(notes, "found sibling BIOS dump")
+						break
+					}
+				}
+				if env["PS2_BIOS_DIR"] != "" {
+					break
+				}
+			}
 		}
+	} else if hit := findBiosDir(env["PS2_BIOS_DIR"]); hit != "" {
+		env["PS2_BIOS_DIR"] = hit
 	}
 	return env, notes
 }
@@ -421,25 +449,56 @@ func needsDev(profile string) bool {
 	return profile == "dev" || profile == "iso"
 }
 
-func biosReady(env map[string]string) bool {
-	dir := env["PS2_BIOS_DIR"]
-	if !dirExists(dir) {
-		return false
-	}
+func isBiosFile(name string) bool {
+	n := strings.ToLower(name)
+	return strings.HasSuffix(n, ".bin") || strings.HasSuffix(n, ".rom")
+}
+
+func dirHasBiosFile(dir string) bool {
 	ents, err := os.ReadDir(dir)
 	if err != nil {
 		return false
 	}
 	for _, e := range ents {
-		if e.IsDir() {
-			continue
-		}
-		n := strings.ToLower(e.Name())
-		if strings.HasSuffix(n, ".bin") || strings.HasSuffix(n, ".rom") {
+		if !e.IsDir() && isBiosFile(e.Name()) {
 			return true
 		}
 	}
 	return false
+}
+
+func findBiosDir(dir string) string {
+	if !dirExists(dir) {
+		return ""
+	}
+	if dirHasBiosFile(dir) {
+		return absOr(dir)
+	}
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	fallback := ""
+	for _, e := range ents {
+		if !e.IsDir() {
+			continue
+		}
+		child := filepath.Join(dir, e.Name())
+		if !dirHasBiosFile(child) {
+			continue
+		}
+		if strings.Contains(strings.ToLower(e.Name()), "39001") {
+			return absOr(child)
+		}
+		if fallback == "" {
+			fallback = absOr(child)
+		}
+	}
+	return fallback
+}
+
+func biosReady(env map[string]string) bool {
+	return findBiosDir(env["PS2_BIOS_DIR"]) != ""
 }
 
 func writerOrDiscard(w io.Writer) io.Writer {

@@ -78,6 +78,9 @@ func TestGuestPack1AndDisp(t *testing.T) {
 	if !strings.Contains(string(main), "DISP.bin") {
 		t.Fatal("main.cpp must read DISP.bin for region/width")
 	}
+	if !strings.Contains(string(main), "GS_ZBUF_32") {
+		t.Fatal("main.cpp must use a 32-bit Z buffer so nearer walls occlude far ones")
+	}
 	sfx, err := files.ReadFile("runtime/sfx_io.cpp")
 	if err != nil {
 		t.Fatal(err)
@@ -268,11 +271,47 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	if strings.Contains(string(vu1), "2048.0f - 320.0f") {
 		t.Fatal("vu1_draw.cpp must not hardcode 320x224 clear")
 	}
+	if strings.Contains(string(vu1), "packet2_create(1,") {
+		t.Fatal("vu1_draw.cpp must not allocate 1-qword packets (overflows into malloc)")
+	}
 	if !strings.Contains(string(gs), "gs_draw_set_fade") || !strings.Contains(string(gs), "draw_rect_filled") {
 		t.Fatal("gs_draw.cpp must overlay set_fade as a blended GS rect")
 	}
 	if !strings.Contains(string(gs), "gs_draw_layer_add") || !strings.Contains(string(gs), "g_ly_n") {
 		t.Fatal("gs_draw.cpp must draw resident layers after pack 0")
+	}
+	if !strings.Contains(string(gs), "csm1_index") || !strings.Contains(string(gs), "expand_ct16") {
+		t.Fatal("gs_draw.cpp must expand T8 to CT16 when VRAM allows and keep CSM1 CLUT fallback")
+	}
+	if !strings.Contains(string(gs), "nz = -z / w") {
+		t.Fatal("gs_draw.cpp must invert NDC z so GS GEQUAL keeps nearer surfaces")
+	}
+	if !strings.Contains(string(gs), "apply_gs_z") || !strings.Contains(string(gs), "4294967295.0f") {
+		t.Fatal("gs_draw.cpp must write reverse-Z into the full 32-bit ZBUF")
+	}
+	if !strings.Contains(string(gs), "draw_zbuffer") {
+		t.Fatal("gs_draw.cpp must bind the Z buffer every frame and after packet splits")
+	}
+	if !strings.Contains(string(gs), "cam_cannot_see_aabb") || !strings.Contains(string(gs), "frame_aabb()") {
+		t.Fatal("gs_draw.cpp must re-frame the AABB when follow parks the eye inside the mesh")
+	}
+	if !strings.Contains(string(gs), "gs_xfer_bytes") || !strings.Contains(string(gs), "dup_align_xfer") {
+		t.Fatal("gs_draw.cpp must pad short GTEX payloads to the GS BITBLT size")
+	}
+	if !strings.Contains(string(gs), "clip_on_screen") || !strings.Contains(string(gs), "visible == 0") {
+		t.Fatal("gs_draw.cpp must gold-fallback when projected tris miss the framebuffer")
+	}
+	if !strings.Contains(string(gs), "40, 160, 90") {
+		t.Fatal("gs_draw.cpp gold fallback must emit two colors so stills are not a flat field")
+	}
+	if !strings.Contains(string(gs), "aabb_is_tiny") {
+		t.Fatal("gs_draw.cpp must skip Z test on tiny preview AABBs")
+	}
+	if !strings.Contains(string(gs), "-0.5f * (float)(width") && !strings.Contains(string(gs), "-0.5f * (float)frame->width") {
+		t.Fatal("gs_draw.cpp 2D sprites must be center-relative (ps2sdk START_OFFSET)")
+	}
+	if strings.Contains(string(gs), "256, 1, GS_PSM_16") {
+		t.Fatal("gs_draw.cpp must not upload 8-bit CLUT as a linear 256x1 PSM16 strip")
 	}
 	cmake, err := files.ReadFile("runtime/CMakeLists.txt")
 	if err != nil {

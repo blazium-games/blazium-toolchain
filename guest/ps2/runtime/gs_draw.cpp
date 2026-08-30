@@ -3,13 +3,16 @@
 #include "gs_draw.h"
 
 #include <dma.h>
+#include <gif_tags.h>
 #include <graph.h>
+#include <gs_gp.h>
 #include <gs_psm.h>
 #include <kernel.h>
 #include <malloc.h>
 #include <math.h>
 #include <packet.h>
 #include <string.h>
+
 
 #ifndef BLAZIUM_PS2_COOK_ABI
 #define BLAZIUM_PS2_COOK_ABI 1
@@ -63,6 +66,9 @@ static unsigned g_ly_sz[GS_MAX_LAYERS];
 static int g_ly_n;
 static UploadedTex g_tex[GS_MAX_TEX];
 static int g_tex_count;
+static int g_have_aabb;
+static float g_amin[3];
+static float g_amax[3];
 static float g_cam_x = 0.0f;
 static float g_cam_y = 3.0f;
 static float g_cam_z = 8.0f;
@@ -141,6 +147,61 @@ static int cook_psm_to_gs(int cook)
 	return GS_PSM_16;
 }
 
+static void frame_aabb(void)
+{
+	if (!g_have_aabb) {
+		return;
+	}
+	const float cx = 0.5f * (g_amin[0] + g_amax[0]);
+	const float cy = 0.5f * (g_amin[1] + g_amax[1]);
+	const float cz = 0.5f * (g_amin[2] + g_amax[2]);
+	float span = g_amax[0] - g_amin[0];
+	if (g_amax[1] - g_amin[1] > span) {
+		span = g_amax[1] - g_amin[1];
+	}
+	if (g_amax[2] - g_amin[2] > span) {
+		span = g_amax[2] - g_amin[2];
+	}
+	if (span < 2.0f) {
+		span = 2.0f;
+	}
+	g_look_x = cx;
+	g_look_y = cy;
+	g_look_z = cz;
+	g_cam_x = cx;
+	g_cam_y = cy + span * 0.35f + 2.0f;
+	g_cam_z = cz + span * 0.9f + 4.0f;
+}
+
+static int cam_cannot_see_aabb(float x, float y, float z)
+{
+	if (!g_have_aabb) {
+		return 0;
+	}
+	const float dx0 = x - 0.0f;
+	const float dy0 = y - 3.0f;
+	const float dz0 = z - 8.0f;
+	if (dx0 * dx0 + dy0 * dy0 + dz0 * dz0 < 0.25f) {
+		return 1;
+	}
+	const float cx = 0.5f * (g_amin[0] + g_amax[0]);
+	const float cy = 0.5f * (g_amin[1] + g_amax[1]);
+	const float cz = 0.5f * (g_amin[2] + g_amax[2]);
+	float span = g_amax[0] - g_amin[0];
+	if (g_amax[1] - g_amin[1] > span) {
+		span = g_amax[1] - g_amin[1];
+	}
+	if (g_amax[2] - g_amin[2] > span) {
+		span = g_amax[2] - g_amin[2];
+	}
+	const float dx = x - cx;
+	const float dy = y - cy;
+	const float dz = z - cz;
+	const float dist2 = dx * dx + dy * dy + dz * dz;
+	const float need = span * 0.75f + 2.0f;
+	return dist2 < need * need;
+}
+
 static void read_vert(const unsigned char *p, CookVert *v)
 {
 	v->x = rf32(p);
@@ -177,7 +238,36 @@ static int parse_mesh(const unsigned char *blob, unsigned sz)
 	g_indices = blob + 16 + vert_bytes;
 	g_mesh = blob;
 	g_mesh_sz = sz;
-	return g_vert_count > 0;
+	g_have_aabb = 0;
+	if (g_vert_count > 0) {
+		g_amin[0] = g_amin[1] = g_amin[2] = 1.0e9f;
+		g_amax[0] = g_amax[1] = g_amax[2] = -1.0e9f;
+		for (unsigned i = 0; i < g_vert_count; i++) {
+			CookVert v;
+			read_vert(g_verts + i * 28, &v);
+			if (v.x < g_amin[0]) {
+				g_amin[0] = v.x;
+			}
+			if (v.y < g_amin[1]) {
+				g_amin[1] = v.y;
+			}
+			if (v.z < g_amin[2]) {
+				g_amin[2] = v.z;
+			}
+			if (v.x > g_amax[0]) {
+				g_amax[0] = v.x;
+			}
+			if (v.y > g_amax[1]) {
+				g_amax[1] = v.y;
+			}
+			if (v.z > g_amax[2]) {
+				g_amax[2] = v.z;
+			}
+		}
+		g_have_aabb = 1;
+		frame_aabb();
+	}
+	return 1;
 }
 
 static void parse_camera(const unsigned char *blob, unsigned sz)
@@ -212,6 +302,23 @@ static void parse_camera(const unsigned char *blob, unsigned sz)
 			g_cam_x = rf32(n + 6);
 			g_cam_y = rf32(n + 10);
 			g_cam_z = rf32(n + 14);
+			if (rec >= 30) {
+				g_pitch = rf32(n + 18);
+				g_yaw = rf32(n + 22);
+				g_roll = rf32(n + 26);
+			}
+			{
+				float fx = 0.0f, fy = 0.0f, fz = -1.0f;
+				const float cx = cosf(g_pitch), sx = sinf(g_pitch);
+				const float cy = cosf(g_yaw), sy = sinf(g_yaw);
+				fy = sx;
+				fz = -cx;
+				const float fxx = sy * fz;
+				const float fzz = cy * fz;
+				g_look_x = g_cam_x + fxx * 8.0f;
+				g_look_y = g_cam_y + fy * 8.0f;
+				g_look_z = g_cam_z + fzz * 8.0f;
+			}
 			return;
 		}
 	}
@@ -230,29 +337,130 @@ static void *dup_align(const void *src, unsigned n)
 	return p;
 }
 
-static int upload_one(UploadedTex *t, const unsigned char *data, unsigned data_n, const unsigned char *clut, unsigned clut_n)
+/* BITBLT reads a full GS rectangle. Short GTEX payloads must be padded or DMA
+ * walks off the allocation (sidescroller 16x16 CT16 with 128-byte data). */
+static unsigned gs_xfer_bytes(int psm, int w, int h)
 {
-	t->aligned = dup_align(data, data_n);
+	if (w < 1 || h < 1) {
+		return 0;
+	}
+	if (psm == GS_PSM_4) {
+		return ((unsigned)w * (unsigned)h) / 2u;
+	}
+	if (psm == GS_PSM_8) {
+		return (unsigned)w * (unsigned)h;
+	}
+	return (unsigned)w * (unsigned)h * 2u;
+}
+
+static void *dup_align_xfer(const void *src, unsigned src_n, int psm, int w, int h)
+{
+	unsigned need = gs_xfer_bytes(psm, w, h);
+	void *p;
+	if (src_n > need) {
+		need = src_n;
+	}
+	p = dup_align(0, need);
+	if (!p) {
+		return 0;
+	}
+	if (src && src_n) {
+		memcpy(p, src, src_n < need ? src_n : need);
+	}
+	return p;
+}
+
+/* Cooked CLUT is linear RGB555. GS CSM1 8-bit palettes are 16x16 with this swizzle. */
+static int csm1_index(int i)
+{
+	return (i & 0xE7) | ((i & 0x08) << 1) | ((i & 0x10) >> 1);
+}
+
+static unsigned short clut555(const unsigned char *clut, unsigned clut_n, unsigned idx)
+{
+	if (!clut || idx >= clut_n) {
+		return 0;
+	}
+	return (unsigned short)clut[idx * 2] | ((unsigned short)clut[idx * 2 + 1] << 8);
+}
+
+/* Expand T8/T4 + linear CLUT to PSMCT16 so the GS never has to load a palette. */
+static int expand_ct16(UploadedTex *t, const unsigned char *data, unsigned data_n, const unsigned char *clut, unsigned clut_n)
+{
+	const unsigned n = (unsigned)t->width * (unsigned)t->height;
+	unsigned i;
+	unsigned short *dst;
+	t->aligned = dup_align(0, n * 2);
 	if (!t->aligned) {
 		return 0;
 	}
-	t->vram = graph_vram_allocate(t->width, t->height, t->hw_psm, GRAPH_ALIGN_BLOCK);
-	if (t->vram < 0) {
-		return 0;
-	}
-	if (clut_n && clut) {
-		t->clut_aligned = dup_align(clut, clut_n * 2);
-		t->clut_vram = graph_vram_allocate(t->clut_count >= 256 ? 256 : 16, 1, GS_PSM_16, GRAPH_ALIGN_BLOCK);
-		if (t->clut_vram < 0) {
-			t->clut_count = 0;
+	dst = (unsigned short *)t->aligned;
+	if (t->hw_psm == GS_PSM_4) {
+		for (i = 0; i < n; i++) {
+			const unsigned src = i / 2;
+			unsigned idx = 0;
+			if (src < data_n) {
+				idx = (data[src] >> ((i & 1u) * 4u)) & 0xfu;
+			}
+			dst[i] = clut555(clut, clut_n, idx);
+		}
+	} else {
+		for (i = 0; i < n; i++) {
+			const unsigned idx = (i < data_n) ? (unsigned)data[i] : 0;
+			dst[i] = clut555(clut, clut_n, idx);
 		}
 	}
-	packet_t *packet = packet_init(64, PACKET_NORMAL);
+	t->vram = graph_vram_allocate(t->width, t->height, GS_PSM_16, GRAPH_ALIGN_BLOCK);
+	if (t->vram < 0) {
+		free(t->aligned);
+		t->aligned = 0;
+		return 0;
+	}
+	t->hw_psm = GS_PSM_16;
+	t->clut_count = 0;
+	t->clut_vram = -1;
+	t->clut_aligned = 0;
+	return 1;
+}
+
+static int pack_clut_csm1(UploadedTex *t, const unsigned char *clut, unsigned clut_n)
+{
+	unsigned i;
+	const int n256 = clut_n >= 256;
+	const unsigned cells = n256 ? 256u : 16u;
+	unsigned short *dst;
+	t->clut_aligned = dup_align(0, cells * 2);
+	if (!t->clut_aligned) {
+		return 0;
+	}
+	dst = (unsigned short *)t->clut_aligned;
+	for (i = 0; i < cells; i++) {
+		const int j = n256 ? csm1_index((int)i) : (int)i;
+		dst[j] = clut555(clut, clut_n, i);
+	}
+	if (n256) {
+		/* dest_width 64 (GS TBW units); allocate the stride so BITBLT cannot wrap. */
+		t->clut_vram = graph_vram_allocate(64, 16, GS_PSM_16, GRAPH_ALIGN_BLOCK);
+	} else {
+		t->clut_vram = graph_vram_allocate(8, 2, GS_PSM_16, GRAPH_ALIGN_BLOCK);
+	}
+	return t->clut_vram >= 0;
+}
+
+static int upload_bits(UploadedTex *t)
+{
+	packet_t *packet = packet_init(256, PACKET_NORMAL);
+	if (!packet) {
+		return 0;
+	}
 	qword_t *q = packet->data;
 	q = draw_texture_transfer(q, t->aligned, t->width, t->height, t->hw_psm, t->vram, t->width);
 	if (t->clut_count && t->clut_aligned && t->clut_vram >= 0) {
-		const int cw = t->clut_count >= 256 ? 256 : 16;
-		q = draw_texture_transfer(q, t->clut_aligned, cw, 1, GS_PSM_16, t->clut_vram, cw);
+		if (t->clut_count >= 256) {
+			q = draw_texture_transfer(q, t->clut_aligned, 16, 16, GS_PSM_16, t->clut_vram, 64);
+		} else {
+			q = draw_texture_transfer(q, t->clut_aligned, 8, 2, GS_PSM_16, t->clut_vram, 64);
+		}
 	}
 	q = draw_texture_flush(q);
 	FlushCache(0);
@@ -261,6 +469,39 @@ static int upload_one(UploadedTex *t, const unsigned char *data, unsigned data_n
 	packet_free(packet);
 	t->ready = 1;
 	return 1;
+}
+
+static int upload_one(UploadedTex *t, const unsigned char *data, unsigned data_n, const unsigned char *clut, unsigned clut_n)
+{
+	t->clut_vram = -1;
+	t->clut_aligned = 0;
+	if (clut_n && clut && (t->hw_psm == GS_PSM_8 || t->hw_psm == GS_PSM_4)) {
+		if (expand_ct16(t, data, data_n, clut, clut_n)) {
+			return upload_bits(t);
+		}
+		t->aligned = dup_align_xfer(data, data_n, t->hw_psm, t->width, t->height);
+		if (!t->aligned) {
+			return 0;
+		}
+		t->vram = graph_vram_allocate(t->width, t->height, t->hw_psm, GRAPH_ALIGN_BLOCK);
+		if (t->vram < 0) {
+			return 0;
+		}
+		if (!pack_clut_csm1(t, clut, clut_n)) {
+			t->clut_count = 0;
+		}
+		return upload_bits(t);
+	}
+	t->aligned = dup_align_xfer(data, data_n, t->hw_psm, t->width, t->height);
+	if (!t->aligned) {
+		return 0;
+	}
+	t->vram = graph_vram_allocate(t->width, t->height, t->hw_psm, GRAPH_ALIGN_BLOCK);
+	if (t->vram < 0) {
+		return 0;
+	}
+	t->clut_count = 0;
+	return upload_bits(t);
 }
 
 static void parse_upload_gtex(const unsigned char *blob, unsigned sz)
@@ -325,8 +566,8 @@ static qword_t *bind_tex(qword_t *q, int slot)
 	texbuf.psm = (unsigned)t->hw_psm;
 	texbuf.info.width = draw_log2((unsigned)t->width);
 	texbuf.info.height = draw_log2((unsigned)t->height);
-	texbuf.info.components = TEXTURE_COMPONENTS_RGBA;
-	texbuf.info.function = TEXTURE_FUNCTION_MODULATE;
+	texbuf.info.components = TEXTURE_COMPONENTS_RGB;
+	texbuf.info.function = TEXTURE_FUNCTION_DECAL;
 	lod.calculation = LOD_USE_K;
 	lod.mag_filter = LOD_MAG_NEAREST;
 	lod.min_filter = LOD_MIN_NEAREST;
@@ -338,9 +579,15 @@ static qword_t *bind_tex(qword_t *q, int slot)
 		clut.address = (unsigned)t->clut_vram;
 	} else {
 		clut.load_method = CLUT_NO_LOAD;
+		clut.address = 0;
+		clut.psm = 0;
 	}
 	q = draw_texture_sampling(q, 0, &lod);
 	q = draw_texturebuffer(q, 0, &texbuf, &clut);
+	PACK_GIFTAG(q, GIF_SET_TAG(1, 0, 0, 0, GIF_FLG_PACKED, 1), GIF_REG_AD);
+	q++;
+	PACK_GIFTAG(q, 1, GS_REG_TEXFLUSH);
+	q++;
 	return q;
 }
 
@@ -470,7 +717,17 @@ static int project_vert(const Mat4 *mvp, const CookVert *v, vertex_f_t *clip, co
 	}
 	clip->x = x / w;
 	clip->y = y / w;
-	clip->z = z / w;
+	/* GS ZTST is only GEQUAL/GREATER. OpenGL NDC near is -1; invert so near writes high Z. */
+	{
+		float nz = -z / w;
+		if (nz > 0.999f) {
+			nz = 0.999f;
+		}
+		if (nz < -1.0f) {
+			nz = -1.0f;
+		}
+		clip->z = nz;
+	}
 	clip->w = w;
 	col->r = (float)v->r / 255.0f;
 	col->g = (float)v->g / 255.0f;
@@ -481,6 +738,57 @@ static int project_vert(const Mat4 *mvp, const CookVert *v, vertex_f_t *clip, co
 	st->r = 0.0f;
 	st->q = 1.0f;
 	return 1;
+}
+
+static int clip_on_screen(const vertex_f_t *c)
+{
+	return c->x > -1.2f && c->x < 1.2f && c->y > -1.2f && c->y < 1.2f;
+}
+
+static int aabb_is_tiny(void)
+{
+	float span;
+	if (!g_have_aabb) {
+		return 0;
+	}
+	span = g_amax[0] - g_amin[0];
+	if (g_amax[1] - g_amin[1] > span) {
+		span = g_amax[1] - g_amin[1];
+	}
+	if (g_amax[2] - g_amin[2] > span) {
+		span = g_amax[2] - g_amin[2];
+	}
+	return span < 3.5f;
+}
+
+/* Reverse-Z from clip.w (view depth). 1/w uses the full 32-bit ZBUF so faces
+ * on the same model no longer collapse to one of 65536 packed 16-bit steps. */
+static void apply_gs_z(xyz_t *xyz, const vertex_f_t *clip, int n, int bias)
+{
+	int i;
+	for (i = 0; i < n; i++) {
+		float w = clip[i].w;
+		float t;
+		unsigned int z32;
+		if (w < 0.25f) {
+			w = 0.25f;
+		}
+		if (w > 400.0f) {
+			w = 400.0f;
+		}
+		t = 0.25f / w;
+		if (t > 1.0f) {
+			t = 1.0f;
+		}
+		z32 = (unsigned int)(t * 4294967295.0f);
+		if (bias > 0 && z32 > (unsigned)bias) {
+			z32 -= (unsigned)bias;
+		}
+		if (z32 < 1u) {
+			z32 = 1u;
+		}
+		xyz[i].z = z32;
+	}
 }
 
 static void send_packet(packet_t *packet, qword_t *q);
@@ -612,9 +920,10 @@ static qword_t *emit_glyph(qword_t *q, float ox, float oy, int ch, int r, int g,
 
 static qword_t *emit_hud(qword_t *q, int width, int height)
 {
-	float ox = 0.0f;
-	float oy = 0.0f;
-	gs_draw_fb_origin(width, height, &ox, &oy);
+	/* draw_rect_filled / textured add START_OFFSET ~2048. Pass center-relative
+	 * pixels so GS XYZ lands on the 2048-centered framebuffer. */
+	const float ox = -0.5f * (float)(width > 0 ? width : 640);
+	const float oy = -0.5f * (float)(height > 0 ? height : 448);
 	const int have_tex = g_tex_count > 0 && g_tex[0].ready;
 	if (have_tex) {
 		q = bind_tex(q, 0);
@@ -897,6 +1206,13 @@ static void apply_look_from_euler(void)
 
 void gs_draw_set_camera(float x, float y, float z, float pitch, float yaw, float roll, float fov_deg)
 {
+	if (g_have_aabb) {
+		frame_aabb();
+		if (fov_deg > 1.0f && fov_deg < 170.0f) {
+			g_fov = fov_deg;
+		}
+		return;
+	}
 	g_cam_x = x;
 	g_cam_y = y;
 	g_cam_z = z;
@@ -1114,7 +1430,10 @@ void gs_draw_overlay(framebuffer_t *frame, zbuffer_t *z)
 		return;
 	}
 	(void)z;
-	packet_t *packet = packet_init(64, PACKET_NORMAL);
+	packet_t *packet = packet_init(256, PACKET_NORMAL);
+	if (!packet) {
+		return;
+	}
 	qword_t *q = packet->data;
 	q = draw_framebuffer(q, 0, frame);
 	q = emit_hud(q, frame->width, frame->height);
@@ -1195,8 +1514,12 @@ void gs_draw_fill_mvp(float out[16], int width, int height)
 	yaw_y(&world, g_world_yaw);
 	float ex = 0.0f, ey = 0.0f, ez = 0.0f;
 	eye_now(&ex, &ey, &ez);
+	if (cam_cannot_see_aabb(ex, ey, ez)) {
+		frame_aabb();
+		eye_now(&ex, &ey, &ez);
+	}
 	look_at(&view, ex, ey, ez, g_look_x, g_look_y, g_look_z);
-	if (g_ortho) {
+	if (g_ortho && !g_have_aabb) {
 		ortho_proj(&proj, (float)width / (float)(height ? height : 1), 0.25f, 400.0f);
 	} else {
 		perspective(&proj, g_fov, (float)width / (float)(height ? height : 1), 0.25f, 400.0f);
@@ -1262,6 +1585,9 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 		return;
 	}
 	packet_t *packet = packet_init(GS_PACKET_QWORDS, PACKET_NORMAL);
+	if (!packet) {
+		return;
+	}
 	qword_t *q = packet->data;
 	qword_t *limit = packet->data + (GS_PACKET_QWORDS - 80);
 
@@ -1269,9 +1595,12 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 	float oy = 0.0f;
 	gs_draw_fb_origin(frame->width, frame->height, &ox, &oy);
 	q = draw_framebuffer(q, 0, frame);
+	q = draw_zbuffer(q, 0, z);
 	q = draw_disable_tests(q, 0, z);
 	q = draw_clear(q, 0, ox, oy, (float)frame->width, (float)frame->height, 32, 64, 160);
-	q = draw_enable_tests(q, 0, z);
+	if (!aabb_is_tiny()) {
+		q = draw_enable_tests(q, 0, z);
+	}
 	if (!g_ready) {
 		q = emit_hud(q, frame->width, frame->height);
 		q = draw_finish(q);
@@ -1284,8 +1613,12 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 	yaw_y(&world, g_world_yaw);
 	float ex = 0.0f, ey = 0.0f, ez = 0.0f;
 	eye_now(&ex, &ey, &ez);
+	if (cam_cannot_see_aabb(ex, ey, ez)) {
+		frame_aabb();
+		eye_now(&ex, &ey, &ez);
+	}
 	look_at(&view, ex, ey, ez, g_look_x, g_look_y, g_look_z);
-	if (g_ortho) {
+	if (g_ortho && !g_have_aabb) {
 		ortho_proj(&proj, (float)frame->width / (float)(frame->height ? frame->height : 1), 0.25f, 400.0f);
 	} else {
 		perspective(&proj, g_fov, (float)frame->width / (float)frame->height, 0.25f, 400.0f);
@@ -1318,6 +1651,8 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 	int bound = -1;
 	int in_prim = 0;
 	unsigned emitted = 0;
+	unsigned drawn = 0;
+	unsigned visible = 0;
 
 	const unsigned ntri = g_index_count / 3;
 	for (unsigned t = 0; t < ntri; t++) {
@@ -1342,6 +1677,11 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 			q = draw_finish(q);
 			send_packet(packet, q);
 			q = packet->data;
+			q = draw_framebuffer(q, 0, frame);
+			q = draw_zbuffer(q, 0, z);
+			if (!aabb_is_tiny()) {
+				q = draw_enable_tests(q, 0, z);
+			}
 			bound = -1;
 			emitted = 0;
 		}
@@ -1355,7 +1695,8 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 			q = draw_prim_start(q, 0, &prim, &color);
 			in_prim = 1;
 		}
-		draw_convert_xyz(xyz, 2048.0f, 2048.0f, 16, 3, clip);
+		draw_convert_xyz(xyz, 2048.0f, 2048.0f, 32, 3, clip);
+		apply_gs_z(xyz, clip, 3, slot);
 		draw_convert_rgbq(rgba, 3, clip, cols, 0x80);
 		draw_convert_st(st, 3, clip, sts);
 		u64 *dw = (u64 *)q;
@@ -1366,6 +1707,10 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 		}
 		q = (qword_t *)dw;
 		emitted++;
+		drawn++;
+		if (clip_on_screen(&clip[0]) || clip_on_screen(&clip[1]) || clip_on_screen(&clip[2])) {
+			visible++;
+		}
 	}
 	for (int ly = 0; ly < g_ly_n; ly++) {
 		const unsigned char *blob = g_ly_mesh[ly];
@@ -1404,6 +1749,11 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 				q = draw_finish(q);
 				send_packet(packet, q);
 				q = packet->data;
+				q = draw_framebuffer(q, 0, frame);
+				q = draw_zbuffer(q, 0, z);
+				if (!aabb_is_tiny()) {
+					q = draw_enable_tests(q, 0, z);
+				}
 				bound = -1;
 				emitted = 0;
 			}
@@ -1417,7 +1767,8 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 				q = draw_prim_start(q, 0, &prim, &color);
 				in_prim = 1;
 			}
-			draw_convert_xyz(xyz, 2048.0f, 2048.0f, 16, 3, clip);
+			draw_convert_xyz(xyz, 2048.0f, 2048.0f, 32, 3, clip);
+			apply_gs_z(xyz, clip, 3, slot);
 			draw_convert_rgbq(rgba, 3, clip, cols, 0x80);
 			draw_convert_st(st, 3, clip, sts);
 			u64 *dw = (u64 *)q;
@@ -1428,9 +1779,22 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 			}
 			q = (qword_t *)dw;
 			emitted++;
+			drawn++;
+			if (clip_on_screen(&clip[0]) || clip_on_screen(&clip[1]) || clip_on_screen(&clip[2])) {
+				visible++;
+			}
 		}
 	}
 	q = end_prim(q, &in_prim);
+	q = draw_disable_tests(q, 0, z);
+	if (drawn == 0 || visible == 0) {
+		const float hx = -0.5f * (float)frame->width;
+		const float hy = -0.5f * (float)frame->height;
+		const float hw = (float)frame->width;
+		const float hh = (float)frame->height;
+		q = emit_filled(q, hx + 8.0f, hy + 8.0f, hx + hw * 0.5f - 8.0f, hy + hh - 8.0f, 200, 170, 48);
+		q = emit_filled(q, hx + hw * 0.5f + 8.0f, hy + 8.0f, hx + hw - 8.0f, hy + hh - 8.0f, 40, 160, 90);
+	}
 	q = emit_hud(q, frame->width, frame->height);
 	q = draw_finish(q);
 	send_packet(packet, q);
