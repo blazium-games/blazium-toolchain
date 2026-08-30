@@ -19,6 +19,7 @@
 static int s_ok;
 static int s_cam_n;
 static int s_cam_i;
+static int s_cam_def;
 static float s_cam_x[8];
 static float s_cam_y[8];
 static float s_cam_z[8];
@@ -26,6 +27,33 @@ static float s_cam_pitch[8];
 static float s_cam_yaw[8];
 static float s_cam_roll[8];
 static float s_cam_fov[8];
+static unsigned short s_cam_flags[8];
+static unsigned short s_cam_node[8];
+static int s_sprt_n;
+static int s_sprt_loaded;
+static int s_hit_loaded;
+static int s_tile_loaded;
+static int s_hud_loaded;
+static int s_anim_loaded;
+static int s_sprt_node[32];
+static int s_sprt_tex[32];
+static short s_sprt_x[32];
+static short s_sprt_y[32];
+static short s_sprt_w[32];
+static short s_sprt_h[32];
+static unsigned char s_sprt_flip[32];
+static unsigned char s_sprt_frame[32];
+static unsigned char s_hit_flags[64];
+static unsigned char s_hit_kind[64];
+static unsigned char s_hit_layer[64];
+static unsigned char s_hit_on[64];
+static unsigned short s_hit_flo[64];
+static unsigned short s_hit_fhi[64];
+static unsigned short s_hit_node[64];
+static int s_hitstop_ms;
+static int s_invuln_ms;
+static int s_flip;
+static float s_kb_x, s_kb_y, s_kb_z;
 static float s_shake_amp;
 static float s_shake_left;
 static unsigned s_rng;
@@ -66,9 +94,9 @@ static int s_btn_slot[16];
 static float s_say_left;
 static int s_say_done;
 static int s_tile_n;
-static short s_tile_x[64];
-static short s_tile_y[64];
-static unsigned char s_tile_flags[64];
+static short s_tile_x[256];
+static short s_tile_y[256];
+static unsigned char s_tile_flags[256];
 static unsigned long long s_over_prev;
 static unsigned long long s_over_now;
 static int s_over_entered;
@@ -189,6 +217,8 @@ static void apply_cam(const unsigned char *b, unsigned sz)
 			break;
 		}
 		const unsigned char *r = b + 8 + (unsigned)i * 32;
+		s_cam_node[i] = (unsigned short)ru16(r);
+		s_cam_flags[i] = (unsigned short)ru16(r + 2);
 		s_cam_x[i] = rf32(r + 4);
 		s_cam_y[i] = rf32(r + 8);
 		s_cam_z[i] = rf32(r + 12);
@@ -196,9 +226,16 @@ static void apply_cam(const unsigned char *b, unsigned sz)
 		s_cam_yaw[i] = rf32(r + 20);
 		s_cam_roll[i] = rf32(r + 24);
 		s_cam_fov[i] = rf32(r + 28);
+		if (s_cam_flags[i] & 1) {
+			s_cam_def = i;
+		}
 	}
-	s_cam_i = 0;
-	gs_draw_set_camera(s_cam_x[0], s_cam_y[0], s_cam_z[0], s_cam_pitch[0], s_cam_yaw[0], s_cam_roll[0], s_cam_fov[0]);
+	s_cam_i = s_cam_def;
+	if (s_cam_i < 0 || s_cam_i >= s_cam_n) {
+		s_cam_i = 0;
+	}
+	gs_draw_set_camera(s_cam_x[s_cam_i], s_cam_y[s_cam_i], s_cam_z[s_cam_i],
+			s_cam_pitch[s_cam_i], s_cam_yaw[s_cam_i], s_cam_roll[s_cam_i], s_cam_fov[s_cam_i]);
 }
 
 static void apply_hit(const unsigned char *b, unsigned sz)
@@ -210,13 +247,14 @@ static void apply_hit(const unsigned char *b, unsigned sz)
 	if (s_hit_n > 64) {
 		s_hit_n = 64;
 	}
-	const unsigned rec = 28;
+	const unsigned rec = (sz >= 8 + (unsigned)s_hit_n * 35) ? 35u : 28u;
 	for (int i = 0; i < s_hit_n; i++) {
 		if (8 + (unsigned)(i + 1) * rec > sz) {
 			s_hit_n = i;
 			break;
 		}
 		const unsigned char *r = b + 8 + (unsigned)i * rec;
+		s_hit_node[i] = (unsigned short)ru16(r);
 		s_hit_kit[i] = r[2];
 		s_hit_mn[i][0] = rf32(r + 4);
 		s_hit_mn[i][1] = rf32(r + 8);
@@ -224,7 +262,22 @@ static void apply_hit(const unsigned char *b, unsigned sz)
 		s_hit_mx[i][0] = rf32(r + 16);
 		s_hit_mx[i][1] = rf32(r + 20);
 		s_hit_mx[i][2] = rf32(r + 24);
+		s_hit_flags[i] = 2;
+		s_hit_kind[i] = 0;
+		s_hit_layer[i] = 1;
+		s_hit_on[i] = 1;
+		s_hit_flo[i] = 0;
+		s_hit_fhi[i] = 0xffff;
+		if (rec >= 35) {
+			s_hit_flags[i] = r[28];
+			s_hit_kind[i] = r[29];
+			s_hit_layer[i] = r[30];
+			s_hit_flo[i] = (unsigned short)ru16(r + 31);
+			s_hit_fhi[i] = (unsigned short)ru16(r + 33);
+			s_hit_on[i] = (s_hit_flags[i] & 2) ? 1 : 0;
+		}
 	}
+	s_hit_loaded = 1;
 }
 
 static void redraw_hud(void)
@@ -287,8 +340,8 @@ static void apply_tile(const unsigned char *b, unsigned sz)
 		return;
 	}
 	s_tile_n = (int)ru16(b + 6);
-	if (s_tile_n > 64) {
-		s_tile_n = 64;
+	if (s_tile_n > 256) {
+		s_tile_n = 256;
 	}
 	const unsigned rec = 6;
 	for (int i = 0; i < s_tile_n; i++) {
@@ -347,10 +400,11 @@ static void apply_anim_pose(void)
 	const float px = s_ak_px[a] + (s_ak_px[b] - s_ak_px[a]) * u;
 	const float py = s_ak_py[a] + (s_ak_py[b] - s_ak_py[a]) * u;
 	const float pz = s_ak_pz[a] + (s_ak_pz[b] - s_ak_pz[a]) * u;
+	const float rx = s_ak_rx[a] + (s_ak_rx[b] - s_ak_rx[a]) * u;
+	const float ry = s_ak_ry[a] + (s_ak_ry[b] - s_ak_ry[a]) * u;
+	const float rz = s_ak_rz[a] + (s_ak_rz[b] - s_ak_rz[a]) * u;
 	gs_draw_set_node_ofs(s_anim_node, px, py, pz);
-	(void)s_ak_rx[a];
-	(void)s_ak_ry[a];
-	(void)s_ak_rz[a];
+	gs_draw_set_node_rot(s_anim_node, rx, ry, rz);
 }
 
 static void apply_anim(const unsigned char *b, unsigned sz)
@@ -364,6 +418,7 @@ static void apply_anim(const unsigned char *b, unsigned sz)
 	s_anim_len = 1.0f;
 	s_anim_t = 0.0f;
 	s_anim_speed = 1.0f;
+	s_anim_loaded = 1;
 	if (s_anim_n < 1 || sz < 8 + 36) {
 		return;
 	}
@@ -392,7 +447,40 @@ static void apply_anim(const unsigned char *b, unsigned sz)
 	apply_anim_pose();
 }
 
-/* Pack 0 CAM00 HUD00 NAV00 plus CAM%02d HIT%02d HUD%02d TILE%02d NAV%02d ANIM%02d. */
+static void apply_sprt(const unsigned char *b, unsigned sz)
+{
+	s_sprt_n = 0;
+	s_sprt_loaded = 0;
+	if (!b || sz < 8 || !mag4(b, 'S', 'P', 'R', 'T') || ru16(b + 4) != BLAZIUM_PS2_COOK_ABI) {
+		return;
+	}
+	s_sprt_n = (int)ru16(b + 6);
+	if (s_sprt_n > 32) {
+		s_sprt_n = 32;
+	}
+	const unsigned rec = 16;
+	for (int i = 0; i < s_sprt_n; i++) {
+		if (8 + (unsigned)(i + 1) * rec > sz) {
+			s_sprt_n = i;
+			break;
+		}
+		const unsigned char *r = b + 8 + (unsigned)i * rec;
+		s_sprt_node[i] = (int)(short)ru16(r);
+		s_sprt_tex[i] = (int)ru16(r + 2);
+		s_sprt_x[i] = (short)ru16(r + 4);
+		s_sprt_y[i] = (short)ru16(r + 6);
+		s_sprt_w[i] = (short)ru16(r + 8);
+		s_sprt_h[i] = (short)ru16(r + 10);
+		s_sprt_flip[i] = r[12];
+		s_sprt_frame[i] = r[13];
+		if (i < 16) {
+			gs_draw_hud_quad(i, s_sprt_x[i], s_sprt_y[i], s_sprt_w[i], s_sprt_h[i], 200, 200, 200);
+		}
+	}
+	s_sprt_loaded = s_sprt_n > 0;
+}
+
+/* Pack 0 CAM00 HUD00 NAV00 plus CAM%02d HIT%02d HUD%02d TILE%02d NAV%02d ANIM%02d SPRT%02d. */
 static void load_sys_named(int pack, const char *stem,
 		void (*apply)(const unsigned char *, unsigned))
 {
@@ -416,7 +504,8 @@ int sys_io_load_pack(int pack)
 	if (pack < 0) {
 		pack = 0;
 	}
-	s_cam_n = s_hit_n = s_hud_n = s_tile_n = s_nav_n = s_anim_n = 0;
+	s_cam_n = s_hit_n = s_hud_n = s_tile_n = s_nav_n = s_anim_n = s_sprt_n = 0;
+	s_sprt_loaded = s_hit_loaded = 0;
 	s_anim_keys = 0;
 	s_btn_n = 0;
 	s_hud_focus = -1;
@@ -426,6 +515,10 @@ int sys_io_load_pack(int pack)
 	load_sys_named(pack, "TILE", apply_tile);
 	load_sys_named(pack, "NAV", apply_nav);
 	load_sys_named(pack, "ANIM", apply_anim);
+	load_sys_named(pack, "SPRT", apply_sprt);
+	s_tile_loaded = s_tile_n > 0;
+	s_hud_loaded = s_hud_n > 0;
+	s_anim_loaded = s_anim_n > 0;
 	return s_ok;
 }
 
@@ -607,6 +700,21 @@ int sys_io_play_fmv(void)
 
 void sys_io_tick(float delta)
 {
+	if (s_hitstop_ms > 0) {
+		s_hitstop_ms -= (int)(delta * 1000.0f);
+		if (s_hitstop_ms < 0) {
+			s_hitstop_ms = 0;
+		}
+	}
+	if (s_invuln_ms > 0) {
+		s_invuln_ms -= (int)(delta * 1000.0f);
+		if (s_invuln_ms < 0) {
+			s_invuln_ms = 0;
+		}
+	}
+	if (s_hitstop_ms > 0) {
+		return;
+	}
 	if (s_anim_n > 0) {
 		s_frame++;
 		s_anim_t += delta * s_anim_speed;
@@ -714,6 +822,12 @@ void sys_io_tick(float delta)
 			gs_draw_set_fade((int)(u * 128.0f), s_fade_r, s_fade_g, s_fade_b);
 		}
 	}
+	if (pad_io_just_pressed(8)) {
+		sys_io_next_cam();
+	}
+	if (pad_io_just_pressed(9)) {
+		sys_io_prev_cam();
+	}
 }
 
 void sys_io_look(float yaw, float pitch, float roll)
@@ -789,6 +903,74 @@ void sys_io_prev_cam(void)
 int sys_io_cam_index(void)
 {
 	return s_cam_i;
+}
+
+int sys_io_set_cam(int i)
+{
+	if (i < 0 || i >= s_cam_n) {
+		return 0;
+	}
+	apply_cam_i(i);
+	return 1;
+}
+
+static int node_named(const char *name)
+{
+	const unsigned char *blob = 0;
+	unsigned sz = 0;
+	pack_io_current_node(&blob, &sz);
+	if (!name || !blob || sz < 8) {
+		return -1;
+	}
+	const unsigned count = ru16(blob + 6);
+	const unsigned rec = (8 + count * 138u <= sz) ? 138u : 74u;
+	for (unsigned i = 0; i < count; i++) {
+		if (8 + (i + 1) * rec > sz) {
+			break;
+		}
+		char n[33];
+		memcpy(n, blob + 8 + i * rec + 42, 32);
+		n[32] = 0;
+		if (strcmp(n, name) == 0) {
+			return (int)i;
+		}
+	}
+	return -1;
+}
+
+int sys_io_set_cam_name(const char *name)
+{
+	const int nid = node_named(name);
+	if (nid < 0) {
+		return 0;
+	}
+	for (int i = 0; i < s_cam_n; i++) {
+		if ((int)s_cam_node[i] == nid) {
+			apply_cam_i(i);
+			return 1;
+		}
+	}
+	return 0;
+}
+
+int sys_io_set_default_cam(int i)
+{
+	if (i < 0 || i >= s_cam_n) {
+		return 0;
+	}
+	s_cam_def = i;
+	apply_cam_i(i);
+	return 1;
+}
+
+int sys_io_default_cam(void)
+{
+	return s_cam_def;
+}
+
+int sys_io_make_current(const char *name)
+{
+	return sys_io_set_cam_name(name);
 }
 
 int sys_io_tween_start(float from, float to, float sec, int kind)
@@ -880,8 +1062,26 @@ int sys_io_timer_done(int id)
 	return s_tm_on[id] ? 0 : 1;
 }
 
+static int hit_active(int i)
+{
+	if (!s_hit_on[i]) {
+		return 0;
+	}
+	const unsigned fr = (unsigned)(s_frame < 0 ? 0 : s_frame);
+	if (fr < s_hit_flo[i] || fr > s_hit_fhi[i]) {
+		return 0;
+	}
+	return 1;
+}
+
 static int hit_solid(int i)
 {
+	if (!hit_active(i)) {
+		return 0;
+	}
+	if (s_hit_kind[i] == 1 || s_hit_kind[i] == 2 || s_hit_kind[i] == 3) {
+		return 0;
+	}
 	const unsigned char k = s_hit_kit[i];
 	return k != 1 && k != 4 && k != 6 && k != 7 && k != 10;
 }
@@ -903,8 +1103,10 @@ static int aabb_overlap(float px, float py, float pz, int i)
 	if (mx1 < s_hit_mn[i][1] || mn1 > s_hit_mx[i][1]) {
 		return 0;
 	}
-	if (mx2 < s_hit_mn[i][2] || mn2 > s_hit_mx[i][2]) {
-		return 0;
+	if (!(s_hit_flags[i] & 1)) {
+		if (mx2 < s_hit_mn[i][2] || mn2 > s_hit_mx[i][2]) {
+			return 0;
+		}
 	}
 	return 1;
 }
@@ -934,6 +1136,9 @@ static int enters_hit(float ox, float oy, float oz, float nx, float ny, float nz
 
 void sys_io_slide(float vx, float vy, float vz, float delta)
 {
+	if (s_hitstop_ms > 0) {
+		return;
+	}
 	if (!s_player_ok) {
 		gs_draw_look_point(&s_px, &s_py, &s_pz);
 		s_player_ok = 1;
@@ -1017,7 +1222,7 @@ void sys_io_overlap_refresh(void)
 	ensure_player();
 	unsigned long long now = 0;
 	for (int i = 0; i < s_hit_n && i < 64; i++) {
-		if (aabb_overlap(s_px, s_py, s_pz, i)) {
+		if (hit_active(i) && aabb_overlap(s_px, s_py, s_pz, i)) {
 			now |= (1ull << i);
 		}
 	}
@@ -1045,7 +1250,7 @@ int sys_io_hitbox_kind(void)
 {
 	for (int i = 0; i < s_hit_n && i < 64; i++) {
 		if (s_over_now & (1ull << i)) {
-			return (int)s_hit_kit[i];
+			return (int)s_hit_kind[i];
 		}
 	}
 	return 0;
@@ -1090,13 +1295,18 @@ static int ray_aabb(float ox, float oy, float oz, float dx, float dy, float dz, 
 
 int sys_io_raycast(float ox, float oy, float oz, float dx, float dy, float dz, float dist, int mask)
 {
-	(void)mask;
 	if (dist <= 0.0f) {
 		return 0;
 	}
 	float best = dist;
 	int hit = 0;
 	for (int i = 0; i < s_hit_n; i++) {
+		if (!hit_active(i)) {
+			continue;
+		}
+		if (mask != 0 && mask != 255 && (mask & (int)s_hit_layer[i]) == 0) {
+			continue;
+		}
 		float t = 0.0f;
 		if (ray_aabb(ox, oy, oz, dx, dy, dz, dist, i, &t) && t >= 0.0f && t < best) {
 			best = t;
@@ -1183,4 +1393,255 @@ void sys_io_scene_fade(float sec)
 void sys_io_set_fade_pack(int pack)
 {
 	s_fade_pack = pack;
+}
+
+void sys_io_move_planar(float ax, float ay, float speed, float delta)
+{
+	if (s_hitstop_ms > 0) {
+		return;
+	}
+	sys_io_slide(ax * speed + s_kb_x, 0.0f, ay * speed + s_kb_z, delta);
+	s_kb_x *= 0.85f;
+	s_kb_z *= 0.85f;
+}
+
+void sys_io_follow_node(float tx, float tz, float speed, float delta)
+{
+	float dx = tx - s_px;
+	float dz = tz - s_pz;
+	const float len = sqrtf(dx * dx + dz * dz);
+	if (len < 0.05f) {
+		return;
+	}
+	sys_io_move_planar(dx / len, dz / len, speed, delta);
+}
+
+int sys_io_set_hitbox_enabled(int node, int on)
+{
+	int n = 0;
+	for (int i = 0; i < s_hit_n; i++) {
+		if ((int)s_hit_node[i] == node) {
+			s_hit_on[i] = on ? 1 : 0;
+			n = 1;
+		}
+	}
+	return n;
+}
+
+int sys_io_set_hitbox_layer(int node, int layer)
+{
+	int n = 0;
+	for (int i = 0; i < s_hit_n; i++) {
+		if ((int)s_hit_node[i] == node) {
+			s_hit_layer[i] = (unsigned char)(layer & 255);
+			n = 1;
+		}
+	}
+	return n;
+}
+
+int sys_io_get_hitbox_layer(int node)
+{
+	for (int i = 0; i < s_hit_n; i++) {
+		if ((int)s_hit_node[i] == node) {
+			return (int)s_hit_layer[i];
+		}
+	}
+	return 0;
+}
+
+int sys_io_hurt(int amount, float vx, float vy, float vz)
+{
+	if (s_invuln_ms > 0) {
+		return sys_io_get_hp();
+	}
+	int hp = sys_io_get_hp() - amount;
+	if (hp < 0) {
+		hp = 0;
+	}
+	sys_io_set_hp(hp);
+	sys_io_knockback(vx, vy, vz);
+	return hp;
+}
+
+void sys_io_set_hitstop(float ms)
+{
+	s_hitstop_ms = (int)ms;
+}
+
+void sys_io_set_invuln(float ms)
+{
+	s_invuln_ms = (int)ms;
+}
+
+int sys_io_is_invuln(void)
+{
+	return s_invuln_ms > 0;
+}
+
+void sys_io_knockback(float vx, float vy, float vz)
+{
+	s_kb_x = vx;
+	s_kb_y = vy;
+	s_kb_z = vz;
+}
+
+void sys_io_set_flip(int flip)
+{
+	s_flip = flip;
+	for (int i = 0; i < s_sprt_n; i++) {
+		s_sprt_flip[i] = (unsigned char)flip;
+	}
+}
+
+int sys_io_sprite_count(void)
+{
+	return s_sprt_n;
+}
+
+int sys_io_load_sprites(int pack)
+{
+	if (pack < 0) {
+		pack = pack_io_current();
+	}
+	if (pack > 0 && !pack_io_is_loaded(pack)) {
+		if (!pack_io_can_fit(pack) || !pack_io_instantiate(pack)) {
+			return 0;
+		}
+	}
+	s_sprt_n = 0;
+	load_sys_named(pack, "SPRT", apply_sprt);
+	return s_sprt_loaded;
+}
+
+int sys_io_unload_sprites(void)
+{
+	s_sprt_n = 0;
+	s_sprt_loaded = 0;
+	return 1;
+}
+
+int sys_io_sprites_loaded(void)
+{
+	return s_sprt_loaded;
+}
+
+int sys_io_load_anims(int pack)
+{
+	load_sys_named(pack, "ANIM", apply_anim);
+	return s_anim_loaded;
+}
+
+int sys_io_unload_anims(void)
+{
+	s_anim_n = 0;
+	s_anim_keys = 0;
+	s_anim_loaded = 0;
+	return 1;
+}
+
+int sys_io_anims_loaded(void)
+{
+	return s_anim_loaded;
+}
+
+int sys_io_load_hits(int pack)
+{
+	load_sys_named(pack, "HIT", apply_hit);
+	return s_hit_loaded;
+}
+
+int sys_io_unload_hits(void)
+{
+	s_hit_n = 0;
+	s_hit_loaded = 0;
+	return 1;
+}
+
+int sys_io_hits_loaded(void)
+{
+	return s_hit_loaded;
+}
+
+int sys_io_load_tiles(int pack)
+{
+	load_sys_named(pack, "TILE", apply_tile);
+	s_tile_loaded = s_tile_n > 0;
+	return s_tile_loaded;
+}
+
+int sys_io_unload_tiles(void)
+{
+	s_tile_n = 0;
+	s_tile_loaded = 0;
+	return 1;
+}
+
+int sys_io_tiles_loaded(void)
+{
+	return s_tile_loaded;
+}
+
+int sys_io_load_hud(int pack)
+{
+	load_sys_named(pack, "HUD", apply_hud);
+	s_hud_loaded = s_hud_n > 0;
+	return s_hud_loaded;
+}
+
+int sys_io_unload_hud(void)
+{
+	s_hud_n = 0;
+	s_hud_loaded = 0;
+	return 1;
+}
+
+int sys_io_hud_loaded(void)
+{
+	return s_hud_loaded;
+}
+
+int sys_io_set_cell(int x, int y, int flags)
+{
+	for (int i = 0; i < s_tile_n; i++) {
+		if (s_tile_x[i] == (short)x && s_tile_y[i] == (short)y) {
+			s_tile_flags[i] = (unsigned char)flags;
+			return 1;
+		}
+	}
+	if (s_tile_n >= 256) {
+		return 0;
+	}
+	s_tile_x[s_tile_n] = (short)x;
+	s_tile_y[s_tile_n] = (short)y;
+	s_tile_flags[s_tile_n] = (unsigned char)flags;
+	s_tile_n++;
+	s_tile_loaded = 1;
+	return 1;
+}
+
+int sys_io_erase_cell(int x, int y)
+{
+	int w = 0;
+	int found = 0;
+	for (int i = 0; i < s_tile_n; i++) {
+		if (s_tile_x[i] == (short)x && s_tile_y[i] == (short)y) {
+			found = 1;
+			continue;
+		}
+		s_tile_x[w] = s_tile_x[i];
+		s_tile_y[w] = s_tile_y[i];
+		s_tile_flags[w] = s_tile_flags[i];
+		w++;
+	}
+	s_tile_n = w;
+	return found;
+}
+
+void sys_io_spawn_ofs(float x, float y, float z)
+{
+	gs_draw_set_node_ofs(0, x, y, z);
+	s_px = x;
+	s_py = y;
+	s_pz = z;
 }

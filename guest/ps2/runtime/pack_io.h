@@ -47,6 +47,10 @@ int pack_io_user_save_slot(int slot, const void *data, unsigned n);
 int pack_io_user_load_slot(int slot, void *data, unsigned maxn);
 int pack_io_user_format(void);
 const char *pack_io_user_error(void);
+int pack_io_poke(unsigned off, unsigned char v);
+int pack_io_peek(unsigned off);
+unsigned pack_io_poke_size(void);
+const unsigned char *pack_io_poke_data(void);
 
 #ifdef __cplusplus
 }

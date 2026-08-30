@@ -57,6 +57,7 @@ static float s_lx;
 static float s_ly;
 static float s_rx;
 static float s_ry;
+static float s_deadzone;
 
 static void pad_try_dualshock(void)
 {
@@ -105,6 +106,7 @@ int pad_io_init(void)
 	s_btns = 0;
 	s_prev_btns = 0;
 	s_lx = s_ly = s_rx = s_ry = 0.0f;
+	s_deadzone = 0.2f;
 	memset(s_pressure, 0, sizeof(s_pressure));
 	SifInitRpc(0);
 #ifdef BLAZIUM_PS2_HAS_IOPCONTROL
@@ -304,12 +306,35 @@ void pad_io_stick(int stick, float *x, float *y)
 			}
 		}
 	}
+	if (s_deadzone > 0.0f) {
+		const float mag = sx * sx + sy * sy;
+		if (mag < s_deadzone * s_deadzone) {
+			sx = 0.0f;
+			sy = 0.0f;
+		}
+	}
 	if (x) {
 		*x = sx;
 	}
 	if (y) {
 		*y = sy;
 	}
+}
+
+void pad_io_set_deadzone(float zone)
+{
+	if (zone < 0.0f) {
+		zone = 0.0f;
+	}
+	if (zone > 0.95f) {
+		zone = 0.95f;
+	}
+	s_deadzone = zone;
+}
+
+float pad_io_get_deadzone(void)
+{
+	return s_deadzone;
 }
 #else
 int pad_io_init(void)
@@ -363,5 +388,15 @@ void pad_io_stick(int stick, float *x, float *y)
 	if (y) {
 		*y = 0.0f;
 	}
+}
+
+void pad_io_set_deadzone(float zone)
+{
+	(void)zone;
+}
+
+float pad_io_get_deadzone(void)
+{
+	return 0.2f;
 }
 #endif

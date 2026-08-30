@@ -14,6 +14,9 @@
 #define PS2_LAYERS 16
 #define PS2_EE_LIMIT (24u * 1024u * 1024u)
 #define PS2_GS_LIMIT (4u * 1024u * 1024u)
+#define PS2_POKE_N (24u * 1024u)
+
+static unsigned char s_poke[PS2_POKE_N];
 
 static int s_toc_ok;
 static int s_current;
@@ -436,6 +439,7 @@ int pack_io_init(void)
 	memset(s_cost_ee, 0, sizeof(s_cost_ee));
 	memset(s_cost_gs, 0, sizeof(s_cost_gs));
 	memset(s_ly, 0, sizeof(s_ly));
+	memset(s_poke, 0, sizeof(s_poke));
 	unsigned char *buf = 0;
 	unsigned sz = 0;
 	if (read_named("host:STREAM.bin", "cdrom0:\\STREAM.BIN;1", "cdrom0:STREAM.BIN;1", &buf, &sz)) {
@@ -707,16 +711,29 @@ int pack_io_user_load(void *data, unsigned maxn)
 		return -1;
 	}
 	unsigned char mag[6];
-	if (fread(mag, 1, 6, f) != 6 || mag[0] != 'S' || mag[1] != 'A' || mag[2] != 'V' || mag[3] != 'E') {
-		fclose(f);
-		set_user_err("user:// load failed: SAVE.BIN is not a PS2 ABI 1 save");
-		return -1;
-	}
+	const size_t got = fread(mag, 1, 6, f);
+	const int header = (got == 6 && mag[0] == 'S' && mag[1] == 'A' && mag[2] == 'V' && mag[3] == 'E');
 	int n = 0;
 	if (data && maxn) {
-		n = (int)fread(data, 1, maxn, f);
+		unsigned char *dst = (unsigned char *)data;
+		if (!header) {
+			if (got > 0) {
+				const unsigned copy = got < maxn ? (unsigned)got : maxn;
+				memcpy(dst, mag, copy);
+				n = (int)copy;
+			}
+			if (n < (int)maxn) {
+				n += (int)fread(dst + n, 1, maxn - (unsigned)n, f);
+			}
+		} else {
+			n = (int)fread(dst, 1, maxn, f);
+		}
 	}
 	fclose(f);
+	if (n > 0 && data) {
+		const unsigned copy = (unsigned)n < PS2_POKE_N ? (unsigned)n : PS2_POKE_N;
+		memcpy(s_poke, data, copy);
+	}
 	s_user_present = 1;
 	s_user_ready = 1;
 	set_user_err("");
@@ -757,6 +774,10 @@ int pack_io_user_save_slot(int slot, const void *data, unsigned n)
 		set_user_err("memcard save_slot failed: no host:SAVE#.BIN or mc0:");
 		return 0;
 	}
+	if (!data || !n) {
+		data = s_poke;
+		n = PS2_POKE_N;
+	}
 	const char mag[] = { 'S', 'A', 'V', 'E', 1, 0 };
 	fwrite(mag, 1, sizeof(mag), f);
 	if (data && n) {
@@ -777,20 +798,60 @@ int pack_io_user_load_slot(int slot, void *data, unsigned maxn)
 		return -1;
 	}
 	unsigned char mag[6];
-	if (fread(mag, 1, 6, f) != 6 || mag[0] != 'S' || mag[1] != 'A' || mag[2] != 'V' || mag[3] != 'E') {
-		fclose(f);
-		set_user_err("memcard load_slot failed: slot is not a PS2 ABI 1 save");
-		return -1;
-	}
+	const size_t got = fread(mag, 1, 6, f);
+	const int header = (got == 6 && mag[0] == 'S' && mag[1] == 'A' && mag[2] == 'V' && mag[3] == 'E');
 	int n = 0;
 	if (data && maxn) {
-		n = (int)fread(data, 1, maxn, f);
+		unsigned char *dst = (unsigned char *)data;
+		if (!header) {
+			if (got > 0) {
+				const unsigned copy = got < maxn ? (unsigned)got : maxn;
+				memcpy(dst, mag, copy);
+				n = (int)copy;
+			}
+			if (n < (int)maxn) {
+				n += (int)fread(dst + n, 1, maxn - (unsigned)n, f);
+			}
+		} else {
+			n = (int)fread(dst, 1, maxn, f);
+		}
 	}
 	fclose(f);
+	if (n > 0 && data) {
+		const unsigned copy = (unsigned)n < PS2_POKE_N ? (unsigned)n : PS2_POKE_N;
+		memcpy(s_poke, data, copy);
+	}
 	s_user_present = 1;
 	s_user_ready = 1;
 	set_user_err("");
 	return n;
+}
+
+int pack_io_poke(unsigned off, unsigned char v)
+{
+	if (off >= PS2_POKE_N) {
+		return 0;
+	}
+	s_poke[off] = v;
+	return 1;
+}
+
+int pack_io_peek(unsigned off)
+{
+	if (off >= PS2_POKE_N) {
+		return 0;
+	}
+	return (int)s_poke[off];
+}
+
+unsigned pack_io_poke_size(void)
+{
+	return PS2_POKE_N;
+}
+
+const unsigned char *pack_io_poke_data(void)
+{
+	return s_poke;
 }
 
 int pack_io_user_format(void)

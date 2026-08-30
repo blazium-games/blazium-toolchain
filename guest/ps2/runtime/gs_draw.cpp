@@ -88,6 +88,7 @@ struct HudQuad {
 };
 static HudQuad g_hudq[16];
 static float g_nofs[32][3];
+static float g_nrot[32][3];
 static int g_fade_a;
 static int g_fade_r;
 static int g_fade_g;
@@ -183,7 +184,7 @@ static void parse_camera(const unsigned char *blob, unsigned sz)
 		return;
 	}
 	const unsigned count = ru16(blob + 6);
-	const unsigned rec = 74;
+	const unsigned rec = (8 + count * 138u <= sz) ? 138u : 74u;
 	if (8 + count * rec > sz) {
 		return;
 	}
@@ -412,7 +413,18 @@ static int project_vert(const Mat4 *mvp, const CookVert *v, vertex_f_t *clip, co
 	float x, y, z, w;
 	{
 		const int ni = (v->node < 32) ? (int)v->node : 0;
-		xform(mvp, v->x + g_nofs[ni][0], v->y + g_nofs[ni][1], v->z + g_nofs[ni][2], &x, &y, &z, &w);
+		float px = v->x + g_nofs[ni][0];
+		const float py = v->y + g_nofs[ni][1];
+		float pz = v->z + g_nofs[ni][2];
+		const float ry = g_nrot[ni][1];
+		if (ry != 0.0f) {
+			const float c = cosf(ry);
+			const float s = sinf(ry);
+			const float rx = px * c - pz * s;
+			pz = px * s + pz * c;
+			px = rx;
+		}
+		xform(mvp, px, py, pz, &x, &y, &z, &w);
 	}
 	if (w <= 0.08f) {
 		return 0;
@@ -523,6 +535,7 @@ int gs_draw_init(const unsigned char *mesh, unsigned mesh_sz,
 	g_fade_a = g_fade_r = g_fade_g = g_fade_b = 0;
 	memset(g_hudq, 0, sizeof(g_hudq));
 	memset(g_nofs, 0, sizeof(g_nofs));
+	memset(g_nrot, 0, sizeof(g_nrot));
 	parse_camera(node, node_sz);
 	parse_upload_gtex(gtex, gtex_sz);
 	if (!parse_mesh(mesh, mesh_sz)) {
@@ -747,19 +760,40 @@ void gs_draw_set_node_ofs(int node, float x, float y, float z)
 	g_nofs[node][2] = z;
 }
 
+void gs_draw_set_node_rot(int node, float rx, float ry, float rz)
+{
+	if (node < 0 || node >= 32) {
+		return;
+	}
+	g_nrot[node][0] = rx;
+	g_nrot[node][1] = ry;
+	g_nrot[node][2] = rz;
+}
+
 void gs_draw_apply_node(int node, float *x, float *y, float *z)
 {
 	if (node < 0 || node >= 32) {
 		return;
 	}
+	float px = (x ? *x : 0.0f) + g_nofs[node][0];
+	float py = (y ? *y : 0.0f) + g_nofs[node][1];
+	float pz = (z ? *z : 0.0f) + g_nofs[node][2];
+	const float ry = g_nrot[node][1];
+	if (ry != 0.0f) {
+		const float c = cosf(ry);
+		const float s = sinf(ry);
+		const float rx = px * c - pz * s;
+		pz = px * s + pz * c;
+		px = rx;
+	}
 	if (x) {
-		*x += g_nofs[node][0];
+		*x = px;
 	}
 	if (y) {
-		*y += g_nofs[node][1];
+		*y = py;
 	}
 	if (z) {
-		*z += g_nofs[node][2];
+		*z = pz;
 	}
 }
 

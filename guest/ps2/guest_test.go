@@ -104,12 +104,18 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	if !strings.Contains(string(pad), "pad_io_pressed") || !strings.Contains(string(pad), "pad_io_stick") {
 		t.Fatal("pad_io.h must expose Input action/stick queries")
 	}
+	if !strings.Contains(string(pad), "pad_io_set_deadzone") {
+		t.Fatal("pad_io.h must expose stick deadzone")
+	}
 	pack, err := files.ReadFile("runtime/pack_io.h")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(pack), "pack_io_user_save") || !strings.Contains(string(pack), "pack_io_user_error") {
 		t.Fatal("pack_io.h must map user:// with a named error")
+	}
+	if !strings.Contains(string(pack), "pack_io_poke") || !strings.Contains(string(pack), "pack_io_peek") {
+		t.Fatal("pack_io.h must expose 24KiB poke/peek")
 	}
 	vm, err := files.ReadFile("runtime/script_vm.cpp")
 	if err != nil {
@@ -147,6 +153,15 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	}
 	if !strings.Contains(string(vm), "OP_LOAD_SCENE") || !strings.Contains(string(vm), "NAT_CAN_INSTANTIATE") {
 		t.Fatal("script_vm must interpret additive load_scene and can_instantiate natives")
+	}
+	if !strings.Contains(string(vm), "NAT_SET_CAM") || !strings.Contains(string(vm), "sys_io_set_cam") {
+		t.Fatal("script_vm must interpret set_camera natives that push")
+	}
+	if !strings.Contains(string(vm), "NAT_LOAD_SPRITES") || !strings.Contains(string(vm), "NAT_MOVE_PLANAR") {
+		t.Fatal("script_vm must interpret load_sprites / move_planar")
+	}
+	if !strings.Contains(string(vm), "NAT_HURT") || !strings.Contains(string(vm), "NAT_POKE") || !strings.Contains(string(vm), "NAT_GET_PRESSURE") {
+		t.Fatal("script_vm must interpret hurt / poke / get_pressure")
 	}
 	if !strings.Contains(string(vm), "OP_JMP") || !strings.Contains(string(vm), "OP_CALL_NATIVE") {
 		t.Fatal("script_vm must interpret JMP / CALL_NATIVE")
@@ -194,6 +209,15 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	}
 	if !strings.Contains(string(sys), "sys_io_set_fade_pack") || !strings.Contains(string(sys), "pack_io_swap") {
 		t.Fatal("sys_io.cpp must fade then swap packs")
+	}
+	if !strings.Contains(string(sys), "sys_io_set_cam") || !strings.Contains(string(sys), "sys_io_set_default_cam") {
+		t.Fatal("sys_io.cpp must expose set_camera / set_default_camera")
+	}
+	if !strings.Contains(string(sys), "sys_io_move_planar") || !strings.Contains(string(sys), "sys_io_hurt") {
+		t.Fatal("sys_io.cpp must expose move_planar / hurt")
+	}
+	if !strings.Contains(string(sys), "SPRT") || !strings.Contains(string(sys), "apply_sprt") {
+		t.Fatal("sys_io.cpp must load SPRT sidecars")
 	}
 	vu1, err := files.ReadFile("runtime/vu1_draw.cpp")
 	if err != nil {

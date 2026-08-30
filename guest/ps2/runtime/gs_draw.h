@@ -42,6 +42,7 @@ void gs_draw_shake(float x, float y, float z);
 void gs_draw_hud_quad(int slot, int x, int y, int w, int h, int r, int g, int b);
 void gs_draw_set_fade(int a, int r, int g, int b);
 void gs_draw_set_node_ofs(int node, float x, float y, float z);
+void gs_draw_set_node_rot(int node, float rx, float ry, float rz);
 void gs_draw_apply_node(int node, float *x, float *y, float *z);
 void gs_draw_overlay(framebuffer_t *frame, zbuffer_t *z);
 

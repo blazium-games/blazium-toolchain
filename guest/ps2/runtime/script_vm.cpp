@@ -79,7 +79,44 @@ enum {
 	NAT_CAN_LOAD = 59,
 	NAT_CAN_INSTANTIATE = 60,
 	NAT_IS_LOADED = 61,
-	NAT_LOADED_COUNT = 62
+	NAT_LOADED_COUNT = 62,
+	NAT_SET_CAM = 63,
+	NAT_SET_DEFAULT_CAM = 64,
+	NAT_GET_CAM = 65,
+	NAT_GET_CAM_COUNT = 66,
+	NAT_MAKE_CURRENT = 67,
+	NAT_PREV_CAM = 68,
+	NAT_GET_DEFAULT_CAM = 69,
+	NAT_LOAD_SPRITES = 70,
+	NAT_UNLOAD_SPRITES = 71,
+	NAT_CAN_LOAD_SPRITES = 72,
+	NAT_IS_SPRITES_LOADED = 73,
+	NAT_LOAD_ANIMS = 74,
+	NAT_UNLOAD_ANIMS = 75,
+	NAT_IS_ANIMS_LOADED = 76,
+	NAT_LOAD_HITS = 77,
+	NAT_UNLOAD_HITS = 78,
+	NAT_IS_HITS_LOADED = 79,
+	NAT_LOAD_TILES = 80,
+	NAT_MOVE_PLANAR = 81,
+	NAT_FOLLOW_NODE = 82,
+	NAT_HURT = 83,
+	NAT_SET_HITSTOP = 84,
+	NAT_SET_INVULN = 85,
+	NAT_IS_INVULN = 86,
+	NAT_KNOCKBACK = 87,
+	NAT_SET_HP = 88,
+	NAT_GET_HP = 89,
+	NAT_HITBOX_ON = 90,
+	NAT_HITBOX_LAYER = 91,
+	NAT_GET_PRESSURE = 92,
+	NAT_SET_DEADZONE = 93,
+	NAT_GET_STICK = 94,
+	NAT_POKE = 95,
+	NAT_PEEK = 96,
+	NAT_SPAWN = 97,
+	NAT_OVERLAPS_ENTERED = 98,
+	NAT_SET_FLIP = 99
 };
 
 static char s_str[8][128];
@@ -103,6 +140,7 @@ static int s_kit_load;
 static int s_kit_talk;
 static int s_kit_spawner;
 static int s_kit_save;
+static char s_kit_spawn_path[65];
 static float s_yaw;
 
 static unsigned ru16(const unsigned char *p)
@@ -198,7 +236,7 @@ static void bind_nodes(const unsigned char *blob, unsigned sz)
 		return;
 	}
 	const unsigned count = ru16(blob + 6);
-	const unsigned rec = 74;
+	const unsigned rec = (8 + count * 138u <= sz) ? 138u : 74u;
 	if (8 + count * rec > sz) {
 		return;
 	}
@@ -208,6 +246,10 @@ static void bind_nodes(const unsigned char *blob, unsigned sz)
 		memcpy(name, n + 42, 32);
 		name[32] = 0;
 		apply_kit(n[5], name);
+		if (rec >= 138 && (n[5] == 11 || name_is_ci(name, "Spawner") || name_is_ci(name, "Instance"))) {
+			memcpy(s_kit_spawn_path, n + 74, 64);
+			s_kit_spawn_path[64] = 0;
+		}
 	}
 }
 
@@ -277,8 +319,7 @@ static void kit_tick(void)
 			rebind_current_pack();
 		}
 		if (s_kit_checkpoint || s_kit_save) {
-			const unsigned char slot[2] = { 1, 0 };
-			if (!pack_io_user_save(slot, 2)) {
+			if (!pack_io_user_save(pack_io_poke_data(), pack_io_poke_size())) {
 				(void)pack_io_user_error();
 			}
 		}
@@ -286,8 +327,14 @@ static void kit_tick(void)
 			sfx_io_play();
 		}
 		if (s_kit_spawner) {
-			const int next = pack_io_current() + 1;
-			(void)pack_io_instantiate(next > 0 ? next : 1);
+			int pack = -1;
+			if (s_kit_spawn_path[0]) {
+				pack = pack_io_find_path(s_kit_spawn_path);
+			}
+			if (pack < 0) {
+				pack = pack_io_current() + 1;
+			}
+			(void)pack_io_instantiate(pack > 0 ? pack : 1);
 		}
 		if (s_kit_unload) {
 			const int cur = pack_io_current();
@@ -405,8 +452,7 @@ static void run_range(unsigned from, unsigned to, float delta)
 			continue;
 		}
 		if (op == OP_USER_SAVE) {
-			const unsigned char slot[2] = { 1, 0 };
-			if (!pack_io_user_save(slot, 2)) {
+			if (!pack_io_user_save(pack_io_poke_data(), pack_io_poke_size())) {
 				(void)pack_io_user_error();
 			}
 			continue;
@@ -443,8 +489,7 @@ static void run_range(unsigned from, unsigned to, float delta)
 			if (sp >= 1) {
 				slot = (int)stack[--sp];
 			}
-			const unsigned char data[2] = { 1, 0 };
-			if (!pack_io_user_save_slot(slot, data, 2)) {
+			if (!pack_io_user_save_slot(slot, 0, 0)) {
 				(void)pack_io_user_error();
 			}
 			continue;
@@ -507,12 +552,7 @@ static void run_range(unsigned from, unsigned to, float delta)
 			continue;
 		}
 		if (op == OP_NEXT_CAMERA) {
-			if (pad_io_just_pressed(8)) {
-				sys_io_next_cam();
-			}
-			if (pad_io_just_pressed(9)) {
-				sys_io_prev_cam();
-			}
+			sys_io_next_cam();
 			continue;
 		}
 		if (op == OP_ATTACH_CAMERA) {
@@ -767,6 +807,177 @@ static void run_range(unsigned from, unsigned to, float delta)
 				stack[sp++] = pack_io_is_loaded(pack) ? 1.0f : 0.0f;
 			} else if (nid == NAT_LOADED_COUNT && sp < 8) {
 				stack[sp++] = (float)pack_io_loaded_count();
+			} else if (nid == NAT_SET_CAM && sp >= 1) {
+				stack[sp - 1] = sys_io_set_cam((int)stack[sp - 1]) ? 1.0f : 0.0f;
+			} else if (nid == NAT_SET_DEFAULT_CAM && sp >= 1) {
+				stack[sp - 1] = sys_io_set_default_cam((int)stack[sp - 1]) ? 1.0f : 0.0f;
+			} else if (nid == NAT_GET_CAM && sp < 8) {
+				stack[sp++] = (float)sys_io_cam_index();
+			} else if (nid == NAT_GET_CAM_COUNT && sp < 8) {
+				stack[sp++] = (float)sys_io_cam_count();
+			} else if (nid == NAT_MAKE_CURRENT) {
+				int ok = 0;
+				if (s_last_str >= 0 && s_last_str < 8) {
+					ok = sys_io_make_current(s_str[s_last_str]);
+				}
+				if (sp < 8) {
+					stack[sp++] = ok ? 1.0f : 0.0f;
+				}
+			} else if (nid == NAT_PREV_CAM) {
+				sys_io_prev_cam();
+				if (sp < 8) {
+					stack[sp++] = (float)sys_io_cam_index();
+				}
+			} else if (nid == NAT_GET_DEFAULT_CAM && sp < 8) {
+				stack[sp++] = (float)sys_io_default_cam();
+			} else if (nid == NAT_LOAD_SPRITES && sp < 8) {
+				int pack = pack_io_current();
+				if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+					pack = pack_io_find_path(s_str[s_last_str]);
+				}
+				stack[sp++] = sys_io_load_sprites(pack) ? 1.0f : 0.0f;
+			} else if (nid == NAT_UNLOAD_SPRITES && sp < 8) {
+				stack[sp++] = sys_io_unload_sprites() ? 1.0f : 0.0f;
+			} else if (nid == NAT_CAN_LOAD_SPRITES && sp < 8) {
+				int pack = pack_io_current();
+				if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+					pack = pack_io_find_path(s_str[s_last_str]);
+				}
+				stack[sp++] = (pack_io_is_loaded(pack) || pack_io_can_fit(pack)) ? 1.0f : 0.0f;
+			} else if (nid == NAT_IS_SPRITES_LOADED && sp < 8) {
+				stack[sp++] = sys_io_sprites_loaded() ? 1.0f : 0.0f;
+			} else if (nid == NAT_LOAD_ANIMS && sp < 8) {
+				int pack = pack_io_current();
+				if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+					pack = pack_io_find_path(s_str[s_last_str]);
+				}
+				stack[sp++] = sys_io_load_anims(pack) ? 1.0f : 0.0f;
+			} else if (nid == NAT_UNLOAD_ANIMS && sp < 8) {
+				stack[sp++] = sys_io_unload_anims() ? 1.0f : 0.0f;
+			} else if (nid == NAT_IS_ANIMS_LOADED && sp < 8) {
+				stack[sp++] = sys_io_anims_loaded() ? 1.0f : 0.0f;
+			} else if (nid == NAT_LOAD_HITS && sp < 8) {
+				int pack = pack_io_current();
+				if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+					pack = pack_io_find_path(s_str[s_last_str]);
+				}
+				stack[sp++] = sys_io_load_hits(pack) ? 1.0f : 0.0f;
+			} else if (nid == NAT_UNLOAD_HITS && sp < 8) {
+				stack[sp++] = sys_io_unload_hits() ? 1.0f : 0.0f;
+			} else if (nid == NAT_IS_HITS_LOADED && sp < 8) {
+				stack[sp++] = sys_io_hits_loaded() ? 1.0f : 0.0f;
+			} else if (nid == NAT_LOAD_TILES && sp < 8) {
+				int pack = pack_io_current();
+				if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+					pack = pack_io_find_path(s_str[s_last_str]);
+				}
+				stack[sp++] = sys_io_load_tiles(pack) ? 1.0f : 0.0f;
+			} else if (nid == NAT_MOVE_PLANAR && sp >= 3) {
+				const float speed = stack[--sp];
+				const float ay = stack[--sp];
+				const float ax = stack[--sp];
+				sys_io_move_planar(ax, ay, speed, delta);
+				if (sp < 8) {
+					stack[sp++] = 1.0f;
+				}
+			} else if (nid == NAT_FOLLOW_NODE && sp >= 3) {
+				const float speed = stack[--sp];
+				const float tz = stack[--sp];
+				const float tx = stack[--sp];
+				sys_io_follow_node(tx, tz, speed, delta);
+				if (sp < 8) {
+					stack[sp++] = 1.0f;
+				}
+			} else if (nid == NAT_HURT && sp >= 4) {
+				const float vz = stack[--sp];
+				const float vy = stack[--sp];
+				const float vx = stack[--sp];
+				const int amt = (int)stack[--sp];
+				if (sp < 8) {
+					stack[sp++] = (float)sys_io_hurt(amt, vx, vy, vz);
+				}
+			} else if (nid == NAT_SET_HITSTOP && sp >= 1) {
+				sys_io_set_hitstop(stack[--sp]);
+				if (sp < 8) {
+					stack[sp++] = 1.0f;
+				}
+			} else if (nid == NAT_SET_INVULN && sp >= 1) {
+				sys_io_set_invuln(stack[--sp]);
+				if (sp < 8) {
+					stack[sp++] = 1.0f;
+				}
+			} else if (nid == NAT_IS_INVULN && sp < 8) {
+				stack[sp++] = sys_io_is_invuln() ? 1.0f : 0.0f;
+			} else if (nid == NAT_KNOCKBACK && sp >= 3) {
+				const float vz = stack[--sp];
+				const float vy = stack[--sp];
+				const float vx = stack[--sp];
+				sys_io_knockback(vx, vy, vz);
+				if (sp < 8) {
+					stack[sp++] = 1.0f;
+				}
+			} else if (nid == NAT_SET_HP && sp >= 1) {
+				stack[sp - 1] = (float)sys_io_set_hp((int)stack[sp - 1]);
+			} else if (nid == NAT_GET_HP && sp < 8) {
+				stack[sp++] = (float)sys_io_get_hp();
+			} else if (nid == NAT_HITBOX_ON && sp >= 2) {
+				const int on = (int)stack[--sp];
+				const int node = (int)stack[--sp];
+				if (sp < 8) {
+					stack[sp++] = sys_io_set_hitbox_enabled(node, on) ? 1.0f : 0.0f;
+				}
+			} else if (nid == NAT_HITBOX_LAYER && sp >= 2) {
+				const int layer = (int)stack[--sp];
+				const int node = (int)stack[--sp];
+				if (sp < 8) {
+					stack[sp++] = sys_io_set_hitbox_layer(node, layer) ? 1.0f : 0.0f;
+				}
+			} else if (nid == NAT_GET_PRESSURE && sp >= 1) {
+				stack[sp - 1] = (float)pad_io_get_pressure((int)stack[sp - 1]);
+			} else if (nid == NAT_SET_DEADZONE && sp >= 1) {
+				pad_io_set_deadzone(stack[--sp]);
+				if (sp < 8) {
+					stack[sp++] = 1.0f;
+				}
+			} else if (nid == NAT_GET_STICK && sp >= 1) {
+				float sx = 0.0f, sy = 0.0f;
+				pad_io_stick((int)stack[--sp], &sx, &sy);
+				if (sp < 8) {
+					stack[sp++] = sx;
+				}
+			} else if (nid == NAT_POKE && sp >= 2) {
+				const unsigned char v = (unsigned char)stack[--sp];
+				const unsigned off = (unsigned)stack[--sp];
+				if (sp < 8) {
+					stack[sp++] = pack_io_poke(off, v) ? 1.0f : 0.0f;
+				}
+			} else if (nid == NAT_PEEK && sp >= 1) {
+				stack[sp - 1] = (float)pack_io_peek((unsigned)stack[sp - 1]);
+			} else if (nid == NAT_SPAWN) {
+				int pack = -1;
+				if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+					pack = pack_io_find_path(s_str[s_last_str]);
+				}
+				const int ok = pack_io_instantiate(pack);
+				if (sp >= 3) {
+					const float z = stack[--sp];
+					const float y = stack[--sp];
+					const float x = stack[--sp];
+					if (ok) {
+						sys_io_spawn_ofs(x, y, z);
+					}
+				}
+				if (sp < 8) {
+					stack[sp++] = ok ? 1.0f : 0.0f;
+				}
+			} else if (nid == NAT_OVERLAPS_ENTERED && sp < 8) {
+				sys_io_overlap_refresh();
+				stack[sp++] = sys_io_overlaps_entered() ? 1.0f : 0.0f;
+			} else if (nid == NAT_SET_FLIP && sp >= 1) {
+				sys_io_set_flip((int)stack[--sp]);
+				if (sp < 8) {
+					stack[sp++] = 1.0f;
+				}
 			} else if (sp < 8) {
 				stack[sp++] = (float)sys_io_get_hp();
 			}
@@ -795,6 +1006,7 @@ int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 	s_kit_talk = 0;
 	s_kit_spawner = 0;
 	s_kit_save = 0;
+	s_kit_spawn_path[0] = 0;
 	s_yaw = 0.0f;
 	s_str_n = 0;
 	s_last_str = -1;

@@ -17,6 +17,8 @@ int pad_io_get_pressure(int button);
 int pad_io_pressed(int action);
 int pad_io_just_pressed(int action);
 void pad_io_stick(int stick, float *x, float *y);
+void pad_io_set_deadzone(float zone);
+float pad_io_get_deadzone(void);
 
 #ifdef __cplusplus
 }
