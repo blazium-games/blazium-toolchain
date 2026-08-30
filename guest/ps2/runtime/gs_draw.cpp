@@ -67,6 +67,15 @@ static float g_look_y = 1.5f;
 static float g_look_z = 0.0f;
 static float g_fov = 55.0f;
 static float g_world_yaw = 0.0f;
+static float g_pitch = 0.0f;
+static float g_yaw = 0.0f;
+static float g_roll = 0.0f;
+static float g_attach_x = 0.0f;
+static float g_attach_y = 0.0f;
+static float g_attach_z = 0.0f;
+static float g_shake_x = 0.0f;
+static float g_shake_y = 0.0f;
+static float g_shake_z = 0.0f;
 
 struct HudQuad {
 	int used;
@@ -152,6 +161,9 @@ static void parse_camera(const unsigned char *blob, unsigned sz)
 	g_look_y = 1.5f;
 	g_look_z = 0.0f;
 	g_fov = 55.0f;
+	g_pitch = g_yaw = g_roll = 0.0f;
+	g_attach_x = g_attach_y = g_attach_z = 0.0f;
+	g_shake_x = g_shake_y = g_shake_z = 0.0f;
 	if (!blob || sz < 8) {
 		return;
 	}
@@ -534,22 +546,92 @@ static void euler_yxz_negz(float pitch, float yaw, float roll, float *fx, float 
 	*fz = -x2 * sy + z2 * cy;
 }
 
+static void apply_look_from_euler(void)
+{
+	float fx = 0.0f;
+	float fy = 0.0f;
+	float fz = -1.0f;
+	euler_yxz_negz(g_pitch, g_yaw, g_roll, &fx, &fy, &fz);
+	const float dist = 8.0f;
+	g_look_x = g_cam_x + fx * dist;
+	g_look_y = g_cam_y + fy * dist;
+	g_look_z = g_cam_z + fz * dist;
+}
+
 void gs_draw_set_camera(float x, float y, float z, float pitch, float yaw, float roll, float fov_deg)
 {
 	g_cam_x = x;
 	g_cam_y = y;
 	g_cam_z = z;
-	float fx = 0.0f;
-	float fy = 0.0f;
-	float fz = -1.0f;
-	euler_yxz_negz(pitch, yaw, roll, &fx, &fy, &fz);
-	const float dist = 8.0f;
-	g_look_x = x + fx * dist;
-	g_look_y = y + fy * dist;
-	g_look_z = z + fz * dist;
+	g_pitch = pitch;
+	g_yaw = yaw;
+	g_roll = roll;
+	apply_look_from_euler();
 	if (fov_deg > 1.0f && fov_deg < 170.0f) {
 		g_fov = fov_deg;
 	}
+}
+
+void gs_draw_look(float yaw, float pitch, float roll)
+{
+	g_yaw = yaw;
+	g_pitch = pitch;
+	g_roll = roll;
+	apply_look_from_euler();
+}
+
+void gs_draw_look_delta(float dyaw, float dpitch)
+{
+	g_yaw += dyaw;
+	g_pitch += dpitch;
+	if (g_pitch > 1.4f) {
+		g_pitch = 1.4f;
+	}
+	if (g_pitch < -1.4f) {
+		g_pitch = -1.4f;
+	}
+	apply_look_from_euler();
+}
+
+void gs_draw_orbit_sph(float yaw, float pitch, float dist)
+{
+	g_yaw = yaw;
+	g_pitch = pitch;
+	g_roll = 0.0f;
+	if (dist < 1.0f) {
+		dist = 1.0f;
+	}
+	if (dist > 80.0f) {
+		dist = 80.0f;
+	}
+	float fx = 0.0f;
+	float fy = 0.0f;
+	float fz = -1.0f;
+	euler_yxz_negz(pitch, yaw, 0.0f, &fx, &fy, &fz);
+	g_cam_x = g_look_x - fx * dist;
+	g_cam_y = g_look_y - fy * dist;
+	g_cam_z = g_look_z - fz * dist;
+}
+
+void gs_draw_attach_offset(float x, float y, float z)
+{
+	g_attach_x = x;
+	g_attach_y = y;
+	g_attach_z = z;
+}
+
+void gs_draw_shake(float x, float y, float z)
+{
+	g_shake_x = x;
+	g_shake_y = y;
+	g_shake_z = z;
+}
+
+static void eye_now(float *x, float *y, float *z)
+{
+	*x = g_cam_x + g_attach_x + g_shake_x;
+	*y = g_cam_y + g_attach_y + g_shake_y;
+	*z = g_cam_z + g_attach_z + g_shake_z;
 }
 
 void gs_draw_hud_quad(int slot, int x, int y, int w, int h, int r, int g, int b)
@@ -623,7 +705,9 @@ void gs_draw_fill_mvp(float out[16], int width, int height)
 	}
 	Mat4 world, view, proj, tmp, mvp;
 	yaw_y(&world, g_world_yaw);
-	look_at(&view, g_cam_x, g_cam_y, g_cam_z, g_look_x, g_look_y, g_look_z);
+	float ex = 0.0f, ey = 0.0f, ez = 0.0f;
+	eye_now(&ex, &ey, &ez);
+	look_at(&view, ex, ey, ez, g_look_x, g_look_y, g_look_z);
 	perspective(&proj, g_fov, (float)width / (float)(height ? height : 1), 0.25f, 400.0f);
 	mat_mul(&view, &world, &tmp);
 	mat_mul(&proj, &tmp, &mvp);
@@ -706,7 +790,9 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 
 	Mat4 world, view, proj, tmp, mvp;
 	yaw_y(&world, g_world_yaw);
-	look_at(&view, g_cam_x, g_cam_y, g_cam_z, g_look_x, g_look_y, g_look_z);
+	float ex = 0.0f, ey = 0.0f, ez = 0.0f;
+	eye_now(&ex, &ey, &ez);
+	look_at(&view, ex, ey, ez, g_look_x, g_look_y, g_look_z);
 	perspective(&proj, g_fov, (float)frame->width / (float)frame->height, 0.25f, 400.0f);
 	mat_mul(&view, &world, &tmp);
 	mat_mul(&proj, &tmp, &mvp);

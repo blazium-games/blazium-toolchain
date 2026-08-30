@@ -27,6 +27,14 @@ void sys_io_set_frame(int i);
 int sys_io_play_fmv(void);
 void sys_io_tick(float delta);
 int sys_io_hit_hazard(float x, float z);
+void sys_io_look(float yaw, float pitch, float roll);
+void sys_io_look_stick(float delta);
+void sys_io_orbit(float yaw, float pitch, float dist);
+void sys_io_attach(float ox, float oy, float oz);
+void sys_io_shake(float amp, float ms);
+void sys_io_next_cam(void);
+void sys_io_prev_cam(void);
+int sys_io_cam_index(void);
 
 #ifdef __cplusplus
 }

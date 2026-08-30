@@ -29,6 +29,11 @@ void gs_draw_nudge(float dx, float dz);
 void gs_draw_set_eye(float x, float y, float z);
 // Camera3D: Godot Y-up YXZ euler, look along local -Z. fov_deg is the cooked FOV.
 void gs_draw_set_camera(float x, float y, float z, float pitch, float yaw, float roll, float fov_deg);
+void gs_draw_look(float yaw, float pitch, float roll);
+void gs_draw_look_delta(float dyaw, float dpitch);
+void gs_draw_orbit_sph(float yaw, float pitch, float dist);
+void gs_draw_attach_offset(float x, float y, float z);
+void gs_draw_shake(float x, float y, float z);
 void gs_draw_hud_quad(int slot, int x, int y, int w, int h, int r, int g, int b);
 
 // Clear + textured tris + slot-0 HUD stamp. Sends GIF packets itself.

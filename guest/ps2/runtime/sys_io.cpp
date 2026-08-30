@@ -3,6 +3,7 @@
 #include "sys_io.h"
 
 #include "gs_draw.h"
+#include "pad_io.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +15,17 @@
 
 static int s_ok;
 static int s_cam_n;
+static int s_cam_i;
+static float s_cam_x[8];
+static float s_cam_y[8];
+static float s_cam_z[8];
+static float s_cam_pitch[8];
+static float s_cam_yaw[8];
+static float s_cam_roll[8];
+static float s_cam_fov[8];
+static float s_shake_amp;
+static float s_shake_left;
+static unsigned s_rng;
 static int s_hit_n;
 static int s_hud_n;
 static int s_tile_n;
@@ -100,11 +112,28 @@ static void apply_cam(const unsigned char *b, unsigned sz)
 		return;
 	}
 	s_cam_n = (int)ru16(b + 6);
+	if (s_cam_n > 8) {
+		s_cam_n = 8;
+	}
 	if (s_cam_n < 1 || sz < 8 + 32) {
 		return;
 	}
-	const unsigned char *r = b + 8;
-	gs_draw_set_camera(rf32(r + 4), rf32(r + 8), rf32(r + 12), rf32(r + 16), rf32(r + 20), rf32(r + 24), rf32(r + 28));
+	for (int i = 0; i < s_cam_n; i++) {
+		if (8 + (unsigned)(i + 1) * 32 > sz) {
+			s_cam_n = i;
+			break;
+		}
+		const unsigned char *r = b + 8 + (unsigned)i * 32;
+		s_cam_x[i] = rf32(r + 4);
+		s_cam_y[i] = rf32(r + 8);
+		s_cam_z[i] = rf32(r + 12);
+		s_cam_pitch[i] = rf32(r + 16);
+		s_cam_yaw[i] = rf32(r + 20);
+		s_cam_roll[i] = rf32(r + 24);
+		s_cam_fov[i] = rf32(r + 28);
+	}
+	s_cam_i = 0;
+	gs_draw_set_camera(s_cam_x[0], s_cam_y[0], s_cam_z[0], s_cam_pitch[0], s_cam_yaw[0], s_cam_roll[0], s_cam_fov[0]);
 }
 
 static void apply_hit(const unsigned char *b, unsigned sz)
@@ -167,7 +196,10 @@ static void apply_anim(const unsigned char *b, unsigned sz)
 int sys_io_init(void)
 {
 	s_ok = 0;
-	s_cam_n = s_hit_n = s_hud_n = s_tile_n = s_nav_n = s_anim_n = s_fmv_n = 0;
+	s_cam_n = s_cam_i = s_hit_n = s_hud_n = s_tile_n = s_nav_n = s_anim_n = s_fmv_n = 0;
+	s_shake_amp = 0.0f;
+	s_shake_left = 0.0f;
+	s_rng = 1;
 	s_hp = 3;
 	s_frame = 0;
 	s_nav_i = 0;
@@ -285,10 +317,101 @@ int sys_io_play_fmv(void)
 
 void sys_io_tick(float delta)
 {
-	(void)delta;
 	if (s_anim_n > 0) {
 		s_frame++;
 	}
+	if (s_shake_left <= 0.0f) {
+		gs_draw_shake(0.0f, 0.0f, 0.0f);
+		return;
+	}
+	s_shake_left -= delta * 1000.0f;
+	if (s_shake_left <= 0.0f) {
+		s_shake_left = 0.0f;
+		gs_draw_shake(0.0f, 0.0f, 0.0f);
+		return;
+	}
+	s_rng = s_rng * 1103515245u + 12345u;
+	const float nx = ((float)((s_rng >> 16) & 0x7fff) / 16384.0f) - 1.0f;
+	s_rng = s_rng * 1103515245u + 12345u;
+	const float ny = ((float)((s_rng >> 16) & 0x7fff) / 16384.0f) - 1.0f;
+	s_rng = s_rng * 1103515245u + 12345u;
+	const float nz = ((float)((s_rng >> 16) & 0x7fff) / 16384.0f) - 1.0f;
+	gs_draw_shake(nx * s_shake_amp, ny * s_shake_amp, nz * s_shake_amp);
+}
+
+void sys_io_look(float yaw, float pitch, float roll)
+{
+	gs_draw_look(yaw, pitch, roll);
+}
+
+void sys_io_look_stick(float delta)
+{
+	float sx = 0.0f;
+	float sy = 0.0f;
+	pad_io_stick(1, &sx, &sy);
+	if (sx == 0.0f && sy == 0.0f) {
+		pad_io_stick(0, &sx, &sy);
+		sx *= 0.35f;
+		sy *= 0.35f;
+	}
+	gs_draw_look_delta(sx * 1.6f * delta, -sy * 1.2f * delta);
+}
+
+void sys_io_orbit(float yaw, float pitch, float dist)
+{
+	gs_draw_orbit_sph(yaw, pitch, dist);
+}
+
+void sys_io_attach(float ox, float oy, float oz)
+{
+	gs_draw_attach_offset(ox, oy, oz);
+}
+
+void sys_io_shake(float amp, float ms)
+{
+	if (amp < 0.0f) {
+		amp = 0.0f;
+	}
+	s_shake_amp = amp;
+	s_shake_left = ms;
+	if (ms <= 0.0f || amp <= 0.0f) {
+		s_shake_left = 0.0f;
+		gs_draw_shake(0.0f, 0.0f, 0.0f);
+	}
+}
+
+static void apply_cam_i(int i)
+{
+	if (i < 0 || i >= s_cam_n) {
+		return;
+	}
+	s_cam_i = i;
+	gs_draw_set_camera(s_cam_x[i], s_cam_y[i], s_cam_z[i], s_cam_pitch[i], s_cam_yaw[i], s_cam_roll[i], s_cam_fov[i]);
+}
+
+void sys_io_next_cam(void)
+{
+	if (s_cam_n < 1) {
+		return;
+	}
+	apply_cam_i((s_cam_i + 1) % s_cam_n);
+}
+
+void sys_io_prev_cam(void)
+{
+	if (s_cam_n < 1) {
+		return;
+	}
+	int i = s_cam_i - 1;
+	if (i < 0) {
+		i = s_cam_n - 1;
+	}
+	apply_cam_i(i);
+}
+
+int sys_io_cam_index(void)
+{
+	return s_cam_i;
 }
 
 int sys_io_hit_hazard(float x, float z)

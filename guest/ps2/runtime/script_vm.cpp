@@ -42,7 +42,13 @@ enum {
 	OP_SYS_TICK = 22,
 	OP_PLAY_MUSIC = 23,
 	OP_STOP_MUSIC = 24,
-	OP_MUSIC_VOL = 25
+	OP_MUSIC_VOL = 25,
+	OP_LOOK_STICK = 26,
+	OP_LOOK_CAMERA = 27,
+	OP_ORBIT_CAMERA = 28,
+	OP_SHAKE_CAMERA = 29,
+	OP_NEXT_CAMERA = 30,
+	OP_ATTACH_CAMERA = 31
 };
 
 static const unsigned char *s_tape;
@@ -416,6 +422,58 @@ static void run_range(unsigned from, unsigned to, float delta)
 				return;
 			}
 			sfx_io_music_set_vol(stack[--sp]);
+			continue;
+		}
+		if (op == OP_LOOK_STICK) {
+			sys_io_look_stick(delta);
+			continue;
+		}
+		if (op == OP_LOOK_CAMERA) {
+			if (sp < 3) {
+				return;
+			}
+			const float roll = stack[--sp];
+			const float pitch = stack[--sp];
+			const float yaw = stack[--sp];
+			sys_io_look(yaw, pitch, roll);
+			continue;
+		}
+		if (op == OP_ORBIT_CAMERA) {
+			if (sp < 3) {
+				return;
+			}
+			const float dist = stack[--sp];
+			const float pitch = stack[--sp];
+			const float yaw = stack[--sp];
+			sys_io_orbit(yaw, pitch, dist);
+			continue;
+		}
+		if (op == OP_SHAKE_CAMERA) {
+			if (sp < 2) {
+				return;
+			}
+			const float ms = stack[--sp];
+			const float amp = stack[--sp];
+			sys_io_shake(amp, ms);
+			continue;
+		}
+		if (op == OP_NEXT_CAMERA) {
+			if (pad_io_just_pressed(8)) {
+				sys_io_next_cam();
+			}
+			if (pad_io_just_pressed(9)) {
+				sys_io_prev_cam();
+			}
+			continue;
+		}
+		if (op == OP_ATTACH_CAMERA) {
+			if (sp < 3) {
+				return;
+			}
+			const float oz = stack[--sp];
+			const float oy = stack[--sp];
+			const float ox = stack[--sp];
+			sys_io_attach(ox, oy, oz);
 			continue;
 		}
 	}

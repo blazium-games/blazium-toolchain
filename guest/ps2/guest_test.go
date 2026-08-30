@@ -118,6 +118,9 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	if !strings.Contains(string(vm), "OP_PLAY_MUSIC") || !strings.Contains(string(vm), "OP_MUSIC_VOL") {
 		t.Fatal("script_vm must interpret load_music / set_music_volume")
 	}
+	if !strings.Contains(string(vm), "OP_LOOK_STICK") || !strings.Contains(string(vm), "OP_SHAKE_CAMERA") {
+		t.Fatal("script_vm must interpret look_camera / shake_camera")
+	}
 }
 
 func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
@@ -128,6 +131,9 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	if !strings.Contains(string(gs), "gs_draw_set_camera") || !strings.Contains(string(gs), "euler_yxz_negz") {
 		t.Fatal("gs_draw.cpp must apply Camera3D look-at from YXZ euler")
 	}
+	if !strings.Contains(string(gs), "gs_draw_look") || !strings.Contains(string(gs), "gs_draw_orbit_sph") || !strings.Contains(string(gs), "gs_draw_shake") {
+		t.Fatal("gs_draw.cpp must expose look/orbit/shake")
+	}
 	if !strings.Contains(string(gs), "g_fov") {
 		t.Fatal("gs_draw.cpp must use cooked FOV instead of a hardcoded 55")
 	}
@@ -137,6 +143,9 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	}
 	if !strings.Contains(string(sys), "gs_draw_set_camera") {
 		t.Fatal("sys_io.cpp must feed CAM00 euler+fov into gs_draw_set_camera")
+	}
+	if !strings.Contains(string(sys), "sys_io_look") || !strings.Contains(string(sys), "sys_io_next_cam") {
+		t.Fatal("sys_io.cpp must expose look_camera / next_camera")
 	}
 	cmake, err := files.ReadFile("runtime/CMakeLists.txt")
 	if err != nil {
