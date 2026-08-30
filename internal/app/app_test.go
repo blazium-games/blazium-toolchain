@@ -135,7 +135,7 @@ func TestListJSONHasPS1(t *testing.T) {
 			t.Fatalf("ps2 description must say guest is bundled: %s", info.Description)
 		}
 	}
-	for _, want := range []string{"ps3", "ps4", "n64"} {
+	for _, want := range []string{"ps3", "ps4"} {
 		var found bool
 		for _, info := range list {
 			if info.ID == want && info.Status == platforms.StatusPlanned {
@@ -145,6 +145,27 @@ func TestListJSONHasPS1(t *testing.T) {
 		if !found {
 			t.Fatalf("missing planned %s in %s", want, out.String())
 		}
+	}
+	var n64ok bool
+	for _, info := range list {
+		if info.ID == "n64" && info.Status == platforms.StatusSupported {
+			n64ok = true
+			var exp, rom bool
+			for _, c := range info.Commands {
+				if c == "export-guest" {
+					exp = true
+				}
+				if c == "rom" {
+					rom = true
+				}
+			}
+			if !exp || !rom {
+				t.Fatalf("n64 commands missing export-guest/rom: %v", info.Commands)
+			}
+		}
+	}
+	if !n64ok {
+		t.Fatalf("missing supported n64 in %s", out.String())
 	}
 }
 
@@ -487,6 +508,56 @@ func TestExportGuestWritesCPP(t *testing.T) {
 	}
 	if !strings.Contains(string(cmake), "extra/*.cpp") {
 		t.Fatalf("CMakeLists missing extra glob: %s", cmake)
+	}
+}
+
+func TestN64IsSupportedNotPlanned(t *testing.T) {
+	var errBuf bytes.Buffer
+	code := Run(context.Background(), []string{"n64", "setup", "--offline"}, &bytes.Buffer{}, &errBuf)
+	if code == ExitPlanned {
+		t.Fatalf("n64 should not be planned: %s", errBuf.String())
+	}
+	if code != ExitOK && code != ExitTool {
+		t.Fatalf("exit %d body %s", code, errBuf.String())
+	}
+}
+
+func TestExportGuestWritesN64(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "guest")
+	var out, errb bytes.Buffer
+	code := Run(context.Background(), []string{"--json", "n64", "export-guest", "--out", dest}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("export-guest %d %s", code, errb.String())
+	}
+	var m map[string]any
+	if err := json.Unmarshal(out.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["out"] != dest {
+		t.Fatalf("%v", m)
+	}
+	if int(m["abi"].(float64)) != 1 {
+		t.Fatalf("abi %v", m["abi"])
+	}
+	for _, name := range []string{"CMakeLists.txt", "Makefile", "main.cpp", "rdpq_draw.cpp", "script_vm.cpp", "dfs_io.cpp"} {
+		if _, err := os.Stat(filepath.Join(dest, name)); err != nil {
+			t.Fatalf("missing %s: %v", name, err)
+		}
+	}
+	main, err := os.ReadFile(filepath.Join(dest, "main.cpp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(main), "BLAZIUM_N64_COOK_ABI") {
+		t.Fatalf("main.cpp missing cook ABI: %s", main)
+	}
+}
+
+func TestN64ISOUsage(t *testing.T) {
+	code := Run(context.Background(), []string{"n64", "iso", "--dir", "x", "--out", "y.iso"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if code != ExitUsage {
+		t.Fatalf("n64 iso exit %d", code)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/blazium-games/blazium-toolchain/internal/platforms"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/future"
+	"github.com/blazium-games/blazium-toolchain/internal/platforms/n64"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/ps1"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/ps2"
 )
@@ -13,6 +14,7 @@ import (
 func TestListIncludesPS1AndPlanned(t *testing.T) {
 	platforms.Register(ps1.New())
 	platforms.Register(ps2.New())
+	platforms.Register(n64.New())
 	future.Register()
 	list := platforms.List()
 	ids := map[string]platforms.Status{}
@@ -25,7 +27,10 @@ func TestListIncludesPS1AndPlanned(t *testing.T) {
 	if ids["ps2"] != platforms.StatusSupported {
 		t.Fatalf("ps2 status %q", ids["ps2"])
 	}
-	for _, id := range []string{"ps3", "ps4", "n64"} {
+	if ids["n64"] != platforms.StatusSupported {
+		t.Fatalf("n64 status %q", ids["n64"])
+	}
+	for _, id := range []string{"ps3", "ps4"} {
 		if ids[id] != platforms.StatusPlanned {
 			t.Fatalf("%s want planned, got %q", id, ids[id])
 		}
@@ -47,10 +52,13 @@ func TestLookupUnknown(t *testing.T) {
 	}
 }
 
-func TestLookupN64Planned(t *testing.T) {
-	future.Register()
-	_, err := platforms.Lookup("n64")
-	if !errors.Is(err, platforms.ErrPlanned) {
-		t.Fatalf("got %v", err)
+func TestLookupN64Supported(t *testing.T) {
+	platforms.Register(n64.New())
+	p, err := platforms.Lookup("n64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Info().Status != platforms.StatusSupported {
+		t.Fatalf("%+v", p.Info())
 	}
 }

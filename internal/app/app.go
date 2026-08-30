@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	guestn64 "github.com/blazium-games/blazium-toolchain/guest/n64"
 	guestps1 "github.com/blazium-games/blazium-toolchain/guest/ps1"
 	guestps2 "github.com/blazium-games/blazium-toolchain/guest/ps2"
 	"github.com/blazium-games/blazium-toolchain/internal/cache"
@@ -21,6 +22,7 @@ import (
 	"github.com/blazium-games/blazium-toolchain/internal/platforms"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/future"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/interdvd"
+	n64plat "github.com/blazium-games/blazium-toolchain/internal/platforms/n64"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/ps1"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/ps2"
 )
@@ -43,6 +45,7 @@ const (
 func init() {
 	platforms.Register(ps1.New())
 	platforms.Register(ps2.New())
+	platforms.Register(n64plat.New())
 	platforms.Register(interdvd.New())
 	future.Register()
 }
@@ -98,7 +101,7 @@ func Run(ctx context.Context, argv []string, stdout, stderr io.Writer) int {
 		return ExitFail
 	}
 	if len(rest) == 0 {
-		fmt.Fprintf(stderr, "usage: blazium-toolchain %s <setup|env|status|build|export-guest|run|iso|elf-info|chd|fmv|meta>\n", platID)
+		fmt.Fprintf(stderr, "usage: blazium-toolchain %s <setup|env|status|build|export-guest|run|iso|rom|elf-info|chd|fmv|meta>\n", platID)
 		return ExitUsage
 	}
 	return dispatch(ctx, p, rest, common(*prefix, *jsonOut, stdout, stderr), stdout, stderr)
@@ -130,7 +133,7 @@ func cmdList(jsonOut bool, w io.Writer) int {
 	for _, info := range list {
 		note := ""
 		switch info.ID {
-		case "ps1", "ps2":
+		case "ps1", "ps2", "n64":
 			if ps2.HostSupported() {
 				note = "  Windows/Linux; guest bundled in this CLI"
 			} else {
@@ -161,6 +164,8 @@ func dispatch(ctx context.Context, p platforms.Platform, args []string, base pla
 		err = runRun(ctx, p, rest, base)
 	case "iso":
 		err = runISO(ctx, p, rest, base)
+	case "rom":
+		err = runRom(ctx, p, rest, base)
 	case "elf-info":
 		err = runElfInfo(p, rest, base, stdout)
 	case "chd":
@@ -181,7 +186,7 @@ func dispatch(ctx context.Context, p platforms.Platform, args []string, base pla
 func runSetup(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
 	fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 	fs.SetOutput(base.Stderr)
-	profile := fs.String("profile", "compile", "compile|dev|iso")
+	profile := fs.String("profile", "compile", "compile|dev|iso|rom")
 	offline := fs.Bool("offline", false, "do not fetch; only discover local tools")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
@@ -227,6 +232,7 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	tim := fs.String("tim", "", "optional cooked TIM to embed in the guest (PS1)")
 	mesh := fs.String("mesh", "", "optional cooked mesh to embed in the guest")
 	gtex := fs.String("gtex", "", "optional cooked GTEX (GS PSM) to embed in the PS2 guest")
+	ntex := fs.String("ntex", "", "optional cooked NTEX to embed in the N64 guest")
 	vag := fs.String("vag", "", "optional cooked VAG to embed in the guest")
 	sprite := fs.String("sprite", "", "optional cooked SPRITE table to embed in the guest")
 	script := fs.String("script", "", "optional cooked SCRIPT.IR to embed in the guest")
@@ -247,13 +253,13 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Overlay: *overlay, ExportSrc: *exportSrc, Tim: *tim, Mesh: *mesh, Gtex: *gtex, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Overlay: *overlay, ExportSrc: *exportSrc, Tim: *tim, Mesh: *mesh, Gtex: *gtex, Ntex: *ntex, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way})
 }
 
 func runExportGuest(p platforms.Platform, args []string, base platforms.CommonOptions, stdout io.Writer) error {
 	id := p.Info().ID
-	if id != ps1.ID && id != ps2.ID {
-		return fmt.Errorf("%w: export-guest is a ps1/ps2 command", platforms.ErrUsage)
+	if id != ps1.ID && id != ps2.ID && id != n64plat.ID {
+		return fmt.Errorf("%w: export-guest is a ps1/ps2/n64 command", platforms.ErrUsage)
 	}
 	fs := flag.NewFlagSet("export-guest", flag.ContinueOnError)
 	fs.SetOutput(base.Stderr)
@@ -273,6 +279,13 @@ func runExportGuest(p platforms.Platform, args []string, base platforms.CommonOp
 		err = guestps2.Install(dest)
 		abi = guestps2.CookABI
 		names = guestps2.RuntimeNames
+	case n64plat.ID:
+		if dest == "" {
+			dest = n64plat.GuestDir(base.Prefix)
+		}
+		err = guestn64.Install(dest)
+		abi = guestn64.CookABI
+		names = guestn64.RuntimeNames
 	default:
 		if dest == "" {
 			dest = ps1.GuestDir(base.Prefix)
@@ -301,7 +314,8 @@ func runExportGuest(p platforms.Platform, args []string, base platforms.CommonOp
 func runRun(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(base.Stderr)
-	iso := fs.String("iso", "", "optional cue/bin path")
+	iso := fs.String("iso", "", "optional cue/bin path (ps1/ps2)")
+	emu := fs.String("emu", "both", "n64 validator: ares|project64|both")
 	timeout := fs.Duration("timeout", 120*time.Second, "stop the emulator after this duration (smoke)")
 	pcdrv := fs.String("pcdrv", "", "host directory for pcsx-redux -pcdrvbase (default: EXE dir)")
 	ui := fs.Bool("ui", false, "show the pcsx-redux window (default is -no-ui smoke)")
@@ -312,7 +326,26 @@ func runRun(ctx context.Context, p platforms.Platform, args []string, base platf
 	if fs.NArg() > 0 {
 		exe = fs.Arg(0)
 	}
-	return p.Run(ctx, platforms.RunOptions{CommonOptions: base, Exe: exe, ISO: *iso, Timeout: *timeout, Pcdrv: *pcdrv, UI: *ui})
+	return p.Run(ctx, platforms.RunOptions{CommonOptions: base, Exe: exe, ISO: *iso, Emu: *emu, Timeout: *timeout, Pcdrv: *pcdrv, UI: *ui})
+}
+
+func runRom(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
+	if p.Info().ID != n64plat.ID {
+		return fmt.Errorf("%w: rom is an n64 command (no ISO/CUE)", platforms.ErrUsage)
+	}
+	fs := flag.NewFlagSet("rom", flag.ContinueOnError)
+	fs.SetOutput(base.Stderr)
+	dir := fs.String("dir", "", "DragonFS tree (mkdfs)")
+	elf := fs.String("elf", "", "guest ELF to wrap with n64tool")
+	out := fs.String("out", "", "output .z64")
+	if err := fs.Parse(args); err != nil {
+		return platforms.ErrUsage
+	}
+	tool, ok := p.(*n64plat.Tool)
+	if !ok {
+		return fmt.Errorf("%w: rom requires the n64 platform", platforms.ErrUsage)
+	}
+	return tool.WriteROM(ctx, *dir, *elf, *out, base.Stdout, base.Stderr)
 }
 
 func runFMV(p platforms.Platform, args []string, base platforms.CommonOptions, stdout io.Writer) error {
@@ -539,6 +572,10 @@ func usage(w io.Writer) {
 	if !ps2.HostSupported() {
 		ps2Line = fmt.Sprintf("ps2       supported (PlayStation 2; compile/run unavailable on %s; env/status/export-guest only)", runtime.GOOS)
 	}
+	n64Line := "n64       supported (Nintendo 64; Windows/Linux; guest bundled; product .z64)"
+	if !n64plat.HostSupported() {
+		n64Line = fmt.Sprintf("n64       supported (Nintendo 64; compile/run unavailable on %s; env/status/export-guest only)", runtime.GOOS)
+	}
 	fmt.Fprint(w, strings.TrimSpace(fmt.Sprintf(`
 blazium-toolchain — official Blazium console toolchain manager
 
@@ -550,12 +587,12 @@ Usage:
 Platforms:
   ps1       supported (PlayStation 1)
   %s
+  %s
   interdvd  supported (Interactive DVD ISO9660+UDF)
   ps3       planned
   ps4       planned
-  n64       planned
 
-PS1/PS2 host tools: Windows and Linux only. setup/build/run/iso exit 2 on other OSes.
+PS1/PS2/N64 host tools: Windows and Linux only. setup/build/run/iso/rom exit 2 on other OSes.
 
 PS1 commands:
   setup [--profile compile|dev|iso] [--offline]
@@ -591,7 +628,17 @@ Interactive DVD commands:
   meta init --out FILE
   meta validate --meta FILE
 
-License: GPL-3.0-or-later (this repo may contain GCC, PSn00bSDK, mkpsxiso, pcsx-redux).
+N64 commands:
+  setup [--profile compile|dev|rom] [--offline]
+  env
+  status
+  build --out FILE.z64 [--src DIR | --sample helloworld|rdpqdemo] [--overlay DIR] [--export-src DIR]
+    [--ntex|--mesh|--node|--script|--gdbc|--luau]
+  export-guest [--out DIR]
+  run [--emu ares|project64|both] [--timeout 120s] GAME.z64
+  rom --dir TREE --out FILE.z64 [--elf FILE.elf]
+
+License: GPL-3.0-or-later (this repo may contain GCC, PSn00bSDK, mkpsxiso, pcsx-redux, libdragon toolchain).
 The 3rd-party installer should invoke this binary (not the Blazium editor).
-`, ps2Line)) + "\n")
+`, ps2Line, n64Line)) + "\n")
 }

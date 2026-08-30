@@ -61,8 +61,9 @@ type BuildOptions struct {
 	Overlay   string // optional extra/replacement *.cpp on top of Src or the bundled stub
 	ExportSrc string // write the resolved guest C++ tree here (export-guest snapshot)
 	Tim    string // optional cooked TIM to embed (PS1)
-	Mesh   string // optional cooked mesh (PS1 SVECTOR / PS2 EE-native)
+	Mesh   string // optional cooked mesh (PS1 SVECTOR / PS2 EE-native / N64)
 	Gtex   string // optional cooked GTEX (PS2 GS PSM; do not use Tim)
+	Ntex   string // optional cooked NTEX (N64; do not use Tim/Gtex)
 	Vag    string // optional cooked VAG to embed (P5+)
 	Sprite string // optional cooked SPRITE table to embed (P8+)
 	Script string // optional cooked SCRIPT.IR / SCRP
@@ -87,6 +88,7 @@ type RunOptions struct {
 	CommonOptions
 	Exe     string
 	ISO     string
+	Emu     string        // n64: ares|project64|both
 	Timeout time.Duration // 0 means default 120s smoke watchdog
 	Pcdrv   string        // host dir for -pcdrvbase; empty uses the EXE directory
 	UI      bool          // show the pcsx-redux window; smoke stays headless

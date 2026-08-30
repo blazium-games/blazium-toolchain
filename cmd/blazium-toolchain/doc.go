@@ -36,10 +36,17 @@
 //	blazium-toolchain [--prefix DIR] ps2 export-guest [--out DIR]
 //	blazium-toolchain [--prefix DIR] ps2 run [--iso FILE.iso] [--timeout 120s] [--ui] GAME.elf
 //	blazium-toolchain [--prefix DIR] ps2 iso --dir TREE --out FILE.iso
+//	blazium-toolchain [--prefix DIR] n64 setup [--profile compile|dev|rom] [--offline]
+//	blazium-toolchain [--prefix DIR] n64 env
+//	blazium-toolchain [--prefix DIR] n64 status
+//	blazium-toolchain [--prefix DIR] n64 build --out FILE.z64 [--src DIR | --sample helloworld|rdpqdemo]
+//	blazium-toolchain [--prefix DIR] n64 export-guest [--out DIR]
+//	blazium-toolchain [--prefix DIR] n64 run [--emu ares|project64|both] [--timeout 120s] GAME.z64
+//	blazium-toolchain [--prefix DIR] n64 rom --dir TREE --out FILE.z64 [--elf FILE.elf]
 //
-// ps1, ps2, and interdvd are implemented. The PS2 guest C++ is bundled in
-// this CLI (ps2 export-guest / default ps2 build). PS1/PS2 host tools
-// (setup/build/run/iso) are Windows and Linux only; other hosts exit with
-// code 2. env/status/export-guest still work for inspection.
-// ps3, ps4, and n64 are reserved and exit with code 2.
+// ps1, ps2, n64, and interdvd are implemented. The N64 guest C++ is bundled in
+// this CLI (n64 export-guest / default n64 build). Product is a big-endian .z64
+// (no ISO/CUE). PS1/PS2/N64 host tools (setup/build/run/iso/rom) are Windows
+// and Linux only; other hosts exit with code 2. env/status/export-guest still
+// work for inspection. ps3 and ps4 are reserved and exit with code 2.
 package main

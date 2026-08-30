@@ -23,10 +23,15 @@
     },
     { "id": "ps3", "status": "planned", "commands": [] },
     { "id": "ps4", "status": "planned", "commands": [] },
-    { "id": "n64", "status": "planned", "commands": [] }
+    {
+      "id": "n64",
+      "status": "supported",
+      "commands": ["setup", "env", "status", "build", "export-guest", "run", "rom"]
+    }
   ],
   "profiles": {
     "ps1": ["compile", "dev", "iso"],
-    "ps2": ["compile", "dev", "iso"]
+    "ps2": ["compile", "dev", "iso"],
+    "n64": ["compile", "dev", "rom"]
   }
 }
