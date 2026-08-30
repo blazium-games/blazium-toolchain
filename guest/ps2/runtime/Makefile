@@ -1,5 +1,6 @@
 # Blazium PS2 guest — ps2sdk EE Makefile (AFL libs only: draw/graph/packet/dma).
 # Spawned by blazium-toolchain ps2 build. Do not link gsKit or audsrv.
+# VU1 is enabled here when dvp-as + libpacket2 exist. CMake is CPU-GIF fallback.
 
 EE_BIN = runtime.elf
 EE_OBJS = main.o gs_draw.o pad_io.o sfx_io.o pack_io.o script_vm.o vu1_draw.o

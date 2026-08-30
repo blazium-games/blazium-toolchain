@@ -3,6 +3,7 @@ package guest
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -43,6 +44,30 @@ func TestRuntimeNamesHasVU1(t *testing.T) {
 	}
 	if !cpp || !hdr || !vsm {
 		t.Fatalf("RuntimeNames missing VU1 files: %v", RuntimeNames)
+	}
+}
+
+func TestGuestPack1AndDisp(t *testing.T) {
+	pack, err := files.ReadFile("runtime/pack_io.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(pack), "MESH01") || !strings.Contains(string(pack), "pack_io_swap") {
+		t.Fatal("pack_io.cpp must load MESH01 and expose pack_io_swap")
+	}
+	main, err := files.ReadFile("runtime/main.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(main), "DISP.bin") {
+		t.Fatal("main.cpp must read DISP.bin for region/width")
+	}
+	sfx, err := files.ReadFile("runtime/sfx_io.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(sfx), "SdInit") && !strings.Contains(string(sfx), "sfx_io_audible") {
+		t.Fatal("sfx_io.cpp must attempt SPU2 voice or expose audible")
 	}
 }
 

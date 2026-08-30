@@ -1,5 +1,6 @@
 # Guest-only ps2sdk target. Host compilers are spawned by blazium-toolchain
 # (ps2 build). Prefer the Makefile when PS2SDK samples are present.
+# VU1 (dvp-as + libpacket2 + draw_3D.vsm) is Makefile-only. CMake stays CPU GIF.
 
 cmake_minimum_required(VERSION 3.10)
 
@@ -32,5 +33,8 @@ target_link_libraries(runtime PRIVATE draw graph packet dma pad fileXio patches 
 if(EXISTS "$ENV{PS2SDK}/ee/lib/libsdr.a")
 	target_link_libraries(runtime PRIVATE sdr)
 	target_compile_definitions(runtime PRIVATE BLAZIUM_PS2_HAS_LIBSD=1)
+endif()
+if(EXISTS "$ENV{PS2SDK}/ee/lib/libpacket2.a")
+	message(STATUS "libpacket2 present; enable VU1 by building with the Makefile (dvp-as).")
 endif()
 set_target_properties(runtime PROPERTIES OUTPUT_NAME "runtime" SUFFIX ".elf")

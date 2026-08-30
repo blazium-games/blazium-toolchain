@@ -17,7 +17,7 @@
 #endif
 
 #ifdef BLAZIUM_PS2_HAS_LIBSD
-#include <libsd.h>
+/* Do not call sceSdInit: this newlib -lsdr does not export it. */
 #endif
 
 #ifdef BLAZIUM_PS2_HAS_IRX_FREESD
@@ -49,6 +49,8 @@ static int s_pcm_n;
 static int s_rate;
 static int s_ready;
 static int s_played;
+static int s_audible;
+static int s_sd_ok;
 
 static unsigned ru16(const unsigned char *p)
 {
@@ -154,6 +156,8 @@ int sfx_io_init(void)
 {
 	s_ready = 0;
 	s_played = 0;
+	s_audible = 0;
+	s_sd_ok = 0;
 #ifdef BLAZIUM_PS2_HAS_IRX_FREESD
 #ifdef BLAZIUM_PS2_HAS_LOADFILE
 	SifExecModuleBuffer((void *)irx_freesd, (int)size_irx_freesd, 0, NULL, NULL);
@@ -190,14 +194,30 @@ void sfx_io_play(void)
 		return;
 	}
 	s_played = 1;
-	(void)s_rate;
 #ifdef BLAZIUM_PS2_HAS_LIBSD
-	/* MIT mixer already decoded PCM; freesd is loaded. Voice upload is optional. */
+	/* PCM is decoded on the EE. Voice DMA is not linked (sceSdInit missing
+	   from -lsdr). Cook WARNINGS.txt tells the developer play may be silent. */
+	s_sd_ok = 1;
+	s_audible = 0;
+	(void)s_rate;
+	(void)s_pcm_n;
+#else
+	(void)s_rate;
 	(void)s_pcm_n;
 #endif
+}
+
+void sfx_io_stop(void)
+{
+	s_played = 0;
 }
 
 int sfx_io_ready(void)
 {
 	return s_ready;
+}
+
+int sfx_io_audible(void)
+{
+	return s_audible;
 }

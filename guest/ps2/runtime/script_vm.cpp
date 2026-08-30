@@ -3,6 +3,9 @@
 #include "script_vm.h"
 
 #include "gs_draw.h"
+#include "pack_io.h"
+#include "pad_io.h"
+#include "sfx_io.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,7 +23,11 @@ enum {
 	OP_CALL_ROTATE_Y = 4,
 	OP_READY = 5,
 	OP_PROCESS = 6,
-	OP_HAS_FEATURE_PS2 = 7
+	OP_HAS_FEATURE_PS2 = 7,
+	OP_SWAP_PACK = 8,
+	OP_PLAY_SFX = 9,
+	OP_SET_RUMBLE = 10,
+	OP_STOP_RUMBLE = 11
 };
 
 static const unsigned char *s_tape;
@@ -178,6 +185,30 @@ static void run_range(unsigned from, unsigned to, float delta)
 			if (sp < 8) {
 				stack[sp++] = 1.0f;
 			}
+			continue;
+		}
+		if (op == OP_SWAP_PACK) {
+			if (sp < 1) {
+				return;
+			}
+			pack_io_swap((int)stack[--sp]);
+			continue;
+		}
+		if (op == OP_PLAY_SFX) {
+			sfx_io_play();
+			continue;
+		}
+		if (op == OP_SET_RUMBLE) {
+			if (sp < 2) {
+				return;
+			}
+			const int large = (int)stack[--sp];
+			const int small = (int)stack[--sp];
+			pad_io_set_rumble(small != 0, large);
+			continue;
+		}
+		if (op == OP_STOP_RUMBLE) {
+			pad_io_set_rumble(0, 0);
 			continue;
 		}
 	}

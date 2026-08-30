@@ -393,7 +393,19 @@ static int project_vert(const Mat4 *mvp, const CookVert *v, vertex_f_t *clip, co
 	return 1;
 }
 
-static qword_t *emit_hud(qword_t *q)
+void gs_draw_fb_origin(int width, int height, float *ox, float *oy)
+{
+	const int w = width > 0 ? width : 640;
+	const int h = height > 0 ? height : 448;
+	if (ox) {
+		*ox = 2048.0f - (float)(w / 2);
+	}
+	if (oy) {
+		*oy = 2048.0f - (float)(h / 2);
+	}
+}
+
+static qword_t *emit_hud(qword_t *q, int width, int height)
 {
 	if (g_tex_count < 1 || !g_tex[0].ready) {
 		return q;
@@ -401,8 +413,11 @@ static qword_t *emit_hud(qword_t *q)
 	q = bind_tex(q, 0);
 	texrect_t rect;
 	memset(&rect, 0, sizeof(rect));
-	rect.v0.x = 2048.0f - 320.0f + 8.0f;
-	rect.v0.y = 2048.0f - 224.0f + 8.0f;
+	float ox = 0.0f;
+	float oy = 0.0f;
+	gs_draw_fb_origin(width, height, &ox, &oy);
+	rect.v0.x = ox + 8.0f;
+	rect.v0.y = oy + 8.0f;
 	rect.v0.z = 1;
 	rect.v1.x = rect.v0.x + GS_HUD_PX;
 	rect.v1.y = rect.v0.y + GS_HUD_PX;
@@ -565,12 +580,15 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 	qword_t *q = packet->data;
 	qword_t *limit = packet->data + (GS_PACKET_QWORDS - 80);
 
+	float ox = 0.0f;
+	float oy = 0.0f;
+	gs_draw_fb_origin(frame->width, frame->height, &ox, &oy);
 	q = draw_framebuffer(q, 0, frame);
 	q = draw_disable_tests(q, 0, z);
-	q = draw_clear(q, 0, 2048.0f - 320.0f, 2048.0f - 224.0f, (float)frame->width, (float)frame->height, 32, 64, 160);
+	q = draw_clear(q, 0, ox, oy, (float)frame->width, (float)frame->height, 32, 64, 160);
 	q = draw_enable_tests(q, 0, z);
 	if (!g_ready) {
-		q = emit_hud(q);
+		q = emit_hud(q, frame->width, frame->height);
 		q = draw_finish(q);
 		send_packet(packet, q);
 		packet_free(packet);
@@ -659,7 +677,7 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 		emitted++;
 	}
 	q = end_prim(q, &in_prim);
-	q = emit_hud(q);
+	q = emit_hud(q, frame->width, frame->height);
 	q = draw_finish(q);
 	send_packet(packet, q);
 	packet_free(packet);

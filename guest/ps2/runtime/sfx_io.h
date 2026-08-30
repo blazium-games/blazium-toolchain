@@ -9,7 +9,9 @@ extern "C" {
 
 int sfx_io_init(void);
 void sfx_io_play(void);
+void sfx_io_stop(void);
 int sfx_io_ready(void);
+int sfx_io_audible(void);
 
 #ifdef __cplusplus
 }

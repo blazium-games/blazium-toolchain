@@ -14,6 +14,7 @@
 #include <gs_psm.h>
 #include <kernel.h>
 #include <packet.h>
+#include <stdio.h>
 #include <tamtypes.h>
 
 #define BLAZIUM_PS2_COOK_ABI_VALUE 1
@@ -53,11 +54,57 @@ extern const unsigned int size_cooked_gtex;
 }
 #endif
 
+static int s_disp_w = 640;
+static int s_disp_h = 448;
+static int s_disp_region;
+
+static unsigned ru16(const unsigned char *p)
+{
+	return (unsigned)p[0] | ((unsigned)p[1] << 8);
+}
+
+static int load_disp(void)
+{
+	static const char *paths[] = {
+		"host:DISP.bin",
+		"cdrom0:\\DISP.BIN;1",
+		"cdrom0:DISP.BIN;1",
+		NULL
+	};
+	for (int i = 0; paths[i]; i++) {
+		FILE *f = fopen(paths[i], "rb");
+		if (!f) {
+			continue;
+		}
+		unsigned char buf[12];
+		const size_t n = fread(buf, 1, 12, f);
+		fclose(f);
+		if (n < 12 || buf[0] != 'D' || buf[1] != 'I' || buf[2] != 'S' || buf[3] != 'P') {
+			continue;
+		}
+		if (ru16(buf + 4) != 1) {
+			continue;
+		}
+		s_disp_region = (int)ru16(buf + 6);
+		const int w = (int)ru16(buf + 8);
+		const int h = (int)ru16(buf + 10);
+		if (w == 320 || w == 512 || w == 640) {
+			s_disp_w = w;
+		}
+		if (h == 224 || h == 448 || h == 512) {
+			s_disp_h = h;
+		}
+		return 1;
+	}
+	return 0;
+}
+
 static void init_gs(framebuffer_t *frames, zbuffer_t *z)
 {
+	load_disp();
 	for (int i = 0; i < 2; i++) {
-		frames[i].width = 640;
-		frames[i].height = 448;
+		frames[i].width = s_disp_w;
+		frames[i].height = s_disp_h;
 		frames[i].mask = 0;
 		frames[i].psm = GS_PSM_16;
 		frames[i].address = graph_vram_allocate(frames[i].width, frames[i].height, frames[i].psm, GRAPH_ALIGN_PAGE);
@@ -69,15 +116,22 @@ static void init_gs(framebuffer_t *frames, zbuffer_t *z)
 	z->zsm = GS_ZBUF_16;
 	z->address = graph_vram_allocate(frames[0].width, frames[0].height, z->zsm, GRAPH_ALIGN_PAGE);
 
-	graph_initialize(frames[0].address, frames[0].width, frames[0].height, frames[0].psm, 0, 0);
+	int mode = 0;
+#ifdef GRAPH_MODE_PAL
+	mode = s_disp_region ? GRAPH_MODE_PAL : GRAPH_MODE_NTSC;
+#endif
+	graph_initialize(frames[0].address, frames[0].width, frames[0].height, frames[0].psm, 0, mode);
 }
 
 static void init_drawing_environment(framebuffer_t *frame, zbuffer_t *z)
 {
+	float ox = 0.0f;
+	float oy = 0.0f;
+	gs_draw_fb_origin(frame->width, frame->height, &ox, &oy);
 	packet_t *packet = packet_init(16, PACKET_NORMAL);
 	qword_t *q = packet->data;
 	q = draw_setup_environment(q, 0, frame, z);
-	q = draw_primitive_xyoffset(q, 0, (2048 - 320), (2048 - 224));
+	q = draw_primitive_xyoffset(q, 0, ox, oy);
 	q = draw_finish(q);
 	FlushCache(0);
 	dma_channel_send_normal(DMA_CHANNEL_GIF, packet->data, q - packet->data, 0, 0);
@@ -87,10 +141,13 @@ static void init_drawing_environment(framebuffer_t *frame, zbuffer_t *z)
 
 static void clear_loop(framebuffer_t *frame)
 {
+	float ox = 0.0f;
+	float oy = 0.0f;
+	gs_draw_fb_origin(frame->width, frame->height, &ox, &oy);
 	packet_t *packet = packet_init(16, PACKET_NORMAL);
 	for (;;) {
 		qword_t *q = packet->data;
-		q = draw_clear(q, 0, 2048 - 320, 2048 - 224, frame->width, frame->height, 32, 64, 160);
+		q = draw_clear(q, 0, ox, oy, frame->width, frame->height, 32, 64, 160);
 		q = draw_finish(q);
 		FlushCache(0);
 		dma_wait_fast();
@@ -137,6 +194,7 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
+	pack_io_set_pack0(mesh, mesh_sz, gtex, gtex_sz, node, node_sz);
 	pad_io_init();
 	sfx_io_init();
 	pack_io_init();

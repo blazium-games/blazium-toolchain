@@ -32,6 +32,9 @@ float gs_draw_world_yaw(void);
 void gs_draw_fill_mvp(float out[16], int width, int height);
 int gs_draw_tex_info(int i, int *vram, int *w, int *h, int *psm);
 
+// GS origin for a framebuffer (2048 - w/2, 2048 - h/2).
+void gs_draw_fb_origin(int width, int height, float *ox, float *oy);
+
 #ifdef __cplusplus
 }
 #endif
