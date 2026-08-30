@@ -27,6 +27,8 @@ void gs_draw_set_world_yaw(float yaw);
 // Input.get_vector / Node3D.translate: slide the look-at target on XZ.
 void gs_draw_nudge(float dx, float dz);
 void gs_draw_set_eye(float x, float y, float z);
+// Camera3D: Godot Y-up YXZ euler, look along local -Z. fov_deg is the cooked FOV.
+void gs_draw_set_camera(float x, float y, float z, float pitch, float yaw, float roll, float fov_deg);
 void gs_draw_hud_quad(int slot, int x, int y, int w, int h, int r, int g, int b);
 
 // Clear + textured tris + slot-0 HUD stamp. Sends GIF packets itself.

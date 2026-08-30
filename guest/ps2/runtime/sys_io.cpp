@@ -104,7 +104,7 @@ static void apply_cam(const unsigned char *b, unsigned sz)
 		return;
 	}
 	const unsigned char *r = b + 8;
-	gs_draw_set_eye(rf32(r + 4), rf32(r + 8), rf32(r + 12));
+	gs_draw_set_camera(rf32(r + 4), rf32(r + 8), rf32(r + 12), rf32(r + 16), rf32(r + 20), rf32(r + 24), rf32(r + 28));
 }
 
 static void apply_hit(const unsigned char *b, unsigned sz)

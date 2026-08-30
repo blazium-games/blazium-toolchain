@@ -105,6 +105,37 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	}
 }
 
+func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
+	gs, err := files.ReadFile("runtime/gs_draw.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(gs), "gs_draw_set_camera") || !strings.Contains(string(gs), "euler_yxz_negz") {
+		t.Fatal("gs_draw.cpp must apply Camera3D look-at from YXZ euler")
+	}
+	if !strings.Contains(string(gs), "g_fov") {
+		t.Fatal("gs_draw.cpp must use cooked FOV instead of a hardcoded 55")
+	}
+	sys, err := files.ReadFile("runtime/sys_io.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(sys), "gs_draw_set_camera") {
+		t.Fatal("sys_io.cpp must feed CAM00 euler+fov into gs_draw_set_camera")
+	}
+	cmake, err := files.ReadFile("runtime/CMakeLists.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm := string(cmake)
+	if !strings.Contains(cm, "CPU GIF fallback") || !strings.Contains(cm, "BLAZIUM_DVP_AS") {
+		t.Fatal("CMakeLists must enable VU1 when dvp-as exists and name the CPU GIF fallback")
+	}
+	if strings.Contains(cm, "-lgskit") || strings.Contains(strings.ToLower(cm), "libgskit") {
+		t.Fatal("CMakeLists must not link gsKit")
+	}
+}
+
 func TestGuestSysIO(t *testing.T) {
 	sys, err := files.ReadFile("runtime/sys_io.cpp")
 	if err != nil {
