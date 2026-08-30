@@ -35,6 +35,12 @@ void sys_io_shake(float amp, float ms);
 void sys_io_next_cam(void);
 void sys_io_prev_cam(void);
 int sys_io_cam_index(void);
+int sys_io_tween_start(float from, float to, float sec, int kind);
+void sys_io_kill_tweens(void);
+int sys_io_tween_count(void);
+int sys_io_tween_done(int id);
+int sys_io_timer_start(float sec);
+int sys_io_timer_done(int id);
 
 #ifdef __cplusplus
 }

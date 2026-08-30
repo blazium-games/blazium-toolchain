@@ -48,7 +48,10 @@ enum {
 	OP_ORBIT_CAMERA = 28,
 	OP_SHAKE_CAMERA = 29,
 	OP_NEXT_CAMERA = 30,
-	OP_ATTACH_CAMERA = 31
+	OP_ATTACH_CAMERA = 31,
+	OP_TWEEN = 32,
+	OP_TIMER = 33,
+	OP_KILL_TWEENS = 34
 };
 
 static const unsigned char *s_tape;
@@ -474,6 +477,28 @@ static void run_range(unsigned from, unsigned to, float delta)
 			const float oy = stack[--sp];
 			const float ox = stack[--sp];
 			sys_io_attach(ox, oy, oz);
+			continue;
+		}
+		if (op == OP_TWEEN) {
+			if (sp < 4) {
+				return;
+			}
+			const float kind = stack[--sp];
+			const float sec = stack[--sp];
+			const float to = stack[--sp];
+			const float from = stack[--sp];
+			(void)sys_io_tween_start(from, to, sec, (int)kind);
+			continue;
+		}
+		if (op == OP_TIMER) {
+			if (sp < 1) {
+				return;
+			}
+			(void)sys_io_timer_start(stack[--sp]);
+			continue;
+		}
+		if (op == OP_KILL_TWEENS) {
+			sys_io_kill_tweens();
 			continue;
 		}
 	}

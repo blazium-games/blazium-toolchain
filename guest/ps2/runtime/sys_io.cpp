@@ -4,6 +4,7 @@
 
 #include "gs_draw.h"
 #include "pad_io.h"
+#include "sfx_io.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +27,16 @@ static float s_cam_fov[8];
 static float s_shake_amp;
 static float s_shake_left;
 static unsigned s_rng;
+static int s_tw_on[8];
+static float s_tw_from[8];
+static float s_tw_to[8];
+static float s_tw_t[8];
+static float s_tw_dur[8];
+static int s_tw_kind[8];
+static int s_tw_last;
+static int s_tm_on[8];
+static float s_tm_left[8];
+static int s_tm_last;
 static int s_hit_n;
 static int s_hud_n;
 static int s_tile_n;
@@ -200,6 +211,13 @@ int sys_io_init(void)
 	s_shake_amp = 0.0f;
 	s_shake_left = 0.0f;
 	s_rng = 1;
+	s_tw_last = -1;
+	s_tm_last = -1;
+	for (int i = 0; i < 8; i++) {
+		s_tw_on[i] = 0;
+		s_tm_on[i] = 0;
+		s_tm_left[i] = 0.0f;
+	}
 	s_hp = 3;
 	s_frame = 0;
 	s_nav_i = 0;
@@ -322,21 +340,42 @@ void sys_io_tick(float delta)
 	}
 	if (s_shake_left <= 0.0f) {
 		gs_draw_shake(0.0f, 0.0f, 0.0f);
-		return;
+	} else {
+		s_shake_left -= delta * 1000.0f;
+		if (s_shake_left <= 0.0f) {
+			s_shake_left = 0.0f;
+			gs_draw_shake(0.0f, 0.0f, 0.0f);
+		} else {
+			s_rng = s_rng * 1103515245u + 12345u;
+			const float nx = ((float)((s_rng >> 16) & 0x7fff) / 16384.0f) - 1.0f;
+			s_rng = s_rng * 1103515245u + 12345u;
+			const float ny = ((float)((s_rng >> 16) & 0x7fff) / 16384.0f) - 1.0f;
+			s_rng = s_rng * 1103515245u + 12345u;
+			const float nz = ((float)((s_rng >> 16) & 0x7fff) / 16384.0f) - 1.0f;
+			gs_draw_shake(nx * s_shake_amp, ny * s_shake_amp, nz * s_shake_amp);
+		}
 	}
-	s_shake_left -= delta * 1000.0f;
-	if (s_shake_left <= 0.0f) {
-		s_shake_left = 0.0f;
-		gs_draw_shake(0.0f, 0.0f, 0.0f);
-		return;
+	for (int i = 0; i < 8; i++) {
+		if (s_tw_on[i]) {
+			s_tw_t[i] += delta;
+			float u = (s_tw_dur[i] <= 0.0f) ? 1.0f : (s_tw_t[i] / s_tw_dur[i]);
+			if (u >= 1.0f) {
+				u = 1.0f;
+				s_tw_on[i] = 0;
+			}
+			const float v = s_tw_from[i] + (s_tw_to[i] - s_tw_from[i]) * u;
+			if (s_tw_kind[i] == 1) {
+				sfx_io_music_set_vol(v);
+			}
+		}
+		if (s_tm_on[i]) {
+			s_tm_left[i] -= delta;
+			if (s_tm_left[i] <= 0.0f) {
+				s_tm_left[i] = 0.0f;
+				s_tm_on[i] = 0;
+			}
+		}
 	}
-	s_rng = s_rng * 1103515245u + 12345u;
-	const float nx = ((float)((s_rng >> 16) & 0x7fff) / 16384.0f) - 1.0f;
-	s_rng = s_rng * 1103515245u + 12345u;
-	const float ny = ((float)((s_rng >> 16) & 0x7fff) / 16384.0f) - 1.0f;
-	s_rng = s_rng * 1103515245u + 12345u;
-	const float nz = ((float)((s_rng >> 16) & 0x7fff) / 16384.0f) - 1.0f;
-	gs_draw_shake(nx * s_shake_amp, ny * s_shake_amp, nz * s_shake_amp);
 }
 
 void sys_io_look(float yaw, float pitch, float roll)
@@ -412,6 +451,95 @@ void sys_io_prev_cam(void)
 int sys_io_cam_index(void)
 {
 	return s_cam_i;
+}
+
+int sys_io_tween_start(float from, float to, float sec, int kind)
+{
+	int slot = -1;
+	for (int i = 0; i < 8; i++) {
+		if (!s_tw_on[i]) {
+			slot = i;
+			break;
+		}
+	}
+	if (slot < 0) {
+		return -1;
+	}
+	s_tw_on[slot] = 1;
+	s_tw_from[slot] = from;
+	s_tw_to[slot] = to;
+	s_tw_t[slot] = 0.0f;
+	s_tw_dur[slot] = sec < 0.0f ? 0.0f : sec;
+	s_tw_kind[slot] = kind;
+	s_tw_last = slot;
+	if (s_tw_dur[slot] <= 0.0f) {
+		s_tw_on[slot] = 0;
+		if (kind == 1) {
+			sfx_io_music_set_vol(to);
+		}
+	}
+	return slot;
+}
+
+void sys_io_kill_tweens(void)
+{
+	for (int i = 0; i < 8; i++) {
+		s_tw_on[i] = 0;
+	}
+}
+
+int sys_io_tween_count(void)
+{
+	int n = 0;
+	for (int i = 0; i < 8; i++) {
+		if (s_tw_on[i]) {
+			n++;
+		}
+	}
+	return n;
+}
+
+int sys_io_tween_done(int id)
+{
+	if (id < 0) {
+		id = s_tw_last;
+	}
+	if (id < 0 || id >= 8) {
+		return 1;
+	}
+	return s_tw_on[id] ? 0 : 1;
+}
+
+int sys_io_timer_start(float sec)
+{
+	int slot = -1;
+	for (int i = 0; i < 8; i++) {
+		if (!s_tm_on[i]) {
+			slot = i;
+			break;
+		}
+	}
+	if (slot < 0) {
+		return -1;
+	}
+	s_tm_on[slot] = 1;
+	s_tm_left[slot] = sec < 0.0f ? 0.0f : sec;
+	s_tm_last = slot;
+	if (s_tm_left[slot] <= 0.0f) {
+		s_tm_on[slot] = 0;
+	}
+	return slot;
+}
+
+int sys_io_timer_done(int id)
+{
+	if (id < 0) {
+		id = s_tm_last;
+	}
+	if (id < 0 || id >= 8) {
+		return 1;
+	}
+	return s_tm_on[id] ? 0 : 1;
 }
 
 int sys_io_hit_hazard(float x, float z)
