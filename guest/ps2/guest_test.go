@@ -71,6 +71,30 @@ func TestGuestPack1AndDisp(t *testing.T) {
 	}
 }
 
+func TestGuestInputAndUserIO(t *testing.T) {
+	pad, err := files.ReadFile("runtime/pad_io.h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(pad), "pad_io_pressed") || !strings.Contains(string(pad), "pad_io_stick") {
+		t.Fatal("pad_io.h must expose Input action/stick queries")
+	}
+	pack, err := files.ReadFile("runtime/pack_io.h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(pack), "pack_io_user_save") || !strings.Contains(string(pack), "pack_io_user_error") {
+		t.Fatal("pack_io.h must map user:// with a named error")
+	}
+	vm, err := files.ReadFile("runtime/script_vm.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(vm), "OP_INPUT_TRANSLATE") || !strings.Contains(string(vm), "OP_USER_SAVE") {
+		t.Fatal("script_vm must interpret Input translate and user:// save")
+	}
+}
+
 func TestRuntimeNamesHasScriptVM(t *testing.T) {
 	var vm, hdr bool
 	for _, name := range RuntimeNames {

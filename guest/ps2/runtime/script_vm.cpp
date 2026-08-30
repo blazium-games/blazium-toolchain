@@ -27,7 +27,12 @@ enum {
 	OP_SWAP_PACK = 8,
 	OP_PLAY_SFX = 9,
 	OP_SET_RUMBLE = 10,
-	OP_STOP_RUMBLE = 11
+	OP_STOP_RUMBLE = 11,
+	OP_INPUT_TRANSLATE = 12,
+	OP_JUST_ACCEPT_SFX = 13,
+	OP_USER_SAVE = 14,
+	OP_USER_LOAD = 15,
+	OP_MEMCARD_PRESENT = 16
 };
 
 static const unsigned char *s_tape;
@@ -209,6 +214,41 @@ static void run_range(unsigned from, unsigned to, float delta)
 		}
 		if (op == OP_STOP_RUMBLE) {
 			pad_io_set_rumble(0, 0);
+			continue;
+		}
+		if (op == OP_INPUT_TRANSLATE) {
+			if (sp < 1) {
+				return;
+			}
+			const float rate = stack[--sp];
+			float sx = 0.0f;
+			float sy = 0.0f;
+			pad_io_stick(0, &sx, &sy);
+			gs_draw_nudge(sx * rate * delta, sy * rate * delta);
+			continue;
+		}
+		if (op == OP_JUST_ACCEPT_SFX) {
+			if (pad_io_just_pressed(4)) {
+				sfx_io_play();
+			}
+			continue;
+		}
+		if (op == OP_USER_SAVE) {
+			const unsigned char slot[2] = { 1, 0 };
+			if (!pack_io_user_save(slot, 2)) {
+				(void)pack_io_user_error();
+			}
+			continue;
+		}
+		if (op == OP_USER_LOAD) {
+			unsigned char slot[8];
+			(void)pack_io_user_load(slot, 8);
+			continue;
+		}
+		if (op == OP_MEMCARD_PRESENT) {
+			if (sp < 8) {
+				stack[sp++] = pack_io_user_present() ? 1.0f : 0.0f;
+			}
 			continue;
 		}
 	}

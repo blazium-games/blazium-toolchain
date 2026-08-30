@@ -62,6 +62,9 @@ static int g_tex_count;
 static float g_cam_x = 0.0f;
 static float g_cam_y = 3.0f;
 static float g_cam_z = 8.0f;
+static float g_look_x = 0.0f;
+static float g_look_y = 1.5f;
+static float g_look_z = 0.0f;
 static float g_world_yaw = 0.0f;
 
 static unsigned ru16(const unsigned char *p)
@@ -137,6 +140,9 @@ static void parse_camera(const unsigned char *blob, unsigned sz)
 	g_cam_x = 0.0f;
 	g_cam_y = 3.0f;
 	g_cam_z = 8.0f;
+	g_look_x = 0.0f;
+	g_look_y = 1.5f;
+	g_look_z = 0.0f;
 	if (!blob || sz < 8) {
 		return;
 	}
@@ -458,6 +464,14 @@ void gs_draw_set_world_yaw(float yaw)
 	g_world_yaw = yaw;
 }
 
+void gs_draw_nudge(float dx, float dz)
+{
+	g_look_x += dx;
+	g_look_z += dz;
+	g_cam_x += dx;
+	g_cam_z += dz;
+}
+
 void gs_draw_camera(float *x, float *y, float *z)
 {
 	if (x) {
@@ -514,7 +528,7 @@ void gs_draw_fill_mvp(float out[16], int width, int height)
 	}
 	Mat4 world, view, proj, tmp, mvp;
 	yaw_y(&world, g_world_yaw);
-	look_at(&view, g_cam_x, g_cam_y, g_cam_z, 0.0f, 1.5f, 0.0f);
+	look_at(&view, g_cam_x, g_cam_y, g_cam_z, g_look_x, g_look_y, g_look_z);
 	perspective(&proj, 55.0f, (float)width / (float)(height ? height : 1), 0.25f, 400.0f);
 	mat_mul(&view, &world, &tmp);
 	mat_mul(&proj, &tmp, &mvp);
@@ -523,9 +537,9 @@ void gs_draw_fill_mvp(float out[16], int width, int height)
 
 void gs_draw_orbit(float yaw, float dolly)
 {
-	const float tx = 0.0f;
-	const float ty = 1.5f;
-	const float tz = 0.0f;
+	const float tx = g_look_x;
+	const float ty = g_look_y;
+	const float tz = g_look_z;
 	float dx = g_cam_x - tx;
 	float dz = g_cam_z - tz;
 	float dist = sqrtf(dx * dx + dz * dz);
@@ -597,7 +611,7 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 
 	Mat4 world, view, proj, tmp, mvp;
 	yaw_y(&world, g_world_yaw);
-	look_at(&view, g_cam_x, g_cam_y, g_cam_z, 0.0f, 1.5f, 0.0f);
+	look_at(&view, g_cam_x, g_cam_y, g_cam_z, g_look_x, g_look_y, g_look_z);
 	perspective(&proj, 55.0f, (float)frame->width / (float)frame->height, 0.25f, 400.0f);
 	mat_mul(&view, &world, &tmp);
 	mat_mul(&proj, &tmp, &mvp);

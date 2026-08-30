@@ -51,6 +51,12 @@ static int s_mode_set;
 static int s_has_act;
 static int s_has_press;
 static unsigned char s_pressure[12];
+static unsigned short s_btns;
+static unsigned short s_prev_btns;
+static float s_lx;
+static float s_ly;
+static float s_rx;
+static float s_ry;
 
 static void pad_try_dualshock(void)
 {
@@ -96,6 +102,9 @@ int pad_io_init(void)
 	s_mode_set = 0;
 	s_has_act = 0;
 	s_has_press = 0;
+	s_btns = 0;
+	s_prev_btns = 0;
+	s_lx = s_ly = s_rx = s_ry = 0.0f;
 	memset(s_pressure, 0, sizeof(s_pressure));
 	SifInitRpc(0);
 #ifdef BLAZIUM_PS2_HAS_IOPCONTROL
@@ -171,7 +180,13 @@ void pad_io_poll(float *yaw, float *dolly, int *cross_down)
 		s_pressure[10] = buttons.l2_p;
 		s_pressure[11] = buttons.r2_p;
 	}
+	s_prev_btns = s_btns;
 	const unsigned short btns = ~buttons.btns;
+	s_btns = btns;
+	s_lx = ((int)buttons.ljoy_h - 128) / 128.0f;
+	s_ly = ((int)buttons.ljoy_v - 128) / 128.0f;
+	s_rx = ((int)buttons.rjoy_h - 128) / 128.0f;
+	s_ry = ((int)buttons.rjoy_v - 128) / 128.0f;
 	if (yaw) {
 		if (btns & PAD_LEFT) {
 			*yaw -= 0.04f;
@@ -215,6 +230,87 @@ int pad_io_get_pressure(int button)
 	}
 	return (int)s_pressure[button];
 }
+
+static unsigned short action_mask(int action)
+{
+	switch (action) {
+	case 0:
+		return PAD_LEFT;
+	case 1:
+		return PAD_RIGHT;
+	case 2:
+		return PAD_UP;
+	case 3:
+		return PAD_DOWN;
+	case 4:
+		return PAD_CROSS;
+	case 5:
+		return PAD_CIRCLE;
+	case 6:
+		return PAD_SQUARE;
+	case 7:
+		return PAD_TRIANGLE;
+	case 8:
+		return PAD_L1;
+	case 9:
+		return PAD_R1;
+	case 10:
+		return PAD_L2;
+	case 11:
+		return PAD_R2;
+	case 12:
+		return PAD_START;
+	case 13:
+		return PAD_SELECT;
+	default:
+		return 0;
+	}
+}
+
+int pad_io_pressed(int action)
+{
+	const unsigned short m = action_mask(action);
+	return (s_ready && m && (s_btns & m)) ? 1 : 0;
+}
+
+int pad_io_just_pressed(int action)
+{
+	const unsigned short m = action_mask(action);
+	return (s_ready && m && (s_btns & m) && !(s_prev_btns & m)) ? 1 : 0;
+}
+
+void pad_io_stick(int stick, float *x, float *y)
+{
+	float sx = 0.0f;
+	float sy = 0.0f;
+	if (s_ready) {
+		if (stick == 1) {
+			sx = s_rx;
+			sy = s_ry;
+		} else {
+			sx = s_lx;
+			sy = s_ly;
+			if (s_btns & PAD_LEFT) {
+				sx = -1.0f;
+			}
+			if (s_btns & PAD_RIGHT) {
+				sx = 1.0f;
+			}
+			if (s_btns & PAD_UP) {
+				sy = -1.0f;
+			}
+			if (s_btns & PAD_DOWN) {
+				sy = 1.0f;
+			}
+		}
+	}
+	if (x) {
+		*x = sx;
+	}
+	if (y) {
+		*y = sy;
+	}
+}
 #else
 int pad_io_init(void)
 {
@@ -244,5 +340,28 @@ int pad_io_get_pressure(int button)
 {
 	(void)button;
 	return 0;
+}
+
+int pad_io_pressed(int action)
+{
+	(void)action;
+	return 0;
+}
+
+int pad_io_just_pressed(int action)
+{
+	(void)action;
+	return 0;
+}
+
+void pad_io_stick(int stick, float *x, float *y)
+{
+	(void)stick;
+	if (x) {
+		*x = 0.0f;
+	}
+	if (y) {
+		*y = 0.0f;
+	}
 }
 #endif

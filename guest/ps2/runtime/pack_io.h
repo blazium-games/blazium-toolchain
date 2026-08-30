@@ -20,6 +20,13 @@ int pack_io_swap(int pack);
 int pack_io_current(void);
 int pack_io_has_pack1(void);
 
+// user:// → host:SAVE.BIN then mc0:SAVE.BIN. Errors if neither is writable.
+int pack_io_user_present(void);
+int pack_io_user_ready(void);
+int pack_io_user_save(const void *data, unsigned n);
+int pack_io_user_load(void *data, unsigned maxn);
+const char *pack_io_user_error(void);
+
 #ifdef __cplusplus
 }
 #endif

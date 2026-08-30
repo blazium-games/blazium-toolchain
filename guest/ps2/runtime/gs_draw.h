@@ -24,6 +24,9 @@ void gs_draw_orbit(float yaw, float dolly);
 // Script-driven Y-up world spin (rotate_y). Independent of pad orbit.
 void gs_draw_set_world_yaw(float yaw);
 
+// Input.get_vector / Node3D.translate: slide the look-at target on XZ.
+void gs_draw_nudge(float dx, float dz);
+
 // Clear + textured tris + slot-0 HUD stamp. Sends GIF packets itself.
 void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z);
 
