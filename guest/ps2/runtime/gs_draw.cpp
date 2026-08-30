@@ -167,8 +167,16 @@ static void frame_aabb(void)
 	g_look_y = cy;
 	g_look_z = cz;
 	g_cam_x = cx;
-	g_cam_y = cy + span * 0.35f + 2.0f;
-	g_cam_z = cz + span * 0.9f + 4.0f;
+	if (span < 3.5f) {
+		/* Tiny preview mesh: 3/4 view. Close enough that a 0.6-wide pillar still
+		 * hits the stills 8x8 grid; untextured face tints keep it a box. */
+		g_cam_x = cx + span * 0.4f + 2.0f;
+		g_cam_y = cy + span * 0.35f + 2.2f;
+		g_cam_z = cz + span * 0.9f + 4.5f;
+	} else {
+		g_cam_y = cy + span * 0.35f + 2.0f;
+		g_cam_z = cz + span * 0.9f + 4.0f;
+	}
 }
 
 static int cam_cannot_see_aabb(float x, float y, float z)
@@ -740,6 +748,41 @@ static int project_vert(const Mat4 *mvp, const CookVert *v, vertex_f_t *clip, co
 	st->r = 0.0f;
 	st->q = 1.0f;
 	return 1;
+}
+
+/* Tiny AABB + 16x16 GTEX turns a 0.8 box into a full-screen checker smear.
+ * Face tints keep a readable cube without ST. */
+static void face_tint(const CookVert *a, const CookVert *b, const CookVert *c, color_f_t *cols)
+{
+	float ux = b->x - a->x, uy = b->y - a->y, uz = b->z - a->z;
+	float vx = c->x - a->x, vy = c->y - a->y, vz = c->z - a->z;
+	float nx = uy * vz - uz * vy;
+	float ny = uz * vx - ux * vz;
+	float nz = ux * vy - uy * vx;
+	float ax = nx < 0.0f ? -nx : nx;
+	float ay = ny < 0.0f ? -ny : ny;
+	float az = nz < 0.0f ? -nz : nz;
+	float r = 0.85f, g = 0.85f, bcol = 0.85f;
+	if (ax >= ay && ax >= az) {
+		r = 0.85f;
+		g = 0.35f;
+		bcol = 0.75f;
+	} else if (ay >= az) {
+		r = 0.35f;
+		g = 0.75f;
+		bcol = 0.40f;
+	} else {
+		r = 0.85f;
+		g = 0.75f;
+		bcol = 0.25f;
+	}
+	int k;
+	for (k = 0; k < 3; k++) {
+		cols[k].r = r;
+		cols[k].g = g;
+		cols[k].b = bcol;
+		cols[k].a = 1.0f;
+	}
 }
 
 static int clip_on_screen(const vertex_f_t *c)
@@ -1348,6 +1391,16 @@ void gs_draw_set_node_ofs(int node, float x, float y, float z)
 	g_nofs[node][2] = z;
 }
 
+int gs_draw_primary_mesh_node(void)
+{
+	if (!g_verts || g_vert_count == 0) {
+		return 0;
+	}
+	CookVert v;
+	read_vert(g_verts, &v);
+	return (v.node < 32) ? (int)v.node : 0;
+}
+
 void gs_draw_set_node_rot(int node, float rx, float ry, float rz)
 {
 	if (node < 0 || node >= 32) {
@@ -1593,7 +1646,7 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 	memset(&color, 0, sizeof(color));
 	prim.type = PRIM_TRIANGLE;
 	prim.shading = PRIM_SHADE_GOURAUD;
-	prim.mapping = g_tex_count > 0 ? DRAW_ENABLE : DRAW_DISABLE;
+	prim.mapping = (g_tex_count > 0 && !aabb_is_tiny()) ? DRAW_ENABLE : DRAW_DISABLE;
 	prim.mapping_type = PRIM_MAP_ST;
 	prim.colorfix = PRIM_UNFIXED;
 	color.r = 0x80;
@@ -1632,6 +1685,9 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 				!project_vert(&mvp, &v2, &clip[2], &cols[2], &sts[2])) {
 			continue;
 		}
+		if (aabb_is_tiny()) {
+			face_tint(&v0, &v1, &v2, cols);
+		}
 		const int slot = (int)v0.tex;
 		if (q >= limit) {
 			q = end_prim(q, &in_prim);
@@ -1650,7 +1706,9 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 			q = end_prim(q, &in_prim);
 			emitted = 0;
 			if (slot != bound) {
-				q = bind_tex(q, slot);
+				if (!aabb_is_tiny()) {
+					q = bind_tex(q, slot);
+				}
 				bound = slot;
 			}
 			q = draw_prim_start(q, 0, &prim, &color);
@@ -1704,6 +1762,9 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 					!project_vert(&mvp, &v2, &clip[2], &cols[2], &sts[2])) {
 				continue;
 			}
+			if (aabb_is_tiny()) {
+				face_tint(&v0, &v1, &v2, cols);
+			}
 			const int slot = (int)v0.tex;
 			if (q >= limit) {
 				q = end_prim(q, &in_prim);
@@ -1722,7 +1783,9 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 				q = end_prim(q, &in_prim);
 				emitted = 0;
 				if (slot != bound) {
-					q = bind_tex(q, slot);
+					if (!aabb_is_tiny()) {
+						q = bind_tex(q, slot);
+					}
 					bound = slot;
 				}
 				q = draw_prim_start(q, 0, &prim, &color);

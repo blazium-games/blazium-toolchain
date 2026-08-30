@@ -258,6 +258,9 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	if !strings.Contains(string(sys), "apply_navm") || !strings.Contains(string(sys), "NAVM") {
 		t.Fatal("sys_io.cpp must load NAVM sidecars")
 	}
+	if !strings.Contains(string(sys), "gs_draw_primary_mesh_node") {
+		t.Fatal("sys_io.cpp must apply spawn ofs to the MESH vertex node, not only node 0")
+	}
 	vu1, err := files.ReadFile("runtime/vu1_draw.cpp")
 	if err != nil {
 		t.Fatal(err)
@@ -300,6 +303,15 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	}
 	if !strings.Contains(string(gs), "aabb_is_tiny()") || !strings.Contains(string(gs), "span * 6.0f + 24.0f") {
 		t.Fatal("gs_draw.cpp must re-frame tiny meshes and cameras that drift too far from the AABB")
+	}
+	if !strings.Contains(string(gs), "span * 0.9f + 4.5f") {
+		t.Fatal("gs_draw.cpp must stand farther from tiny AABB meshes so they stay framed")
+	}
+	if !strings.Contains(string(gs), "face_tint") {
+		t.Fatal("gs_draw.cpp must draw tiny AABB meshes untextured with face tints")
+	}
+	if !strings.Contains(string(gs), "gs_draw_primary_mesh_node") {
+		t.Fatal("gs_draw.cpp must expose the MESH vertex node for spawn ofs")
 	}
 	if strings.Contains(string(gs), "have_tex") && strings.Contains(string(gs), "draw_rect_textured(q, 0, &bar)") {
 		t.Fatal("gs_draw.cpp must not blit GTEX onto HUD bars (garbles Pause/PS2 text)")

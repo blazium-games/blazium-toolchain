@@ -1989,7 +1989,11 @@ int sys_io_erase_cell(int x, int y)
 
 void sys_io_spawn_ofs(float x, float y, float z)
 {
+	const int mesh_node = gs_draw_primary_mesh_node();
 	gs_draw_set_node_ofs(0, x, y, z);
+	if (mesh_node != 0) {
+		gs_draw_set_node_ofs(mesh_node, x, y, z);
+	}
 	s_px = x;
 	s_py = y;
 	s_pz = z;

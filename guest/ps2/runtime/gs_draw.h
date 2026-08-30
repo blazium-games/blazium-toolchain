@@ -52,6 +52,7 @@ void gs_draw_set_fade(int a, int r, int g, int b);
 void gs_draw_set_node_ofs(int node, float x, float y, float z);
 void gs_draw_set_node_rot(int node, float rx, float ry, float rz);
 void gs_draw_apply_node(int node, float *x, float *y, float *z);
+int gs_draw_primary_mesh_node(void);
 void gs_draw_overlay(framebuffer_t *frame, zbuffer_t *z);
 
 // Clear + textured tris + slot-0 HUD stamp. Sends GIF packets itself.
