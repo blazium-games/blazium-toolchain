@@ -41,5 +41,5 @@
 // this CLI (ps2 export-guest / default ps2 build). PS1/PS2 host tools
 // (setup/build/run/iso) are Windows and Linux only; other hosts exit with
 // code 2. env/status/export-guest still work for inspection.
-// ps3 and ps4 are reserved and exit with code 2.
+// ps3, ps4, and n64 are reserved and exit with code 2.
 package main

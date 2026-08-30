@@ -16,4 +16,10 @@ func Register() {
 		Status:      platforms.StatusPlanned,
 		Description: "Reserved. Not implemented.",
 	})
+	platforms.RegisterPlanned(platforms.Info{
+		ID:          "n64",
+		Name:        "Nintendo 64",
+		Status:      platforms.StatusPlanned,
+		Description: "Reserved. libdragon preview guest + Ares/Project64 validation. Not implemented.",
+	})
 }

@@ -25,7 +25,7 @@ func TestListIncludesPS1AndPlanned(t *testing.T) {
 	if ids["ps2"] != platforms.StatusSupported {
 		t.Fatalf("ps2 status %q", ids["ps2"])
 	}
-	for _, id := range []string{"ps3", "ps4"} {
+	for _, id := range []string{"ps3", "ps4", "n64"} {
 		if ids[id] != platforms.StatusPlanned {
 			t.Fatalf("%s want planned, got %q", id, ids[id])
 		}
@@ -41,8 +41,16 @@ func TestLookupPlanned(t *testing.T) {
 }
 
 func TestLookupUnknown(t *testing.T) {
-	_, err := platforms.Lookup("n64")
+	_, err := platforms.Lookup("dreamcast")
 	if !errors.Is(err, platforms.ErrUnknownPlatform) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestLookupN64Planned(t *testing.T) {
+	future.Register()
+	_, err := platforms.Lookup("n64")
+	if !errors.Is(err, platforms.ErrPlanned) {
 		t.Fatalf("got %v", err)
 	}
 }

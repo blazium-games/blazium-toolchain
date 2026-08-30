@@ -22,7 +22,8 @@
       "commands": ["setup", "env", "status", "build", "export-guest", "run", "iso"]
     },
     { "id": "ps3", "status": "planned", "commands": [] },
-    { "id": "ps4", "status": "planned", "commands": [] }
+    { "id": "ps4", "status": "planned", "commands": [] },
+    { "id": "n64", "status": "planned", "commands": [] }
   ],
   "profiles": {
     "ps1": ["compile", "dev", "iso"],

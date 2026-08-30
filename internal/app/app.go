@@ -553,6 +553,7 @@ Platforms:
   interdvd  supported (Interactive DVD ISO9660+UDF)
   ps3       planned
   ps4       planned
+  n64       planned
 
 PS1/PS2 host tools: Windows and Linux only. setup/build/run/iso exit 2 on other OSes.
 
