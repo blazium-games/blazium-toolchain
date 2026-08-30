@@ -57,6 +57,10 @@ static unsigned g_vert_count;
 static unsigned g_index_count;
 static const unsigned char *g_verts;
 static const unsigned char *g_indices;
+#define GS_MAX_LAYERS 16
+static const unsigned char *g_ly_mesh[GS_MAX_LAYERS];
+static unsigned g_ly_sz[GS_MAX_LAYERS];
+static int g_ly_n;
 static UploadedTex g_tex[GS_MAX_TEX];
 static int g_tex_count;
 static float g_cam_x = 0.0f;
@@ -528,6 +532,41 @@ int gs_draw_init(const unsigned char *mesh, unsigned mesh_sz,
 	return 1;
 }
 
+int gs_draw_layer_add(const unsigned char *mesh, unsigned mesh_sz)
+{
+	int i;
+	if (!mesh || mesh_sz < 16) {
+		return 0;
+	}
+	for (i = 0; i < g_ly_n; i++) {
+		if (g_ly_mesh[i] == mesh) {
+			return 1;
+		}
+	}
+	if (g_ly_n >= GS_MAX_LAYERS) {
+		return 0;
+	}
+	g_ly_mesh[g_ly_n] = mesh;
+	g_ly_sz[g_ly_n] = mesh_sz;
+	g_ly_n++;
+	return 1;
+}
+
+void gs_draw_layer_remove(const unsigned char *mesh)
+{
+	int i;
+	int w = 0;
+	for (i = 0; i < g_ly_n; i++) {
+		if (g_ly_mesh[i] == mesh) {
+			continue;
+		}
+		g_ly_mesh[w] = g_ly_mesh[i];
+		g_ly_sz[w] = g_ly_sz[i];
+		w++;
+	}
+	g_ly_n = w;
+}
+
 int gs_draw_ready(void)
 {
 	return g_ready;
@@ -974,6 +1013,69 @@ void gs_draw_scene(framebuffer_t *frame, zbuffer_t *z)
 		}
 		q = (qword_t *)dw;
 		emitted++;
+	}
+	for (int ly = 0; ly < g_ly_n; ly++) {
+		const unsigned char *blob = g_ly_mesh[ly];
+		const unsigned bsz = g_ly_sz[ly];
+		if (!blob || bsz < 16 || blob[0] != 'M' || blob[1] != 'E' || blob[2] != 'S' || blob[3] != 'H') {
+			continue;
+		}
+		const unsigned lverts = ru32(blob + 8);
+		const unsigned lidx = ru32(blob + 12);
+		const unsigned vert_bytes = lverts * 28;
+		if (16 + vert_bytes + lidx * 4 > bsz || lverts == 0) {
+			continue;
+		}
+		const unsigned char *lverts_p = blob + 16;
+		const unsigned char *lidx_p = blob + 16 + vert_bytes;
+		const unsigned lntri = lidx / 3;
+		for (unsigned t = 0; t < lntri; t++) {
+			const unsigned i0 = ru32(lidx_p + t * 12);
+			const unsigned i1 = ru32(lidx_p + t * 12 + 4);
+			const unsigned i2 = ru32(lidx_p + t * 12 + 8);
+			if (i0 >= lverts || i1 >= lverts || i2 >= lverts) {
+				continue;
+			}
+			CookVert v0, v1, v2;
+			read_vert(lverts_p + i0 * 28, &v0);
+			read_vert(lverts_p + i1 * 28, &v1);
+			read_vert(lverts_p + i2 * 28, &v2);
+			if (!project_vert(&mvp, &v0, &clip[0], &cols[0], &sts[0]) ||
+					!project_vert(&mvp, &v1, &clip[1], &cols[1], &sts[1]) ||
+					!project_vert(&mvp, &v2, &clip[2], &cols[2], &sts[2])) {
+				continue;
+			}
+			const int slot = (int)v0.tex;
+			if (q >= limit) {
+				q = end_prim(q, &in_prim);
+				q = draw_finish(q);
+				send_packet(packet, q);
+				q = packet->data;
+				bound = -1;
+				emitted = 0;
+			}
+			if (slot != bound || emitted >= GS_BATCH_TRIS) {
+				q = end_prim(q, &in_prim);
+				emitted = 0;
+				if (slot != bound) {
+					q = bind_tex(q, slot);
+					bound = slot;
+				}
+				q = draw_prim_start(q, 0, &prim, &color);
+				in_prim = 1;
+			}
+			draw_convert_xyz(xyz, 2048.0f, 2048.0f, 16, 3, clip);
+			draw_convert_rgbq(rgba, 3, clip, cols, 0x80);
+			draw_convert_st(st, 3, clip, sts);
+			u64 *dw = (u64 *)q;
+			for (int k = 0; k < 3; k++) {
+				*dw++ = rgba[k].rgbaq;
+				*dw++ = st[k].uv;
+				*dw++ = xyz[k].xyz;
+			}
+			q = (qword_t *)dw;
+			emitted++;
+		}
 	}
 	q = end_prim(q, &in_prim);
 	q = emit_hud(q, frame->width, frame->height);

@@ -23,9 +23,19 @@ int pack_io_max(void);
 int pack_io_has_stream(void);
 int pack_io_find_path(const char *path);
 int pack_io_instantiate(int pack);
+int pack_io_load_scene(int pack);
 int pack_io_unload(int pack);
 int pack_io_is_loaded(int pack);
 int pack_io_loaded_count(void);
+int pack_io_can_fit(int pack);
+unsigned pack_io_ee_used(void);
+unsigned pack_io_ee_free(void);
+unsigned pack_io_ee_limit(void);
+unsigned pack_io_gs_used(void);
+unsigned pack_io_gs_free(void);
+unsigned pack_io_gs_limit(void);
+unsigned pack_io_cost_ee(int pack);
+unsigned pack_io_cost_gs(int pack);
 void pack_io_current_node(const unsigned char **out, unsigned *sz);
 
 // user:// → host:SAVE.BIN then mc0:SAVE.BIN. Errors if neither is writable.

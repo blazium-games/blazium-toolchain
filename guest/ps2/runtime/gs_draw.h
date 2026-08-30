@@ -16,6 +16,9 @@ int gs_draw_init(const unsigned char *mesh, unsigned mesh_sz,
 		const unsigned char *gtex, unsigned gtex_sz,
 		const unsigned char *node, unsigned node_sz);
 
+int gs_draw_layer_add(const unsigned char *mesh, unsigned mesh_sz);
+void gs_draw_layer_remove(const unsigned char *mesh);
+
 int gs_draw_ready(void);
 
 // Digital / stick: yaw around look-at, dolly along view distance.

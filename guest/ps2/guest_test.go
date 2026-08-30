@@ -62,6 +62,12 @@ func TestGuestPack1AndDisp(t *testing.T) {
 	if !strings.Contains(src, "pack_io_find_path") || !strings.Contains(src, "s_paths") {
 		t.Fatal("pack_io.cpp must map STREAM res:// paths")
 	}
+	if strings.Contains(src, "s_res[4]") || strings.Contains(src, "s_res_n >= 4") {
+		t.Fatal("pack_io.cpp must not use a hard 4-resident cap")
+	}
+	if !strings.Contains(src, "PS2_LAYERS") || !strings.Contains(src, "s_cost_ee") || !strings.Contains(src, "pack_io_can_fit") {
+		t.Fatal("pack_io.cpp must RAM-gate 16 layers with STREAM ee/gs costs")
+	}
 	main, err := files.ReadFile("runtime/main.cpp")
 	if err != nil {
 		t.Fatal(err)
@@ -139,6 +145,9 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	if !strings.Contains(string(vm), "OP_CHANGE_SCENE") || !strings.Contains(string(vm), "OP_INSTANTIATE") {
 		t.Fatal("script_vm must interpret change_scene / instantiate")
 	}
+	if !strings.Contains(string(vm), "OP_LOAD_SCENE") || !strings.Contains(string(vm), "NAT_CAN_INSTANTIATE") {
+		t.Fatal("script_vm must interpret additive load_scene and can_instantiate natives")
+	}
 	if !strings.Contains(string(vm), "OP_JMP") || !strings.Contains(string(vm), "OP_CALL_NATIVE") {
 		t.Fatal("script_vm must interpret JMP / CALL_NATIVE")
 	}
@@ -201,6 +210,9 @@ func TestGuestCameraLookAndVu1Fallback(t *testing.T) {
 	}
 	if !strings.Contains(string(gs), "gs_draw_set_fade") || !strings.Contains(string(gs), "draw_rect_filled") {
 		t.Fatal("gs_draw.cpp must overlay set_fade as a blended GS rect")
+	}
+	if !strings.Contains(string(gs), "gs_draw_layer_add") || !strings.Contains(string(gs), "g_ly_n") {
+		t.Fatal("gs_draw.cpp must draw resident layers after pack 0")
 	}
 	cmake, err := files.ReadFile("runtime/CMakeLists.txt")
 	if err != nil {

@@ -66,7 +66,20 @@ enum {
 	OP_JMP = 46,
 	OP_JZ = 47,
 	OP_CALL_NATIVE = 48,
-	OP_LOADK_S = 49
+	OP_LOADK_S = 49,
+	OP_LOAD_SCENE = 50,
+	NAT_EE_USED = 51,
+	NAT_EE_FREE = 52,
+	NAT_EE_LIMIT = 53,
+	NAT_GS_USED = 54,
+	NAT_GS_FREE = 55,
+	NAT_GS_LIMIT = 56,
+	NAT_PACK_COST_EE = 57,
+	NAT_PACK_COST_GS = 58,
+	NAT_CAN_LOAD = 59,
+	NAT_CAN_INSTANTIATE = 60,
+	NAT_IS_LOADED = 61,
+	NAT_LOADED_COUNT = 62
 };
 
 static char s_str[8][128];
@@ -638,7 +651,7 @@ static void run_range(unsigned from, unsigned to, float delta)
 			}
 			continue;
 		}
-		if (op == OP_INSTANTIATE) {
+		if (op == OP_INSTANTIATE || op == OP_LOAD_SCENE) {
 			int pack = -1;
 			if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
 				pack = pack_io_find_path(s_str[s_last_str]);
@@ -716,6 +729,44 @@ static void run_range(unsigned from, unsigned to, float delta)
 				const float y = stack[--sp];
 				const float x = stack[--sp];
 				stack[sp++] = (float)sys_io_tile_at(x, y);
+			} else if (nid == NAT_EE_USED && sp < 8) {
+				stack[sp++] = (float)pack_io_ee_used();
+			} else if (nid == NAT_EE_FREE && sp < 8) {
+				stack[sp++] = (float)pack_io_ee_free();
+			} else if (nid == NAT_EE_LIMIT && sp < 8) {
+				stack[sp++] = (float)pack_io_ee_limit();
+			} else if (nid == NAT_GS_USED && sp < 8) {
+				stack[sp++] = (float)pack_io_gs_used();
+			} else if (nid == NAT_GS_FREE && sp < 8) {
+				stack[sp++] = (float)pack_io_gs_free();
+			} else if (nid == NAT_GS_LIMIT && sp < 8) {
+				stack[sp++] = (float)pack_io_gs_limit();
+			} else if (nid == NAT_PACK_COST_EE && sp < 8) {
+				int pack = -1;
+				if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+					pack = pack_io_find_path(s_str[s_last_str]);
+				}
+				stack[sp++] = (float)pack_io_cost_ee(pack);
+			} else if (nid == NAT_PACK_COST_GS && sp < 8) {
+				int pack = -1;
+				if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+					pack = pack_io_find_path(s_str[s_last_str]);
+				}
+				stack[sp++] = (float)pack_io_cost_gs(pack);
+			} else if ((nid == NAT_CAN_LOAD || nid == NAT_CAN_INSTANTIATE) && sp < 8) {
+				int pack = -1;
+				if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+					pack = pack_io_find_path(s_str[s_last_str]);
+				}
+				stack[sp++] = (pack >= 0 && pack_io_can_fit(pack)) ? 1.0f : 0.0f;
+			} else if (nid == NAT_IS_LOADED && sp < 8) {
+				int pack = -1;
+				if (s_last_str >= 0 && s_last_str < 8 && s_str[s_last_str][0]) {
+					pack = pack_io_find_path(s_str[s_last_str]);
+				}
+				stack[sp++] = pack_io_is_loaded(pack) ? 1.0f : 0.0f;
+			} else if (nid == NAT_LOADED_COUNT && sp < 8) {
+				stack[sp++] = (float)pack_io_loaded_count();
 			} else if (sp < 8) {
 				stack[sp++] = (float)sys_io_get_hp();
 			}

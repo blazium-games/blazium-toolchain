@@ -10,14 +10,36 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define PS2_CATALOG 99
+#define PS2_LAYERS 16
+#define PS2_EE_LIMIT (24u * 1024u * 1024u)
+#define PS2_GS_LIMIT (4u * 1024u * 1024u)
+
 static int s_toc_ok;
 static int s_current;
 static int s_has_pack1;
 static int s_has_stream;
 static int s_max_pack;
-static char s_paths[32][128];
-static int s_res[4];
-static int s_res_n;
+static char s_paths[100][128];
+static unsigned s_cost_ee[100];
+static unsigned s_cost_gs[100];
+
+typedef struct {
+	int pack;
+	unsigned char *mesh;
+	unsigned char *gtex;
+	unsigned char *node;
+	unsigned mesh_sz;
+	unsigned gtex_sz;
+	unsigned node_sz;
+	unsigned ee;
+	unsigned gs;
+} PackLayer;
+
+static PackLayer s_ly[PS2_LAYERS];
+static int s_ly_n;
+static unsigned s_p0_ee;
+static unsigned s_p0_gs;
 
 static const unsigned char *s_p0_mesh;
 static const unsigned char *s_p0_gtex;
@@ -40,6 +62,11 @@ static char s_user_err[96];
 static unsigned ru16(const unsigned char *p)
 {
 	return (unsigned)p[0] | ((unsigned)p[1] << 8);
+}
+
+static unsigned ru32(const unsigned char *p)
+{
+	return (unsigned)p[0] | ((unsigned)p[1] << 8) | ((unsigned)p[2] << 16) | ((unsigned)p[3] << 24);
 }
 
 static int parse_pack(const unsigned char *blob, unsigned sz)
@@ -83,7 +110,7 @@ static int parse_stream(const unsigned char *blob, unsigned sz)
 	for (unsigned i = 0; i < count && off < sz; i++) {
 		const unsigned id = ru16(blob + 8 + i * 2);
 		const unsigned len = blob[off++];
-		if (off + len > sz || id >= 32) {
+		if (off + len > sz || id > PS2_CATALOG) {
 			break;
 		}
 		unsigned n = len;
@@ -93,6 +120,12 @@ static int parse_stream(const unsigned char *blob, unsigned sz)
 		memcpy(s_paths[id], blob + off, n);
 		s_paths[id][n] = 0;
 		off += len;
+		if (off + 8 <= sz) {
+			s_cost_ee[id] = ru32(blob + off);
+			off += 4;
+			s_cost_gs[id] = ru32(blob + off);
+			off += 4;
+		}
 	}
 	return maxp > 0;
 }
@@ -200,15 +233,72 @@ static void free_px(void)
 	s_px_id = -1;
 }
 
-static int load_pack_n(int pack)
+static unsigned pack_cost_ee(int pack, unsigned mesh_sz, unsigned gtex_sz, unsigned node_sz)
 {
-	if (pack < 1) {
-		return 0;
+	if (pack > 0 && pack <= PS2_CATALOG && s_cost_ee[pack]) {
+		return s_cost_ee[pack];
 	}
-	if (s_px_id == pack && s_px_mesh && s_px_gtex && s_px_node) {
-		return 1;
+	return mesh_sz + gtex_sz + node_sz;
+}
+
+static unsigned pack_cost_gs(int pack, unsigned gtex_sz)
+{
+	if (pack > 0 && pack <= PS2_CATALOG && s_cost_gs[pack]) {
+		return s_cost_gs[pack];
 	}
-	free_px();
+	return gtex_sz;
+}
+
+static unsigned used_ee(void)
+{
+	unsigned n = s_p0_ee;
+	if (s_current > 0) {
+		n += pack_cost_ee(s_current, s_px_mesh_sz, s_px_gtex_sz, s_px_node_sz);
+	}
+	for (int i = 0; i < s_ly_n; i++) {
+		n += s_ly[i].ee;
+	}
+	return n;
+}
+
+static unsigned used_gs(void)
+{
+	unsigned n = s_p0_gs;
+	if (s_current > 0) {
+		n += pack_cost_gs(s_current, s_px_gtex_sz);
+	}
+	for (int i = 0; i < s_ly_n; i++) {
+		n += s_ly[i].gs;
+	}
+	return n;
+}
+
+static int layer_index(int pack)
+{
+	for (int i = 0; i < s_ly_n; i++) {
+		if (s_ly[i].pack == pack) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+static void free_layer(PackLayer *ly)
+{
+	if (!ly) {
+		return;
+	}
+	gs_draw_layer_remove(ly->mesh);
+	free(ly->mesh);
+	free(ly->gtex);
+	free(ly->node);
+	memset(ly, 0, sizeof(*ly));
+}
+
+static int read_pack_bins(int pack, unsigned char **mesh, unsigned *mesh_sz,
+		unsigned char **gtex, unsigned *gtex_sz,
+		unsigned char **node, unsigned *node_sz)
+{
 	char host_m[40];
 	char iso_m[48];
 	char iso_m2[48];
@@ -227,37 +317,43 @@ static int load_pack_n(int pack)
 	sprintf(host_n, "host:NODE%02d.bin", pack);
 	sprintf(iso_n, "cdrom0:\\NODE%02d.BIN;1", pack);
 	sprintf(iso_n2, "cdrom0:NODE%02d.BIN;1", pack);
-	unsigned char *mesh = 0;
-	unsigned char *gtex = 0;
-	unsigned char *node = 0;
-	unsigned mesh_sz = 0;
-	unsigned gtex_sz = 0;
-	unsigned node_sz = 0;
-	if (!read_named(host_m, iso_m, iso_m2, &mesh, &mesh_sz)) {
+	if (!read_named(host_m, iso_m, iso_m2, mesh, mesh_sz)) {
 		return 0;
 	}
-	if (!read_named(host_g, iso_g, iso_g2, &gtex, &gtex_sz)) {
-		free(mesh);
+	if (!read_named(host_g, iso_g, iso_g2, gtex, gtex_sz)) {
+		free(*mesh);
+		*mesh = 0;
 		return 0;
 	}
-	if (!read_named(host_n, iso_n, iso_n2, &node, &node_sz)) {
-		free(mesh);
-		free(gtex);
+	if (!read_named(host_n, iso_n, iso_n2, node, node_sz)) {
+		free(*mesh);
+		free(*gtex);
+		*mesh = 0;
+		*gtex = 0;
 		return 0;
 	}
-	s_px_mesh = mesh;
-	s_px_gtex = gtex;
-	s_px_node = node;
-	s_px_mesh_sz = mesh_sz;
-	s_px_gtex_sz = gtex_sz;
-	s_px_node_sz = node_sz;
-	s_px_id = pack;
 	if (pack == 1) {
 		s_has_pack1 = 1;
 	}
 	if (pack > s_max_pack) {
 		s_max_pack = pack;
 	}
+	return 1;
+}
+
+static int load_pack_n(int pack)
+{
+	if (pack < 1) {
+		return 0;
+	}
+	if (s_px_id == pack && s_px_mesh && s_px_gtex && s_px_node) {
+		return 1;
+	}
+	free_px();
+	if (!read_pack_bins(pack, &s_px_mesh, &s_px_mesh_sz, &s_px_gtex, &s_px_gtex_sz, &s_px_node, &s_px_node_sz)) {
+		return 0;
+	}
+	s_px_id = pack;
 	return 1;
 }
 
@@ -271,12 +367,15 @@ void pack_io_set_pack0(const unsigned char *mesh, unsigned mesh_sz,
 	s_p0_gtex_sz = gtex_sz;
 	s_p0_node = node;
 	s_p0_node_sz = node_sz;
+	s_p0_ee = mesh_sz + gtex_sz + node_sz;
+	s_p0_gs = gtex_sz;
 	s_current = 0;
 }
 
 int pack_io_swap(int pack)
 {
 	if (pack <= 0) {
+		free_px();
 		if (!s_p0_mesh) {
 			return 0;
 		}
@@ -287,6 +386,33 @@ int pack_io_swap(int pack)
 		s_current = 0;
 		sys_io_load_pack(0);
 		return 1;
+	}
+	if (pack == s_current && s_px_id == pack && s_px_mesh) {
+		return 1;
+	}
+	{
+		const int li = layer_index(pack);
+		if (li >= 0) {
+			free_px();
+			if (!gs_draw_init(s_ly[li].mesh, s_ly[li].mesh_sz, s_ly[li].gtex, s_ly[li].gtex_sz, s_ly[li].node, s_ly[li].node_sz)) {
+				return 0;
+			}
+			vu1_draw_init(s_ly[li].mesh, s_ly[li].mesh_sz);
+			s_current = pack;
+			sys_io_load_pack(pack);
+			return 1;
+		}
+	}
+	{
+		unsigned ee = used_ee();
+		unsigned gs = used_gs();
+		if (s_current > 0) {
+			ee -= pack_cost_ee(s_current, s_px_mesh_sz, s_px_gtex_sz, s_px_node_sz);
+			gs -= pack_cost_gs(s_current, s_px_gtex_sz);
+		}
+		if (ee + pack_io_cost_ee(pack) > PS2_EE_LIMIT || gs + pack_io_cost_gs(pack) > PS2_GS_LIMIT) {
+			return 0;
+		}
 	}
 	if (!load_pack_n(pack)) {
 		return 0;
@@ -305,9 +431,11 @@ int pack_io_init(void)
 	s_toc_ok = 0;
 	s_has_stream = 0;
 	s_max_pack = 0;
-	s_res_n = 0;
+	s_ly_n = 0;
 	memset(s_paths, 0, sizeof(s_paths));
-	memset(s_res, 0, sizeof(s_res));
+	memset(s_cost_ee, 0, sizeof(s_cost_ee));
+	memset(s_cost_gs, 0, sizeof(s_cost_gs));
+	memset(s_ly, 0, sizeof(s_ly));
 	unsigned char *buf = 0;
 	unsigned sz = 0;
 	if (read_named("host:STREAM.bin", "cdrom0:\\STREAM.BIN;1", "cdrom0:STREAM.BIN;1", &buf, &sz)) {
@@ -324,9 +452,6 @@ int pack_io_init(void)
 			}
 		}
 		free(buf);
-	}
-	if (s_toc_ok) {
-		load_pack_n(1);
 	}
 	write_save_stub();
 	return s_toc_ok;
@@ -362,7 +487,7 @@ int pack_io_find_path(const char *path)
 	if (!path || !path[0]) {
 		return -1;
 	}
-	for (int i = 0; i < 32; i++) {
+	for (int i = 0; i <= PS2_CATALOG; i++) {
 		if (s_paths[i][0] && strcmp(s_paths[i], path) == 0) {
 			return i;
 		}
@@ -370,60 +495,150 @@ int pack_io_find_path(const char *path)
 	return -1;
 }
 
+int pack_io_can_fit(int pack)
+{
+	if (pack < 1) {
+		return 0;
+	}
+	if (pack_io_is_loaded(pack)) {
+		return 1;
+	}
+	const unsigned ee = pack_io_cost_ee(pack);
+	const unsigned gs = pack_io_cost_gs(pack);
+	if (used_ee() + ee > PS2_EE_LIMIT || used_gs() + gs > PS2_GS_LIMIT) {
+		return 0;
+	}
+	return 1;
+}
+
 int pack_io_instantiate(int pack)
 {
 	if (pack < 1) {
 		return 0;
 	}
-	for (int i = 0; i < s_res_n; i++) {
-		if (s_res[i] == pack) {
-			return 1;
-		}
+	if (pack == s_current || layer_index(pack) >= 0) {
+		return 1;
 	}
-	if (s_res_n >= 4) {
+	if (s_ly_n >= PS2_LAYERS) {
 		return 0;
 	}
-	if (!load_pack_n(pack)) {
+	if (!pack_io_can_fit(pack)) {
 		return 0;
 	}
-	s_res[s_res_n++] = pack;
+	PackLayer ly;
+	memset(&ly, 0, sizeof(ly));
+	ly.pack = pack;
+	if (!read_pack_bins(pack, &ly.mesh, &ly.mesh_sz, &ly.gtex, &ly.gtex_sz, &ly.node, &ly.node_sz)) {
+		return 0;
+	}
+	ly.ee = pack_cost_ee(pack, ly.mesh_sz, ly.gtex_sz, ly.node_sz);
+	ly.gs = pack_cost_gs(pack, ly.gtex_sz);
+	if (used_ee() + ly.ee > PS2_EE_LIMIT || used_gs() + ly.gs > PS2_GS_LIMIT) {
+		free(ly.mesh);
+		free(ly.gtex);
+		free(ly.node);
+		return 0;
+	}
+	if (!gs_draw_layer_add(ly.mesh, ly.mesh_sz)) {
+		free(ly.mesh);
+		free(ly.gtex);
+		free(ly.node);
+		return 0;
+	}
+	s_ly[s_ly_n++] = ly;
 	return 1;
+}
+
+int pack_io_load_scene(int pack)
+{
+	return pack_io_instantiate(pack);
 }
 
 int pack_io_unload(int pack)
 {
 	int found = 0;
 	int w = 0;
-	for (int i = 0; i < s_res_n; i++) {
-		if (s_res[i] == pack) {
+	for (int i = 0; i < s_ly_n; i++) {
+		if (s_ly[i].pack == pack) {
+			free_layer(&s_ly[i]);
 			found = 1;
 			continue;
 		}
-		s_res[w++] = s_res[i];
+		s_ly[w++] = s_ly[i];
 	}
-	s_res_n = w;
-	if (found && s_current == pack) {
+	s_ly_n = w;
+	if (s_current == pack) {
 		pack_io_swap(0);
+		found = 1;
 	}
 	return found;
 }
 
 int pack_io_is_loaded(int pack)
 {
-	if (pack == s_current) {
+	if (pack == 0 || pack == s_current) {
 		return 1;
 	}
-	for (int i = 0; i < s_res_n; i++) {
-		if (s_res[i] == pack) {
-			return 1;
-		}
-	}
-	return 0;
+	return layer_index(pack) >= 0;
 }
 
 int pack_io_loaded_count(void)
 {
-	return 1 + s_res_n;
+	return 1 + s_ly_n + (s_current > 0 ? 1 : 0);
+}
+
+unsigned pack_io_ee_used(void)
+{
+	return used_ee();
+}
+
+unsigned pack_io_ee_limit(void)
+{
+	return PS2_EE_LIMIT;
+}
+
+unsigned pack_io_ee_free(void)
+{
+	const unsigned u = used_ee();
+	return u >= PS2_EE_LIMIT ? 0 : (PS2_EE_LIMIT - u);
+}
+
+unsigned pack_io_gs_used(void)
+{
+	return used_gs();
+}
+
+unsigned pack_io_gs_limit(void)
+{
+	return PS2_GS_LIMIT;
+}
+
+unsigned pack_io_gs_free(void)
+{
+	const unsigned u = used_gs();
+	return u >= PS2_GS_LIMIT ? 0 : (PS2_GS_LIMIT - u);
+}
+
+unsigned pack_io_cost_ee(int pack)
+{
+	if (pack <= 0) {
+		return s_p0_ee;
+	}
+	if (pack <= PS2_CATALOG && s_cost_ee[pack]) {
+		return s_cost_ee[pack];
+	}
+	return 0;
+}
+
+unsigned pack_io_cost_gs(int pack)
+{
+	if (pack <= 0) {
+		return s_p0_gs;
+	}
+	if (pack <= PS2_CATALOG && s_cost_gs[pack]) {
+		return s_cost_gs[pack];
+	}
+	return 0;
 }
 
 void pack_io_current_node(const unsigned char **out, unsigned *sz)
@@ -435,6 +650,19 @@ void pack_io_current_node(const unsigned char **out, unsigned *sz)
 		*out = s_p0_node;
 		*sz = s_p0_node_sz;
 		return;
+	}
+	if (s_px_id == s_current && s_px_node) {
+		*out = s_px_node;
+		*sz = s_px_node_sz;
+		return;
+	}
+	{
+		const int li = layer_index(s_current);
+		if (li >= 0) {
+			*out = s_ly[li].node;
+			*sz = s_ly[li].node_sz;
+			return;
+		}
 	}
 	*out = s_px_node;
 	*sz = s_px_node_sz;
