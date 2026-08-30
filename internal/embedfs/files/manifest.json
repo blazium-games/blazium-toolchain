@@ -16,11 +16,16 @@
       "status": "supported",
       "commands": ["setup", "env", "status", "iso", "meta", "ffmpeg", "ffprobe"]
     },
-    { "id": "ps2", "status": "planned", "commands": [] },
+    {
+      "id": "ps2",
+      "status": "supported",
+      "commands": ["setup", "env", "status", "build", "export-guest", "run", "iso"]
+    },
     { "id": "ps3", "status": "planned", "commands": [] },
     { "id": "ps4", "status": "planned", "commands": [] }
   ],
   "profiles": {
-    "ps1": ["compile", "dev", "iso"]
+    "ps1": ["compile", "dev", "iso"],
+    "ps2": ["compile", "dev", "iso"]
   }
 }

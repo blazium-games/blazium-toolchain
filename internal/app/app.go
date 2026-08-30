@@ -12,7 +12,8 @@ import (
 	"strings"
 	"time"
 
-	guest "github.com/blazium-games/blazium-toolchain/guest/ps1"
+	guestps1 "github.com/blazium-games/blazium-toolchain/guest/ps1"
+	guestps2 "github.com/blazium-games/blazium-toolchain/guest/ps2"
 	"github.com/blazium-games/blazium-toolchain/internal/cache"
 	"github.com/blazium-games/blazium-toolchain/internal/embedfs"
 	"github.com/blazium-games/blazium-toolchain/internal/iso"
@@ -20,6 +21,7 @@ import (
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/future"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/interdvd"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/ps1"
+	"github.com/blazium-games/blazium-toolchain/internal/platforms/ps2"
 )
 
 // Version and License come from the embedded manifest.json. CI may override
@@ -39,6 +41,7 @@ const (
 
 func init() {
 	platforms.Register(ps1.New())
+	platforms.Register(ps2.New())
 	platforms.Register(interdvd.New())
 	future.Register()
 }
@@ -233,31 +236,48 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 }
 
 func runExportGuest(p platforms.Platform, args []string, base platforms.CommonOptions, stdout io.Writer) error {
-	if p.Info().ID != ps1.ID {
-		return fmt.Errorf("%w: export-guest is a ps1 command", platforms.ErrUsage)
+	id := p.Info().ID
+	if id != ps1.ID && id != ps2.ID {
+		return fmt.Errorf("%w: export-guest is a ps1/ps2 command", platforms.ErrUsage)
 	}
 	fs := flag.NewFlagSet("export-guest", flag.ContinueOnError)
 	fs.SetOutput(base.Stderr)
-	out := fs.String("out", "", "directory to write bundled guest *.cpp (default: prefix/ps1/guest/runtime)")
+	out := fs.String("out", "", "directory to write bundled guest sources")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
 	dest := strings.TrimSpace(*out)
-	if dest == "" {
-		dest = ps1.GuestDir(base.Prefix)
+	var abi int
+	var names []string
+	var err error
+	switch id {
+	case ps2.ID:
+		if dest == "" {
+			dest = ps2.GuestDir(base.Prefix)
+		}
+		err = guestps2.Install(dest)
+		abi = guestps2.CookABI
+		names = guestps2.RuntimeNames
+	default:
+		if dest == "" {
+			dest = ps1.GuestDir(base.Prefix)
+		}
+		err = guestps1.Install(dest)
+		abi = guestps1.CookABI
+		names = guestps1.RuntimeNames
 	}
-	if err := guest.Install(dest); err != nil {
+	if err != nil {
 		return err
 	}
 	if base.JSON {
 		return json.NewEncoder(stdout).Encode(map[string]any{
 			"out":   dest,
-			"abi":   guest.CookABI,
-			"files": guest.RuntimeNames,
+			"abi":   abi,
+			"files": names,
 		})
 	}
 	fmt.Fprintf(stdout, "exported guest sources %s\n", dest)
-	for _, name := range guest.RuntimeNames {
+	for _, name := range names {
 		fmt.Fprintf(stdout, "  %s\n", name)
 	}
 	return nil
@@ -468,12 +488,12 @@ Usage:
 
 Platforms:
   ps1       supported (PlayStation 1)
+  ps2       supported (PlayStation 2)
   interdvd  supported (Interactive DVD ISO9660+UDF)
-  ps2       planned
   ps3       planned
   ps4       planned
 
-PS1 host tools: Windows and Linux only.
+PS1/PS2 host tools: Windows and Linux only.
 
 PS1 commands:
   setup [--profile compile|dev|iso] [--offline]
@@ -485,6 +505,15 @@ PS1 commands:
   run [--iso CUE] [--timeout 120s] [--ui] [GAME.EXE]
   iso --xml FILE [--out PATH]
   fmv
+
+PS2 commands:
+  setup [--profile compile|dev|iso] [--offline]
+  env
+  status
+  build --out FILE.elf [--src DIR | --sample cube] [--overlay DIR] [--export-src DIR]
+  export-guest [--out DIR]
+  run [--iso FILE.iso] [--timeout 120s] [--ui] [GAME.elf]
+  iso --dir TREE --out FILE.iso
 
 Interactive DVD commands:
   setup [--offline]

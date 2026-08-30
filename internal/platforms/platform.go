@@ -26,7 +26,7 @@ type Info struct {
 // EnvMap is toolchain paths the editor or a parent installer can consume.
 type EnvMap map[string]string
 
-// Platform is one console family. Only PS1 is implemented; others return ErrPlanned.
+// Platform is one console family. PS1 and PS2 are implemented; others return ErrPlanned.
 type Platform interface {
 	Info() Info
 	Setup(ctx context.Context, opts SetupOptions) error

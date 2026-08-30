@@ -29,8 +29,15 @@
 //	blazium-toolchain interdvd iso --dir DIR --out FILE [--meta FILE] [--write-meta FILE]
 //	blazium-toolchain interdvd meta init --out FILE
 //	blazium-toolchain interdvd meta validate --meta FILE
+//	blazium-toolchain [--prefix DIR] ps2 setup [--profile compile|dev|iso] [--offline]
+//	blazium-toolchain [--prefix DIR] ps2 env
+//	blazium-toolchain [--prefix DIR] ps2 status
+//	blazium-toolchain [--prefix DIR] ps2 build --out FILE.elf [--src DIR | --sample cube]
+//	blazium-toolchain [--prefix DIR] ps2 export-guest [--out DIR]
+//	blazium-toolchain [--prefix DIR] ps2 run [--iso FILE.iso] [--timeout 120s] [--ui] GAME.elf
+//	blazium-toolchain [--prefix DIR] ps2 iso --dir TREE --out FILE.iso
 //
-// ps1 and interdvd are implemented. PS1 host tools (setup/build/run)
+// ps1, ps2, and interdvd are implemented. PS1/PS2 host tools (setup/build/run)
 // are Windows and Linux only; other hosts exit with code 2.
-// ps2, ps3, and ps4 are reserved and exit with code 2.
+// ps3 and ps4 are reserved and exit with code 2.
 package main

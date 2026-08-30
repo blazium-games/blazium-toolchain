@@ -114,7 +114,16 @@ func TestListJSONHasPS1(t *testing.T) {
 			t.Fatalf("interdvd commands missing ffmpeg/ffprobe: %v", info.Commands)
 		}
 	}
-	for _, want := range []string{"ps2", "ps3", "ps4"} {
+	var ps2ok bool
+	for _, info := range list {
+		if info.ID == "ps2" && info.Status == platforms.StatusSupported {
+			ps2ok = true
+		}
+	}
+	if !ps2ok {
+		t.Fatalf("missing supported ps2 in %s", out.String())
+	}
+	for _, want := range []string{"ps3", "ps4"} {
 		var found bool
 		for _, info := range list {
 			if info.ID == want && info.Status == platforms.StatusPlanned {
@@ -127,14 +136,14 @@ func TestListJSONHasPS1(t *testing.T) {
 	}
 }
 
-func TestPS2IsPlanned(t *testing.T) {
+func TestPS2IsSupportedNotPlanned(t *testing.T) {
 	var errBuf bytes.Buffer
-	code := Run(context.Background(), []string{"ps2", "setup"}, &bytes.Buffer{}, &errBuf)
-	if code != ExitPlanned {
-		t.Fatalf("exit %d body %s", code, errBuf.String())
+	code := Run(context.Background(), []string{"ps2", "setup", "--offline"}, &bytes.Buffer{}, &errBuf)
+	if code == ExitPlanned {
+		t.Fatalf("ps2 should not be planned: %s", errBuf.String())
 	}
-	if !strings.Contains(errBuf.String(), "ps2") {
-		t.Fatalf("stderr %s", errBuf.String())
+	if code != ExitOK && code != ExitTool {
+		t.Fatalf("exit %d body %s", code, errBuf.String())
 	}
 }
 
