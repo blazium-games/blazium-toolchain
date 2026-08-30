@@ -39,7 +39,10 @@ enum {
 	OP_NAV_FOLLOW = 19,
 	OP_SAVE_SLOT = 20,
 	OP_PLAY_FMV = 21,
-	OP_SYS_TICK = 22
+	OP_SYS_TICK = 22,
+	OP_PLAY_MUSIC = 23,
+	OP_STOP_MUSIC = 24,
+	OP_MUSIC_VOL = 25
 };
 
 static const unsigned char *s_tape;
@@ -53,6 +56,7 @@ static int s_kit_checkpoint;
 static int s_kit_hazard;
 static int s_kit_pickup;
 static int s_kit_music;
+static int s_kit_music_on;
 static int s_kit_unload;
 static int s_kit_load;
 static int s_kit_talk;
@@ -245,7 +249,10 @@ static void kit_tick(void)
 		pad_io_set_rumble(1, 64);
 		sfx_io_play();
 	}
-	(void)s_kit_music;
+	if (s_kit_music && !s_kit_music_on) {
+		sfx_io_music_play();
+		s_kit_music_on = 1;
+	}
 	(void)s_kit_unload;
 	(void)s_kit_spawner;
 }
@@ -396,6 +403,21 @@ static void run_range(unsigned from, unsigned to, float delta)
 			sys_io_tick(delta);
 			continue;
 		}
+		if (op == OP_PLAY_MUSIC) {
+			sfx_io_music_play();
+			continue;
+		}
+		if (op == OP_STOP_MUSIC) {
+			sfx_io_music_stop();
+			continue;
+		}
+		if (op == OP_MUSIC_VOL) {
+			if (sp < 1) {
+				return;
+			}
+			sfx_io_music_set_vol(stack[--sp]);
+			continue;
+		}
 	}
 }
 
@@ -413,6 +435,7 @@ int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 	s_kit_hazard = 0;
 	s_kit_pickup = 0;
 	s_kit_music = 0;
+	s_kit_music_on = 0;
 	s_kit_unload = 0;
 	s_kit_load = 0;
 	s_kit_talk = 0;
@@ -458,6 +481,7 @@ void script_vm_process(float delta)
 		return;
 	}
 	run_range(s_process_off, s_tape_n, delta);
+	sfx_io_tick(delta);
 }
 
 int script_vm_ready(void)

@@ -75,6 +75,19 @@ static int s_ready;
 static int s_played;
 static int s_audible;
 static int s_sd_ok;
+static short *s_mus_pcm;
+static int s_mus_pcm_n;
+static int s_mus_rate;
+static unsigned char *s_mus_vag;
+static unsigned s_mus_vag_sz;
+static int s_mus_ready;
+static int s_mus_playing;
+static int s_mus_vol;
+static float s_mus_vol_f;
+static float s_fade_from;
+static float s_fade_to;
+static float s_fade_left;
+static float s_fade_total;
 #ifdef BLAZIUM_PS2_HAS_LIBSDR
 static SifRpcClientData_t s_sd_cd __attribute__((aligned(64)));
 static int s_sbuff[16] __attribute__((aligned(64)));
@@ -91,14 +104,8 @@ static unsigned ru32(const unsigned char *p)
 	return (unsigned)p[0] | ((unsigned)p[1] << 8) | ((unsigned)p[2] << 16) | ((unsigned)p[3] << 24);
 }
 
-static int load_blob(unsigned char **out, unsigned *sz)
+static int load_blob(const char **paths, unsigned char **out, unsigned *sz)
 {
-	static const char *paths[] = {
-		"host:SFX00.bin",
-		"cdrom0:\\SFX00.BIN;1",
-		"cdrom0:SFX00.BIN;1",
-		NULL
-	};
 	for (int i = 0; paths[i]; i++) {
 		FILE *f = fopen(paths[i], "rb");
 		if (!f) {
@@ -132,16 +139,17 @@ static int load_blob(unsigned char **out, unsigned *sz)
 	return 0;
 }
 
-static int decode_ima(const unsigned char *nibbles, unsigned nbytes)
+static int decode_ima(const unsigned char *nibbles, unsigned nbytes, short **out_pcm, int *out_n)
 {
 	int pred = 0;
 	int idx = 0;
 	const unsigned samples = nbytes * 2;
-	s_pcm = (short *)malloc(samples * sizeof(short));
-	if (!s_pcm) {
+	short *pcm = (short *)malloc(samples * sizeof(short));
+	if (!pcm) {
 		return 0;
 	}
-	s_pcm_n = (int)samples;
+	*out_pcm = pcm;
+	*out_n = (int)samples;
 	unsigned o = 0;
 	for (unsigned i = 0; i < nbytes; i++) {
 		for (int half = 0; half < 2; half++) {
@@ -175,13 +183,13 @@ static int decode_ima(const unsigned char *nibbles, unsigned nbytes)
 			if (idx > 88) {
 				idx = 88;
 			}
-			s_pcm[o++] = (short)pred;
+			pcm[o++] = (short)pred;
 		}
 	}
 	return 1;
 }
 
-static int encode_vag(const short *pcm, int n)
+static int encode_vag(const short *pcm, int n, unsigned char **out_vag, unsigned *out_sz, int loop)
 {
 	if (!pcm || n < 1) {
 		return 0;
@@ -190,15 +198,14 @@ static int encode_vag(const short *pcm, int n)
 		n = 11200;
 	}
 	const int blocks = (n + 27) / 28;
-	s_vag_sz = (unsigned)blocks * 16;
-	s_vag = (unsigned char *)malloc(s_vag_sz + 16);
-	if (!s_vag) {
-		s_vag_sz = 0;
+	unsigned sz = (unsigned)blocks * 16;
+	unsigned char *vag = (unsigned char *)malloc(sz + 16);
+	if (!vag) {
 		return 0;
 	}
-	memset(s_vag, 0, s_vag_sz);
+	memset(vag, 0, sz);
 	for (int b = 0; b < blocks; b++) {
-		unsigned char *blk = s_vag + b * 16;
+		unsigned char *blk = vag + b * 16;
 		int maxabs = 0;
 		short samp[28];
 		for (int i = 0; i < 28; i++) {
@@ -218,7 +225,20 @@ static int encode_vag(const short *pcm, int n)
 			shift = 0;
 		}
 		blk[0] = (unsigned char)(shift & 0x0f);
-		blk[1] = (b == blocks - 1) ? 1 : 0;
+		if (loop) {
+			/* ADPCM_LOOP_START=4 ADPCM_LOOP=2 ADPCM_LOOP_END=1 */
+			if (blocks == 1) {
+				blk[1] = 7;
+			} else if (b == 0) {
+				blk[1] = 6;
+			} else if (b == blocks - 1) {
+				blk[1] = 3;
+			} else {
+				blk[1] = 2;
+			}
+		} else {
+			blk[1] = (b == blocks - 1) ? 1 : 0;
+		}
 		for (int i = 0; i < 14; i++) {
 			int n0 = samp[i * 2] >> (12 - shift);
 			int n1 = samp[i * 2 + 1] >> (12 - shift);
@@ -237,6 +257,8 @@ static int encode_vag(const short *pcm, int n)
 			blk[2 + i] = (unsigned char)((n0 & 0x0f) | ((n1 & 0x0f) << 4));
 		}
 	}
+	*out_vag = vag;
+	*out_sz = sz;
 	return 1;
 }
 
@@ -313,8 +335,8 @@ static int init_sdr(void)
 	sdr_cmd(rSdInit, 0, 0, 0, 0, 0);
 	sdr_cmd(rSdSetParam, SD_PARAM_MVOLL, 0x3fff, 0, 0, 0);
 	sdr_cmd(rSdSetParam, SD_PARAM_MVOLR, 0x3fff, 0, 0, 0);
-	sdr_cmd(rSdSetSwitch, SD_SWITCH_VMIXL, 1, 0, 0, 0);
-	sdr_cmd(rSdSetSwitch, SD_SWITCH_VMIXR, 1, 0, 0, 0);
+	sdr_cmd(rSdSetSwitch, SD_SWITCH_VMIXL, 3, 0, 0, 0);
+	sdr_cmd(rSdSetSwitch, SD_SWITCH_VMIXR, 3, 0, 0, 0);
 	return 1;
 #else
 	return 0;
@@ -329,14 +351,27 @@ int sfx_io_init(void)
 	s_sd_ok = 0;
 	s_vag = 0;
 	s_vag_sz = 0;
+	s_mus_ready = 0;
+	s_mus_playing = 0;
+	s_mus_vol = 0x3fff;
+	s_mus_vol_f = 1.0f;
+	s_fade_left = 0.0f;
+	s_mus_vag = 0;
+	s_mus_vag_sz = 0;
 #ifdef BLAZIUM_PS2_HAS_LIBSDR
 	s_sd_bound = 0;
 #endif
 	load_sound_irx();
 	s_sd_ok = init_sdr();
+	static const char *sfx_paths[] = {
+		"host:SFX00.bin",
+		"cdrom0:\\SFX00.BIN;1",
+		"cdrom0:SFX00.BIN;1",
+		NULL
+	};
 	unsigned char *blob = 0;
 	unsigned sz = 0;
-	if (!load_blob(&blob, &sz)) {
+	if (!load_blob(sfx_paths, &blob, &sz)) {
 		return 0;
 	}
 	if (sz < 12 || blob[0] != 'S' || blob[1] != 'F' || blob[2] != 'X' || blob[3] != ' ') {
@@ -353,12 +388,35 @@ int sfx_io_init(void)
 		free(blob);
 		return 0;
 	}
-	const int ok = decode_ima(blob + 12, nbytes);
+	const int ok = decode_ima(blob + 12, nbytes, &s_pcm, &s_pcm_n);
 	free(blob);
 	if (ok) {
-		encode_vag(s_pcm, s_pcm_n);
+		encode_vag(s_pcm, s_pcm_n, &s_vag, &s_vag_sz, 0);
 	}
 	s_ready = ok;
+
+	static const char *mus_paths[] = {
+		"host:MUSIC00.bin",
+		"cdrom0:\\MUSIC00.BIN;1",
+		"cdrom0:MUSIC00.BIN;1",
+		NULL
+	};
+	unsigned char *mblob = 0;
+	unsigned msz = 0;
+	if (load_blob(mus_paths, &mblob, &msz) && msz >= 12 &&
+			mblob[0] == 'M' && mblob[1] == 'U' && mblob[2] == 'S' && mblob[3] == ' ' &&
+			ru16(mblob + 4) == 1) {
+		s_mus_rate = (int)ru16(mblob + 6);
+		const unsigned mnbytes = ru32(mblob + 8);
+		if (12 + mnbytes <= msz && decode_ima(mblob + 12, mnbytes, &s_mus_pcm, &s_mus_pcm_n)) {
+			if (encode_vag(s_mus_pcm, s_mus_pcm_n, &s_mus_vag, &s_mus_vag_sz, 1)) {
+				s_mus_ready = 1;
+			}
+		}
+	}
+	if (mblob) {
+		free(mblob);
+	}
 	return ok;
 }
 
@@ -423,4 +481,140 @@ int sfx_io_ready(void)
 int sfx_io_audible(void)
 {
 	return s_audible;
+}
+
+static int vol_spu(float v)
+{
+	if (v < 0.0f) {
+		v = 0.0f;
+	}
+	if (v > 1.0f) {
+		v = 1.0f;
+	}
+	return (int)(v * 16383.0f);
+}
+
+static void apply_music_vol(void)
+{
+#ifdef BLAZIUM_PS2_HAS_LIBSDR
+	if (!s_sd_ok) {
+		return;
+	}
+	const int voice = SD_VOICE(0, 1);
+	sdr_cmd(rSdSetParam, SD_VPARAM_VOLL | voice, s_mus_vol, 0, 0, 0);
+	sdr_cmd(rSdSetParam, SD_VPARAM_VOLR | voice, s_mus_vol, 0, 0, 0);
+#endif
+}
+
+int sfx_io_music_loaded(void)
+{
+	return s_mus_ready;
+}
+
+void sfx_io_music_play(void)
+{
+	if (!s_mus_ready || !s_mus_pcm) {
+		return;
+	}
+#ifdef BLAZIUM_PS2_HAS_LIBSDR
+#ifdef BLAZIUM_PS2_HAS_IOPHEAP
+	if (!s_sd_ok || !s_mus_vag || s_mus_vag_sz < 16) {
+		return;
+	}
+	void *iop = SifAllocIopHeap((int)s_mus_vag_sz);
+	if (!iop) {
+		return;
+	}
+#ifdef BLAZIUM_PS2_HAS_LOADFILE
+	FlushCache(0);
+#endif
+	if (sdr_trans_to_iop(s_mus_vag, iop, s_mus_vag_sz) < 0) {
+		SifFreeIopHeap(iop);
+		return;
+	}
+	const int pitch = s_mus_rate > 0 ? (s_mus_rate * 4096) / 44100 : 2048;
+	const int voice = SD_VOICE(0, 1);
+	sdr_cmd(rSdVoiceTrans, 0, SD_TRANS_WRITE | SD_TRANS_MODE_DMA, (int)(unsigned long)iop, 0x10000, (int)s_mus_vag_sz);
+	sdr_cmd(rSdVoiceTransStatus, 0, 1, 0, 0, 0);
+	sdr_cmd(rSdSetParam, SD_VPARAM_VOLL | voice, s_mus_vol, 0, 0, 0);
+	sdr_cmd(rSdSetParam, SD_VPARAM_VOLR | voice, s_mus_vol, 0, 0, 0);
+	sdr_cmd(rSdSetParam, SD_VPARAM_PITCH | voice, pitch, 0, 0, 0);
+	sdr_cmd(rSdSetParam, SD_VPARAM_ADSR1 | voice, SD_SET_ADSR1(0, 0x7f, 0xf, 0xf), 0, 0, 0);
+	sdr_cmd(rSdSetParam, SD_VPARAM_ADSR2 | voice, SD_SET_ADSR2(0, 0, 0, 0x10), 0, 0, 0);
+	sdr_cmd(rSdSetAddr, SD_VADDR_SSA | voice, 0x10000, 0, 0, 0);
+	sdr_cmd(rSdSetSwitch, SD_SWITCH_KON, 2, 0, 0, 0);
+	SifFreeIopHeap(iop);
+	s_mus_playing = 1;
+	return;
+#endif
+#endif
+	s_mus_playing = 1;
+	(void)s_mus_rate;
+	(void)s_mus_pcm_n;
+}
+
+void sfx_io_music_stop(void)
+{
+	s_mus_playing = 0;
+	s_fade_left = 0.0f;
+#ifdef BLAZIUM_PS2_HAS_LIBSDR
+	if (s_sd_ok) {
+		sdr_cmd(rSdSetSwitch, SD_SWITCH_KOFF, 2, 0, 0, 0);
+	}
+#endif
+}
+
+void sfx_io_music_set_vol(float vol)
+{
+	if (vol < 0.0f) {
+		vol = 0.0f;
+	}
+	if (vol > 1.0f) {
+		vol = 1.0f;
+	}
+	s_mus_vol_f = vol;
+	s_mus_vol = vol_spu(vol);
+	s_fade_left = 0.0f;
+	if (s_mus_playing) {
+		apply_music_vol();
+	}
+}
+
+void sfx_io_music_fade(float to_vol, float ms)
+{
+	if (to_vol < 0.0f) {
+		to_vol = 0.0f;
+	}
+	if (to_vol > 1.0f) {
+		to_vol = 1.0f;
+	}
+	if (ms <= 0.0f) {
+		sfx_io_music_set_vol(to_vol);
+		return;
+	}
+	s_fade_from = s_mus_vol_f;
+	s_fade_to = to_vol;
+	s_fade_left = ms;
+	s_fade_total = ms;
+}
+
+void sfx_io_tick(float delta)
+{
+	if (s_fade_left <= 0.0f || s_fade_total <= 0.0f) {
+		return;
+	}
+	s_fade_left -= delta * 1000.0f;
+	float t = 1.0f - (s_fade_left / s_fade_total);
+	if (t < 0.0f) {
+		t = 0.0f;
+	}
+	if (t > 1.0f || s_fade_left <= 0.0f) {
+		t = 1.0f;
+		s_fade_left = 0.0f;
+	}
+	s_mus_vol_f = s_fade_from + (s_fade_to - s_fade_from) * t;
+	s_mus_vol = vol_spu(s_mus_vol_f);
+	if (s_mus_playing) {
+		apply_music_vol();
+	}
 }

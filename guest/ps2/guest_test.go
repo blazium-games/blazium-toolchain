@@ -79,6 +79,12 @@ func TestGuestPack1AndDisp(t *testing.T) {
 	if !strings.Contains(string(sfx), "sdrdrv") && !strings.Contains(string(sfx), "SDRDRV") {
 		t.Fatal("sfx_io.cpp must load sdrdrv IRX for the libsdr RPC server")
 	}
+	if !strings.Contains(string(sfx), "MUSIC00") || !strings.Contains(string(sfx), "sfx_io_music_play") {
+		t.Fatal("sfx_io.cpp must load MUSIC00 and expose sfx_io_music_play")
+	}
+	if !strings.Contains(string(sfx), "ADPCM_LOOP") || !strings.Contains(string(sfx), "0x10000") {
+		t.Fatal("sfx_io.cpp must loop music VAG on SPU addr 0x10000")
+	}
 }
 
 func TestGuestInputAndUserIO(t *testing.T) {
@@ -108,6 +114,9 @@ func TestGuestInputAndUserIO(t *testing.T) {
 	}
 	if !strings.Contains(string(vm), "OP_SAY") || !strings.Contains(string(vm), "OP_PLAY_FMV") {
 		t.Fatal("script_vm must interpret say and play_fmv")
+	}
+	if !strings.Contains(string(vm), "OP_PLAY_MUSIC") || !strings.Contains(string(vm), "OP_MUSIC_VOL") {
+		t.Fatal("script_vm must interpret load_music / set_music_volume")
 	}
 }
 
