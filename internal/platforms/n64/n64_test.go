@@ -471,6 +471,115 @@ func TestRunSkipsMissingSingleEmu(t *testing.T) {
 	}
 }
 
+func TestPickPj64GfxPrefersParallelRejectsJabo(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Jabo_Direct3D8.dll"), []byte("j"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "angrylion-rdp-plus.dll"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "parallel-rdp.dll"), []byte("p"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := pickPj64Gfx(dir)
+	if got != "parallel-rdp.dll" {
+		t.Fatalf("prefer Parallel-RDP, got %q", got)
+	}
+}
+
+func TestPickPj64GfxAcceptsAngrylion(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Jabo_Direct3D8.dll"), []byte("j"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "angrylion-plus.dll"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := pickPj64Gfx(dir)
+	if got != "angrylion-plus.dll" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestPickPj64GfxRejectsJaboOnly(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Jabo_Direct3D8.dll"), []byte("j"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if pickPj64Gfx(dir) != "" {
+		t.Fatal("Jabo-only GFX must not be picked")
+	}
+}
+
+func TestWritePj64TestProfilePinsLimiterAndNotJabo(t *testing.T) {
+	cfg := filepath.Join(t.TempDir(), "Config", "Project64.cfg")
+	if err := writePj64TestProfile(cfg, `GFX\parallel-rdp.dll`); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(raw)
+	for _, want := range []string{
+		"[Plugin]", "Graphics Dll=GFX\\parallel-rdp.dll", "Graphics Dll Default=GFX\\parallel-rdp.dll",
+		"[Defaults]", "Unknown RDRAM Size=8388608", "Fixed Audio=1", "Audio-Sync Audio=1", "ViRefresh=1500",
+	} {
+		if !strings.Contains(src, want) {
+			t.Fatalf("profile missing %q\n%s", want, src)
+		}
+	}
+	if strings.Contains(strings.ToLower(src), "jabo") || strings.Contains(strings.ToLower(src), "direct3d8") {
+		t.Fatalf("profile must not pin Jabo:\n%s", src)
+	}
+}
+
+func TestWritePj64TestProfileRefusesJabo(t *testing.T) {
+	cfg := filepath.Join(t.TempDir(), "Project64.cfg")
+	if err := writePj64TestProfile(cfg, `GFX\Jabo_Direct3D8.dll`); err == nil {
+		t.Fatal("must refuse Jabo")
+	}
+}
+
+func TestRunSkipsPj64WithoutVideoPlugin(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows Project64 skip")
+	}
+	dir := t.TempDir()
+	rom := filepath.Join(dir, "g.z64")
+	raw := make([]byte, 64)
+	copy(raw, z64Magic)
+	if err := os.WriteFile(rom, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pj := filepath.Join(dir, "Project64.exe")
+	if err := os.WriteFile(pj, []byte("mz"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "GFX"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "GFX", "Jabo_Direct3D8.dll"), []byte("j"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ARES_EXE", "")
+	t.Setenv("PROJECT64_EXE", pj)
+	var buf bytes.Buffer
+	err := New().Run(context.Background(), platforms.RunOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir, Stdout: &buf},
+		Exe:           rom,
+		Emu:           "project64",
+		Timeout:       time.Second,
+	})
+	if err != nil {
+		t.Fatalf("missing plugin must skip, not fail compile: %v\n%s", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "skip project64") || !strings.Contains(buf.String(), "Parallel-RDP") {
+		t.Fatalf("expected plugin skip print, got %q", buf.String())
+	}
+}
+
 func TestCICDRequiresN64CompileHello(t *testing.T) {
 	dir, err := os.Getwd()
 	if err != nil {

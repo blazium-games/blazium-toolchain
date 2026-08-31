@@ -308,11 +308,24 @@ func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
 			if opts.Stdout != nil {
 				fmt.Fprintln(opts.Stdout, "skip project64: PROJECT64_EXE missing")
 			}
+		} else if _, err := ensurePj64TestProfile(pj); err != nil {
+			skipped = append(skipped, "project64 (video plugin missing)")
+			if opts.Stdout != nil {
+				fmt.Fprintln(opts.Stdout, pj64SkipPlugin)
+			}
 		} else {
 			if err := t.runOneEmu(ctx, "project64", pj, abs, timeout, opts); err != nil {
-				return err
+				if pj64PluginInitFail(err) {
+					skipped = append(skipped, "project64 (video plugin failed to init)")
+					if opts.Stdout != nil {
+						fmt.Fprintln(opts.Stdout, pj64SkipInit)
+					}
+				} else {
+					return err
+				}
+			} else {
+				ran++
 			}
-			ran++
 		}
 	}
 
