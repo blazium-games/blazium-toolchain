@@ -1,5 +1,6 @@
 // MIT. rom:// packs + user:// EEPROM wrap. 24KiB poke/peek scratch.
-// Extra packs stream from DragonFS. Do not write to rom://. EEPROM persist is P5 test 4.
+// Extra packs stream from DragonFS. Do not write to rom://.
+// One EEPROM 4 KiB slot (/user.bin) is seeded on boot so user:// survives restart.
 
 #include "pack_io.h"
 
@@ -51,6 +52,8 @@ static void free_blob(void)
 	s_cost_rdram = 0;
 }
 
+static void seed_user_slot(void);
+
 void pack_io_init(void)
 {
 	s_pack = 0;
@@ -61,6 +64,7 @@ void pack_io_init(void)
 	memset(s_poke, 0, sizeof(s_poke));
 	(void)N64_LAYERS;
 	(void)pack_io_swap(1);
+	seed_user_slot();
 }
 
 int pack_io_can_fit(int extra_bytes)
@@ -166,6 +170,23 @@ static const eepfs_entry_t s_eep[] = {
 	{ .path = "/user.bin", .size = 256, .checksum = false, .backup = false },
 };
 
+static int forbidden_save_magic(const unsigned char *p, unsigned n)
+{
+	if (n >= 2 && p[0] == 0x4D && p[1] == 0x5A) {
+		return 1;
+	}
+	if (n >= 4 && p[0] == 'T' && p[1] == 'I' && p[2] == 'M' && p[3] == ' ') {
+		return 1;
+	}
+	if (n >= 4 && p[0] == 'G' && p[1] == 'T' && p[2] == 'E' && p[3] == 'X') {
+		return 1;
+	}
+	if (n >= 4 && p[0] == 'V' && p[1] == 'A' && p[2] == 'G' && p[3] == 'p') {
+		return 1;
+	}
+	return 0;
+}
+
 static int ensure_eep(void)
 {
 	if (s_eep_ok) {
@@ -175,14 +196,37 @@ static int ensure_eep(void)
 		snprintf(s_user_err, sizeof(s_user_err), "user:// eeprom");
 		return -1;
 	}
+	if (!eepfs_verify_signature()) {
+		eepfs_wipe();
+	}
 	s_eep_ok = 1;
 	return 0;
+}
+
+static void seed_user_slot(void)
+{
+	unsigned char buf[256];
+	memset(buf, 0, sizeof(buf));
+	if (pack_io_user_load(buf, sizeof(buf)) == 0 &&
+			memcmp(buf, "SAVE", 4) == 0 &&
+			ru16le(buf + 4) == (uint16_t)BLAZIUM_N64_COOK_ABI) {
+		return;
+	}
+	memset(buf, 0, sizeof(buf));
+	memcpy(buf, "SAVE", 4);
+	buf[4] = (unsigned char)(BLAZIUM_N64_COOK_ABI & 0xff);
+	buf[5] = (unsigned char)((BLAZIUM_N64_COOK_ABI >> 8) & 0xff);
+	(void)pack_io_user_save(buf, sizeof(buf));
 }
 
 int pack_io_user_save(const void *data, unsigned sz)
 {
 	if (!data || sz == 0 || sz > 256) {
 		snprintf(s_user_err, sizeof(s_user_err), "user:// size");
+		return -1;
+	}
+	if (forbidden_save_magic((const unsigned char *)data, sz)) {
+		snprintf(s_user_err, sizeof(s_user_err), "user:// magic");
 		return -1;
 	}
 	if (ensure_eep() != 0) {
@@ -192,6 +236,7 @@ int pack_io_user_save(const void *data, unsigned sz)
 		snprintf(s_user_err, sizeof(s_user_err), "user:// eeprom");
 		return -1;
 	}
+	eeprom_wait_idle();
 	s_user_err[0] = 0;
 	return 0;
 }

@@ -380,8 +380,25 @@ func TestAresRunArgsUseSettingsTree(t *testing.T) {
 	if !strings.Contains(joined, "Nintendo64/ExpansionPak=true") {
 		t.Fatalf("expansion key: %v", args)
 	}
+	if !strings.Contains(joined, "General/AutoSaveMemory=true") {
+		t.Fatalf("autosave key: %v", args)
+	}
 	if strings.Contains(joined, "Homebrew Mode=") || strings.Contains(joined, "Expansion Pak=") {
 		t.Fatalf("must use settings tree keys, not UI labels: %v", args)
+	}
+}
+
+func TestAresEepromPathIsSibling(t *testing.T) {
+	got := aresEepromPath(`D:\export\Game.z64`)
+	if !strings.HasSuffix(got, "Game.eeprom") {
+		t.Fatalf("%s", got)
+	}
+	if strings.Contains(got, ".z64") {
+		t.Fatalf("must replace extension: %s", got)
+	}
+	pj := pj64SaveDir(`C:\emu\Project64.exe`)
+	if !strings.HasSuffix(filepath.ToSlash(pj), "Save") {
+		t.Fatalf("%s", pj)
 	}
 }
 

@@ -243,6 +243,16 @@ func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
 		env["PROJECT64_EXE"] = env2["PROJECT64_EXE"]
 	}
 
+	if opts.Stdout != nil {
+		fmt.Fprintf(opts.Stdout, "ares save folder: %s (sibling .eeprom)\n", filepath.Dir(abs))
+		fmt.Fprintf(opts.Stdout, "ares eeprom: %s\n", aresEepromPath(abs))
+		if pj := env["PROJECT64_EXE"]; fileExists(pj) {
+			fmt.Fprintf(opts.Stdout, "project64 save folder: %s (.eep)\n", pj64SaveDir(pj))
+		} else {
+			fmt.Fprintln(opts.Stdout, "project64 save folder: <Project64>/Save/ (.eep)")
+		}
+	}
+
 	emu := strings.ToLower(strings.TrimSpace(opts.Emu))
 	if emu == "" {
 		emu = "both"
@@ -276,6 +286,14 @@ func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
 				return err
 			}
 			ran++
+			if opts.Stdout != nil {
+				eep := aresEepromPath(abs)
+				if fileExists(eep) {
+					fmt.Fprintf(opts.Stdout, "ares persist file written: %s\n", eep)
+				} else {
+					fmt.Fprintln(opts.Stdout, "skip ares persist file: sibling .eeprom not flushed")
+				}
+			}
 		}
 	}
 	if wantPJ {
@@ -319,6 +337,20 @@ func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
 		return fmt.Errorf("%w: Ares could not boot (set ARES_EXE)", platforms.ErrMissingTool)
 	}
 	return nil
+}
+
+// aresEepromPath is the v148 default when Paths/Saves is unset: sibling of the ROM.
+func aresEepromPath(rom string) string {
+	ext := filepath.Ext(rom)
+	if ext == "" {
+		return rom + ".eeprom"
+	}
+	return rom[:len(rom)-len(ext)] + ".eeprom"
+}
+
+// pj64SaveDir is Project64's default Save folder next to the exe.
+func pj64SaveDir(exe string) string {
+	return filepath.Join(filepath.Dir(exe), "Save")
 }
 
 func (t *Tool) runOneEmu(ctx context.Context, name, exe, rom string, timeout time.Duration, opts platforms.RunOptions) error {

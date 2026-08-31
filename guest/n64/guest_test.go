@@ -114,6 +114,12 @@ func TestGuestIOParity(t *testing.T) {
 	if !strings.Contains(ps, "rom://") || !strings.Contains(ps, "user://") {
 		t.Fatal("pack_io.cpp must map rom:// and user://")
 	}
+	if !strings.Contains(ps, "eepfs_wipe") || !strings.Contains(ps, "eepfs_write") || !strings.Contains(ps, "eepfs_read") {
+		t.Fatal("pack_io.cpp must format EEPROM and read/write user://")
+	}
+	if !strings.Contains(ps, "SAVE") || !strings.Contains(ps, "eeprom_wait_idle") {
+		t.Fatal("pack_io.cpp must seed a SAVE slot and wait for EEPROM idle")
+	}
 	if !strings.Contains(ps, "pack_io_poke") || !strings.Contains(ps, "MESH%02d") || !strings.Contains(ps, "STREAM") {
 		t.Fatal("pack_io.cpp must poke/peek and load MESH%02d / STREAM")
 	}

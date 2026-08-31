@@ -23,6 +23,7 @@ func aresRunArgs(rom string) []string {
 		"--no-file-prompt",
 		"--kiosk",
 		"--setting", "General/HomebrewMode=true",
+		"--setting", "General/AutoSaveMemory=true",
 		"--setting", "Nintendo64/ExpansionPak=true",
 		rom,
 	}
