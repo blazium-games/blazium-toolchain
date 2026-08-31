@@ -5,6 +5,7 @@ import (
 	"debug/pe"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -218,17 +219,54 @@ func copyFileToDirs(src string, dirs []string) error {
 	return nil
 }
 
+// msys2MirrorFallbacks tries official repo.msys2.org when a public mirror 403s.
+func msys2MirrorFallbacks(raw string) []string {
+	out := []string{raw}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return out
+	}
+	seen := map[string]bool{raw: true}
+	for _, host := range []string{"repo.msys2.org", "mirror.msys2.org"} {
+		alt := *u
+		alt.Host = host
+		s := alt.String()
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
+}
+
 func fetchMsys32Runtime(gccBinDir string, want uint16, log io.Writer) error {
 	if want != 0x14c {
 		return nil
 	}
 	cacheDir := filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(gccBinDir))), "downloads", "mingw32-runtime")
-	for _, url := range msys32RuntimeZst() {
-		if log != nil {
-			report.Line(log, report.Fetching, filepath.Base(url))
+	for _, raw := range msys32RuntimeZst() {
+		var last error
+		ok := false
+		for _, cand := range msys2MirrorFallbacks(raw) {
+			if log != nil {
+				report.Line(log, report.Fetching, filepath.Base(cand)+" from "+cand)
+			}
+			if err := (fetch.HTTP{}).FetchZip(context.Background(), cand, "", cacheDir, log); err != nil {
+				last = err
+				if log != nil {
+					report.Line(log, report.Skip, cand+": "+err.Error())
+				}
+				continue
+			}
+			ok = true
+			break
 		}
-		if err := (fetch.HTTP{}).FetchZip(context.Background(), url, "", cacheDir, log); err != nil {
-			return err
+		if !ok {
+			if last != nil {
+				return last
+			}
+			return fmt.Errorf("download %s", raw)
 		}
 	}
 	return nil

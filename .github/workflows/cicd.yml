@@ -121,7 +121,7 @@ jobs:
           }
           if ($text -le 0) { throw "elf-info missing text_bytes= ($info)" }
           if ($text -gt 524288) { throw "hello.elf .text $text exceeds 512 KiB" }
-          if ($bytes.Length -gt 2097152) { throw "hello.elf file $($bytes.Length) exceeds 2 MiB" }
+          if ($bytes.Length -gt 3145728) { throw "hello.elf file $($bytes.Length) exceeds 3 MiB" }
           Write-Host "hello.elf ok text_bytes=$text file_bytes=$($bytes.Length)"
 
   n64-compile:
@@ -169,6 +169,75 @@ jobs:
             throw "hello.z64 magic is not 80 37 12 40"
           }
           Write-Host "hello.z64 ok file_bytes=$($bytes.Length)"
+
+  ps1-compile:
+    name: PS1 compile hello (${{ matrix.os }})
+    needs: [test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bin: blazium-toolchain
+          - os: windows-latest
+            bin: blazium-toolchain.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.8"
+      - name: Install make cmake ninja (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+      - name: Install make (Windows)
+        if: runner.os == 'Windows'
+        run: choco install make --yes --no-progress
+      - name: Build CLI
+        run: go build -o ${{ matrix.bin }} ./cmd/blazium-toolchain
+      - name: ps1 setup compile
+        run: ./${{ matrix.bin }} ps1 setup --profile compile
+      - name: ps1 build hello
+        run: ./${{ matrix.bin }} ps1 build --out hello.exe
+      - name: Verify PS-X EXE
+        shell: pwsh
+        run: |
+          $bin = "${{ matrix.bin }}"
+          if (-not (Test-Path -LiteralPath $bin)) { throw "missing $bin" }
+          if (-not (Test-Path -LiteralPath "hello.exe")) { throw "hello.exe was not written" }
+          $bytes = [System.IO.File]::ReadAllBytes("hello.exe")
+          if ($bytes.Length -lt 2048) { throw "hello.exe too small: $($bytes.Length)" }
+          if ($bytes.Length -gt 2097152) { throw "hello.exe exceeds 2 MiB PS1 RAM budget: $($bytes.Length)" }
+          $magic = [Text.Encoding]::ASCII.GetString($bytes, 0, [Math]::Min(8, $bytes.Length))
+          if ($magic -ne "PS-X EXE") { throw "hello.exe magic is '$magic' (want PS-X EXE)" }
+          if ($bytes.Length -ge 2 -and $bytes[0] -eq 0x4D -and $bytes[1] -eq 0x5A) {
+            throw "hello.exe starts with MZ (host PE)"
+          }
+          Write-Host "hello.exe ok file_bytes=$($bytes.Length)"
+
+  interdvd-setup:
+    name: Interactive DVD setup (${{ matrix.os }})
+    needs: [test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bin: blazium-toolchain
+          - os: windows-latest
+            bin: blazium-toolchain.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.8"
+      - name: Build CLI
+        run: go build -o ${{ matrix.bin }} ./cmd/blazium-toolchain
+      - name: interdvd setup
+        run: ./${{ matrix.bin }} interdvd setup
+      - name: interdvd status
+        run: ./${{ matrix.bin }} interdvd status
 
   build:
     if: ${{ github.event_name != 'pull_request' }}

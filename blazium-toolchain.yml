@@ -33,7 +33,7 @@ ps2:
   default_elf: GAME.ELF
   bios_prefer: "39001"
   elf_text_max: 524288          # 512 KiB
-  elf_file_max: 2097152         # 2 MiB
+  elf_file_max: 3145728         # 3 MiB (bundled guest is just over 2 MiB)
   # pcsx2_exe: ""
   # bios_dir: ""
   sibling_roots:
@@ -49,14 +49,14 @@ ps2:
     linux: https://github.com/ps2dev/ps2dev/releases/download/latest/ps2dev-ubuntu-latest.tar.gz
     iconv_zip: https://downloads.sourceforge.net/project/gnuwin32/libiconv/1.9.2-1/libiconv-1.9.2-1-bin.zip
     msys32:
-      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-gmp-6.3.0-2-any.pkg.tar.zst
-      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-isl-0.28-1-any.pkg.tar.zst
-      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-mpc-1.4.1-1-any.pkg.tar.zst
-      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-mpfr-4.2.2-3-any.pkg.tar.zst
-      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-zstd-1.5.7-2-any.pkg.tar.zst
-      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-gcc-libs-15.1.0-1-any.pkg.tar.zst
-      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-libiconv-1.19-1-any.pkg.tar.zst
-      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-libwinpthread-14.0.0.r302.gd7f3c5201-1-any.pkg.tar.zst
+      - https://repo.msys2.org/mingw/mingw32/mingw-w64-i686-gmp-6.3.0-2-any.pkg.tar.zst
+      - https://repo.msys2.org/mingw/mingw32/mingw-w64-i686-isl-0.28-1-any.pkg.tar.zst
+      - https://repo.msys2.org/mingw/mingw32/mingw-w64-i686-mpc-1.4.1-1-any.pkg.tar.zst
+      - https://repo.msys2.org/mingw/mingw32/mingw-w64-i686-mpfr-4.2.2-3-any.pkg.tar.zst
+      - https://repo.msys2.org/mingw/mingw32/mingw-w64-i686-zstd-1.5.7-2-any.pkg.tar.zst
+      - https://repo.msys2.org/mingw/mingw32/mingw-w64-i686-gcc-libs-15.1.0-1-any.pkg.tar.zst
+      - https://repo.msys2.org/mingw/mingw32/mingw-w64-i686-libiconv-1.19-1-any.pkg.tar.zst
+      - https://repo.msys2.org/mingw/mingw32/mingw-w64-i686-libwinpthread-14.0.0.r302.gd7f3c5201-1-any.pkg.tar.zst
 
 n64:
   profile: compile              # compile | dev | rom
