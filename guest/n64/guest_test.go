@@ -112,6 +112,12 @@ func TestGuestIOParity(t *testing.T) {
 	if strings.Contains(psrc, "TIM") || strings.Contains(psrc, "GTEX") {
 		t.Fatal("pad_io.cpp must not use TIM/GTEX")
 	}
+	if !strings.Contains(psrc, "BLAZIUM_N64_RUMBLE") || !strings.Contains(psrc, "joypad_set_rumble_active") {
+		t.Fatal("pad_io.cpp must gate rumble on BLAZIUM_N64_RUMBLE")
+	}
+	if !strings.Contains(psrc, "(void)on") {
+		t.Fatal("pad_io.cpp must keep rumble stub when flag is off")
+	}
 	pack, err := files.ReadFile("runtime/pack_io.cpp")
 	if err != nil {
 		t.Fatal(err)

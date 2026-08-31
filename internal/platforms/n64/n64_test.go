@@ -215,6 +215,9 @@ func TestStageCookEmbedNtex(t *testing.T) {
 	if strings.Contains(string(flags), "BLAZIUM_N64_DISPLAY_640") {
 		t.Fatal("default embed must not set 640")
 	}
+	if strings.Contains(string(flags), "BLAZIUM_N64_RUMBLE") {
+		t.Fatal("default embed must not set rumble")
+	}
 }
 
 func TestStageCookEmbedDisplay640(t *testing.T) {
@@ -238,6 +241,30 @@ func TestStageCookEmbedDisplay640(t *testing.T) {
 	}
 	if !strings.Contains(string(mk), "BLAZIUM_N64_DISPLAY_640") {
 		t.Fatalf("cook.mk missing 640: %s", mk)
+	}
+}
+
+func TestStageCookEmbedRumble(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "src")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := stageCookEmbed(dest, platforms.BuildOptions{Rumble: true}); err != nil {
+		t.Fatal(err)
+	}
+	flags, err := os.ReadFile(filepath.Join(dest, "cook_flags.h"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(flags), "BLAZIUM_N64_RUMBLE") {
+		t.Fatalf("missing rumble flag: %s", flags)
+	}
+	mk, err := os.ReadFile(filepath.Join(dest, "cook.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(mk), "BLAZIUM_N64_RUMBLE") {
+		t.Fatalf("cook.mk missing rumble: %s", mk)
 	}
 }
 
@@ -673,6 +700,9 @@ func TestCICDRequiresN64CompileHello(t *testing.T) {
 	}
 	if strings.Contains(compileBlock, "--display 640") || strings.Contains(low, "hires") {
 		t.Fatal("n64-compile must not require 640x480")
+	}
+	if strings.Contains(compileBlock, "--rumble") || strings.Contains(low, "rumble") {
+		t.Fatal("n64-compile must not require rumble")
 	}
 }
 

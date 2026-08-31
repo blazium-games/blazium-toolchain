@@ -251,9 +251,19 @@ void pad_io_set_deadzone(float dz)
 
 void pad_io_set_rumble(int on)
 {
+#ifdef BLAZIUM_N64_RUMBLE
+	if (!joypad_get_rumble_supported(JOYPAD_PORT_1)) {
+		return;
+	}
+	joypad_set_rumble_active(JOYPAD_PORT_1, on != 0);
+#else
 	(void)on;
+#endif
 }
 
 void pad_io_stop_rumble(void)
 {
+#ifdef BLAZIUM_N64_RUMBLE
+	pad_io_set_rumble(0);
+#endif
 }

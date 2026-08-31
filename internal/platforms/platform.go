@@ -86,6 +86,7 @@ type BuildOptions struct {
 	Path   string // optional cooked PATH00.bin
 	Way     string // optional cooked WAY00.bin
 	Display string // N64 framebuffer: 320 (default) or 640
+	Rumble  bool   // N64 Rumble Pak (P8 optional)
 }
 
 // RunOptions boot the emulator.
