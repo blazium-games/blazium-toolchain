@@ -254,10 +254,11 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	nav := fs.String("nav", "", "optional cooked NAV00.bin to embed in the guest")
 	pathTbl := fs.String("path", "", "optional cooked PATH00.bin to embed in the guest")
 	way := fs.String("way", "", "optional cooked WAY00.bin to embed in the guest")
+	display := fs.String("display", "", "N64 framebuffer: 320 (default) or 640")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Overlay: *overlay, ExportSrc: *exportSrc, Tim: *tim, Mesh: *mesh, Gtex: *gtex, Ntex: *ntex, Inp: *inp, Sfx: *sfx, Music: *music, Pack: *pack, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Overlay: *overlay, ExportSrc: *exportSrc, Tim: *tim, Mesh: *mesh, Gtex: *gtex, Ntex: *ntex, Inp: *inp, Sfx: *sfx, Music: *music, Pack: *pack, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way, Display: *display})
 }
 
 func runExportGuest(p platforms.Platform, args []string, base platforms.CommonOptions, stdout io.Writer) error {
@@ -637,7 +638,7 @@ N64 commands:
   env
   status
   build --out FILE.z64 [--src DIR | --sample helloworld|rdpqdemo|t3dquad] [--overlay DIR] [--export-src DIR]
-    [--ntex|--mesh|--node|--inp|--sfx|--music|--pack|--script|--gdbc|--luau]
+    [--display 320|640] [--ntex|--mesh|--node|--inp|--sfx|--music|--pack|--script|--gdbc|--luau]
   export-guest [--out DIR]
   run [--emu ares|project64|both] [--timeout 120s] GAME.z64
   rom --dir TREE --out FILE.z64 [--elf FILE.elf]

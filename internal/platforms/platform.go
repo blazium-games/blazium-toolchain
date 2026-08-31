@@ -84,7 +84,8 @@ type BuildOptions struct {
 	Hit    string // optional cooked HIT00.bin
 	Nav    string // optional cooked NAV00.bin
 	Path   string // optional cooked PATH00.bin
-	Way    string // optional cooked WAY00.bin
+	Way     string // optional cooked WAY00.bin
+	Display string // N64 framebuffer: 320 (default) or 640
 }
 
 // RunOptions boot the emulator.

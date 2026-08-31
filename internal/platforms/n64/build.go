@@ -37,6 +37,9 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	if !compileReady(env) {
 		return fmt.Errorf("%w: run blazium-toolchain n64 setup --profile compile first", platforms.ErrMissingTool)
 	}
+	if err := normalizeDisplay(&opts); err != nil {
+		return err
+	}
 
 	src := opts.Src
 	sample := strings.ToLower(strings.TrimSpace(opts.Sample))
@@ -223,6 +226,19 @@ func (t *Tool) runEnv(ctx context.Context, name string, args, extraPath []string
 		return er.RunEnv(ctx, name, args, extraPath, extraEnv, writerOrDiscard(stdout), writerOrDiscard(stderr))
 	}
 	return r.Run(ctx, name, args, writerOrDiscard(stdout), writerOrDiscard(stderr))
+}
+
+func normalizeDisplay(opts *platforms.BuildOptions) error {
+	s := strings.TrimSpace(opts.Display)
+	if s == "" || s == "320" {
+		opts.Display = "320"
+		return nil
+	}
+	if s == "640" {
+		opts.Display = "640"
+		return nil
+	}
+	return fmt.Errorf("%w: --display must be 320 or 640", platforms.ErrUsage)
 }
 
 func isT3dSample(sample string) bool {

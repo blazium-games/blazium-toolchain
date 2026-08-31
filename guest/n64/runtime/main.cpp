@@ -39,7 +39,11 @@ extern const unsigned char cooked_script_end[];
 
 int main(void)
 {
+#ifdef BLAZIUM_N64_DISPLAY_640
+	display_init(RESOLUTION_640x480, DEPTH_16_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
+#else
 	display_init(RESOLUTION_320x240, DEPTH_16_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
+#endif
 	rdpq_draw_init();
 	joypad_init();
 	pad_io_init();

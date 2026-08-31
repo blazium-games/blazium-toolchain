@@ -192,9 +192,13 @@ static int project_vert(float wx, float wy, float wz, float *sx, float *sy, floa
 		return 0;
 	}
 	const float f = 1.92098213f;
-	const float aspect = 320.0f / 240.0f;
-	*sx = 160.0f + (cx * f / aspect / cz) * 160.0f;
-	*sy = 120.0f - (cy * f / cz) * 120.0f;
+	const float dw = (float)display_get_width();
+	const float dh = (float)display_get_height();
+	const float hw = dw * 0.5f;
+	const float hh = dh * 0.5f;
+	const float aspect = dw / dh;
+	*sx = hw + (cx * f / aspect / cz) * hw;
+	*sy = hh - (cy * f / cz) * hh;
 	*out_cz = cz;
 	return 1;
 }
@@ -358,7 +362,7 @@ void rdpq_draw_overlay(void)
 	rdpq_set_mode_standard();
 	rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
 	rdpq_set_prim_color(RGBA32(0, 0, 0, (uint8_t)a));
-	rdpq_fill_rectangle(0, 0, 320, 240);
+	rdpq_fill_rectangle(0, 0, display_get_width(), display_get_height());
 }
 
 int rdpq_draw_primary_mesh_node(void)

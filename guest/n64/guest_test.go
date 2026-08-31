@@ -85,6 +85,12 @@ func TestGuestNoForbiddenSDK(t *testing.T) {
 	if !strings.Contains(src, "RESOLUTION_320x240") {
 		t.Fatal("main.cpp must init 320x240")
 	}
+	if !strings.Contains(src, "RESOLUTION_640x480") {
+		t.Fatal("main.cpp must offer 640x480 behind BLAZIUM_N64_DISPLAY_640")
+	}
+	if !strings.Contains(src, "BLAZIUM_N64_DISPLAY_640") {
+		t.Fatal("main.cpp must gate 640x480 on BLAZIUM_N64_DISPLAY_640")
+	}
 }
 
 func TestGuestIOParity(t *testing.T) {

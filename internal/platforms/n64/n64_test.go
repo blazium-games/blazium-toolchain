@@ -212,6 +212,48 @@ func TestStageCookEmbedNtex(t *testing.T) {
 	if !strings.Contains(string(asm), "cooked_ntex_end") {
 		t.Fatalf("need end label: %s", asm)
 	}
+	if strings.Contains(string(flags), "BLAZIUM_N64_DISPLAY_640") {
+		t.Fatal("default embed must not set 640")
+	}
+}
+
+func TestStageCookEmbedDisplay640(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "src")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := stageCookEmbed(dest, platforms.BuildOptions{Display: "640"}); err != nil {
+		t.Fatal(err)
+	}
+	flags, err := os.ReadFile(filepath.Join(dest, "cook_flags.h"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(flags), "BLAZIUM_N64_DISPLAY_640") {
+		t.Fatalf("missing 640 flag: %s", flags)
+	}
+	mk, err := os.ReadFile(filepath.Join(dest, "cook.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(mk), "BLAZIUM_N64_DISPLAY_640") {
+		t.Fatalf("cook.mk missing 640: %s", mk)
+	}
+}
+
+func TestNormalizeDisplay(t *testing.T) {
+	opts := platforms.BuildOptions{}
+	if err := normalizeDisplay(&opts); err != nil || opts.Display != "320" {
+		t.Fatalf("empty -> 320: %v %q", err, opts.Display)
+	}
+	opts.Display = "640"
+	if err := normalizeDisplay(&opts); err != nil || opts.Display != "640" {
+		t.Fatalf("640: %v %q", err, opts.Display)
+	}
+	opts.Display = "800"
+	if err := normalizeDisplay(&opts); err == nil || !errors.Is(err, platforms.ErrUsage) {
+		t.Fatalf("800 must be ErrUsage, got %v", err)
+	}
 }
 
 func TestStageCookEmbedInp(t *testing.T) {
@@ -628,6 +670,9 @@ func TestCICDRequiresN64CompileHello(t *testing.T) {
 	low := strings.ToLower(compileBlock)
 	if strings.Contains(low, "t3dquad") || strings.Contains(low, "tiny3d") || strings.Contains(low, "00_quad") {
 		t.Fatal("n64-compile must not build Tiny3D")
+	}
+	if strings.Contains(compileBlock, "--display 640") || strings.Contains(low, "hires") {
+		t.Fatal("n64-compile must not require 640x480")
 	}
 }
 
