@@ -471,6 +471,52 @@ func TestRunSkipsMissingSingleEmu(t *testing.T) {
 	}
 }
 
+func TestCICDRequiresN64CompileHello(t *testing.T) {
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var yaml []byte
+	for i := 0; i < 8; i++ {
+		p := filepath.Join(dir, ".github", "workflows", "cicd.yml")
+		if raw, readErr := os.ReadFile(p); readErr == nil {
+			yaml = raw
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	if len(yaml) == 0 {
+		t.Fatal("cicd.yml not found")
+	}
+	src := string(yaml)
+	for _, want := range []string{
+		"n64-compile",
+		"n64 setup --profile compile",
+		"n64 build --out hello.z64",
+		"80 37 12 40",
+		"hello.z64",
+	} {
+		if !strings.Contains(src, want) {
+			t.Fatalf("cicd.yml missing %q", want)
+		}
+	}
+	start := strings.Index(src, "n64-compile:")
+	if start < 0 {
+		t.Fatal("n64-compile job missing")
+	}
+	compileBlock := src[start:]
+	if end := strings.Index(compileBlock, "\n  build:"); end >= 0 {
+		compileBlock = compileBlock[:end]
+	}
+	if strings.Contains(compileBlock, "n64 run") || strings.Contains(compileBlock, "--emu") {
+		t.Fatal("n64-compile must not spawn n64 run / --emu")
+	}
+}
+
 func TestProject64LinuxRejected(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("linux-only assertion")
