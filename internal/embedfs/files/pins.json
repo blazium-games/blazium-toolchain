@@ -1,0 +1,77 @@
+{
+  "sdk_version": "0.24",
+  "gcc_series": "12.3.0",
+  "gcc_release_base": "https://github.com/Lameguy64/PSn00bSDK/releases/download/v0.24/",
+  "compile": {
+    "windows": [
+      {
+        "id": "mipsel-none-elf-gcc",
+        "url": "https://github.com/Lameguy64/PSn00bSDK/releases/download/v0.24/gcc-mipsel-none-elf-12.3.0-windows.zip",
+        "sha256": "51df48145d5ef4b396d3932b72ccba538cc605c7c7745b32c58c277aa00523c5",
+        "dest": "gcc"
+      },
+      {
+        "id": "psn00bsdk",
+        "url": "https://github.com/Lameguy64/PSn00bSDK/releases/download/v0.24/PSn00bSDK-0.24-win32.zip",
+        "sha256": "13a355afa89ecb2505882388841c42d9d231d40bbbe9ae22eb5e16abe19b2ea7",
+        "dest": "psn00bsdk"
+      }
+    ],
+    "linux": [
+      {
+        "id": "mipsel-none-elf-gcc",
+        "url": "https://github.com/Lameguy64/PSn00bSDK/releases/download/v0.24/gcc-mipsel-none-elf-12.3.0-linux.zip",
+        "sha256": "228f031a25cf2687d8845fd1421f625bafc211fa27da428e458e80d030a726f8",
+        "dest": "gcc"
+      },
+      {
+        "id": "psn00bsdk",
+        "url": "https://github.com/Lameguy64/PSn00bSDK/releases/download/v0.24/PSn00bSDK-0.24-Linux.zip",
+        "sha256": "5ada7c9478d795b22bde96ee23d6869290c14a740bcde3d57c01c342a26ded35",
+        "dest": "psn00bsdk"
+      }
+    ]
+  },
+  "host_build": {
+    "windows": [
+      {
+        "id": "cmake",
+        "url": "https://github.com/Kitware/CMake/releases/download/v3.28.6/cmake-3.28.6-windows-x86_64.zip",
+        "sha256": "a8f2e684ead94a64fd3517a38857a5b3f7f8d68d15c49ca1143d18797eaf9cac",
+        "dest": "cmake"
+      },
+      {
+        "id": "ninja",
+        "url": "https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip",
+        "sha256": "",
+        "dest": "ninja"
+      }
+    ],
+    "linux": [
+      {
+        "id": "ninja",
+        "url": "https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-linux.zip",
+        "sha256": "6f98805688d19672bd699fbbfa2c2cf0fc054ac3df1f0e6a47664d963d530255",
+        "dest": "ninja"
+      }
+    ]
+  },
+  "interdvd": {
+    "windows": [
+      {
+        "id": "ffmpeg",
+        "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-16-13-00/ffmpeg-n7.1.5-16-g9a4bb2c579-win64-gpl-7.1.zip",
+        "sha256": "907ae59ae94d39561b9e03f6d5b0ec4a2778df1e75c763c9a0ddbae266415860",
+        "dest": "ffmpeg"
+      }
+    ],
+    "linux": [
+      {
+        "id": "ffmpeg",
+        "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-16-13-00/ffmpeg-n7.1.5-16-g9a4bb2c579-linux64-gpl-7.1.tar.xz",
+        "sha256": "21a55e0ad14423572523c04425fd2f7a03bee0436d25a36e629362b99e45fb00",
+        "dest": "ffmpeg"
+      }
+    ]
+  }
+}

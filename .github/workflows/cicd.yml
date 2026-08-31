@@ -1,0 +1,259 @@
+name: Build Toolchain
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cicd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.8"
+      - name: Test
+        run: go test ./...
+      - name: Vet
+        run: go vet ./...
+
+  resolve-version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.final.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Semver action
+        id: semver
+        continue-on-error: true
+        uses: Bioblaze/game-semver-action@v10
+        with:
+          personal_github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Finalize version
+        id: final
+        run: |
+          set -euo pipefail
+          V="${{ steps.semver.outputs.simple_version }}"
+          if [[ -z "$V" ]]; then
+            V="$(jq -r .version manifest.json)"
+          fi
+          test -n "$V"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "resolved $V"
+
+  ps2-compile:
+    name: PS2 compile hello (${{ matrix.os }})
+    needs: [test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bin: blazium-toolchain
+          - os: windows-latest
+            bin: blazium-toolchain.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.8"
+      - name: Install make (Windows)
+        if: runner.os == 'Windows'
+        run: choco install make --yes --no-progress
+      - name: Build CLI
+        run: go build -o ${{ matrix.bin }} ./cmd/blazium-toolchain
+      - name: ps2 setup compile
+        run: ./${{ matrix.bin }} ps2 setup --profile compile
+      - name: ps2 build hello
+        run: ./${{ matrix.bin }} ps2 build --out hello.elf
+      - name: Verify MIPS ELF and size gates
+        shell: pwsh
+        run: |
+          $bin = "${{ matrix.bin }}"
+          if (-not (Test-Path -LiteralPath $bin)) { throw "missing $bin" }
+          $bytes = [System.IO.File]::ReadAllBytes("hello.elf")
+          if ($bytes.Length -lt 20 -or $bytes[0] -ne 0x7F -or [Text.Encoding]::ASCII.GetString($bytes, 1, 3) -ne "ELF") {
+            throw "hello.elf is not an ELF"
+          }
+          $mach = [BitConverter]::ToUInt16($bytes, 18)
+          if ($mach -ne 8 -and $mach -ne 0) { throw "hello.elf e_machine=$mach (want MIPS=8)" }
+          $info = & "./$bin" ps2 elf-info hello.elf
+          if ($LASTEXITCODE -ne 0) { throw "ps2 elf-info failed" }
+          $text = [int64]0
+          foreach ($line in @($info)) {
+            if ("$line" -match 'text_bytes=(\d+)') { $text = [int64]$Matches[1] }
+          }
+          if ($text -le 0) { throw "elf-info missing text_bytes= ($info)" }
+          if ($text -gt 524288) { throw "hello.elf .text $text exceeds 512 KiB" }
+          if ($bytes.Length -gt 2097152) { throw "hello.elf file $($bytes.Length) exceeds 2 MiB" }
+          Write-Host "hello.elf ok text_bytes=$text file_bytes=$($bytes.Length)"
+
+  n64-compile:
+    name: N64 compile hello (${{ matrix.os }})
+    needs: [test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bin: blazium-toolchain
+          - os: windows-latest
+            bin: blazium-toolchain.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.8"
+      - name: Install make (Windows)
+        if: runner.os == 'Windows'
+        run: choco install make --yes --no-progress
+      - name: Build CLI
+        run: go build -o ${{ matrix.bin }} ./cmd/blazium-toolchain
+      - name: n64 setup compile
+        run: ./${{ matrix.bin }} n64 setup --profile compile
+      - name: n64 build hello
+        run: ./${{ matrix.bin }} n64 build --out hello.z64
+      - name: Verify big-endian .z64 and size gates
+        shell: pwsh
+        run: |
+          $bin = "${{ matrix.bin }}"
+          if (-not (Test-Path -LiteralPath $bin)) { throw "missing $bin" }
+          if (-not (Test-Path -LiteralPath "hello.z64")) { throw "hello.z64 was not written" }
+          $bytes = [System.IO.File]::ReadAllBytes("hello.z64")
+          if ($bytes.Length -lt 4096) { throw "hello.z64 too small: $($bytes.Length)" }
+          if ($bytes.Length -gt 67108864) { throw "hello.z64 exceeds 64 MiB cart budget: $($bytes.Length)" }
+          if ($bytes.Length -ge 2 -and $bytes[0] -eq 0x4D -and $bytes[1] -eq 0x5A) {
+            throw "hello.z64 starts with MZ (PE)"
+          }
+          if ($bytes.Length -ge 4 -and $bytes[0] -eq 0x7F -and $bytes[1] -eq 0x45 -and $bytes[2] -eq 0x4C -and $bytes[3] -eq 0x46) {
+            throw "hello.z64 is ELF; product must be big-endian .z64"
+          }
+          if ($bytes.Length -lt 4 -or $bytes[0] -ne 0x80 -or $bytes[1] -ne 0x37 -or $bytes[2] -ne 0x12 -or $bytes[3] -ne 0x40) {
+            throw "hello.z64 magic is not 80 37 12 40"
+          }
+          Write-Host "hello.z64 ok file_bytes=$($bytes.Length)"
+
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: [test, resolve-version]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            artifact: blazium-toolchain
+          - goos: linux
+            goarch: arm64
+            artifact: blazium-toolchain
+          - goos: windows
+            goarch: amd64
+            artifact: blazium-toolchain.exe
+          - goos: darwin
+            goarch: amd64
+            artifact: blazium-toolchain
+          - goos: darwin
+            goarch: arm64
+            artifact: blazium-toolchain
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.8"
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w -X github.com/blazium-games/blazium-toolchain/internal/app.Version=${VERSION}" \
+            -o "dist/${{ matrix.artifact }}" ./cmd/blazium-toolchain
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: blazium-toolchain-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/${{ matrix.artifact }}
+          if-no-files-found: error
+
+  github-release:
+    name: GitHub Release
+    needs: [resolve-version, build, ps2-compile, n64-compile]
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Stage assets
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          stage() {
+            local src="$1" dest="$2"
+            if [[ -f "$src" ]]; then
+              cp "$src" "release-assets/$dest"
+            fi
+          }
+          stage artifacts/blazium-toolchain-linux-amd64/blazium-toolchain blazium-toolchain-linux-amd64
+          stage artifacts/blazium-toolchain-linux-arm64/blazium-toolchain blazium-toolchain-linux-arm64
+          stage artifacts/blazium-toolchain-windows-amd64/blazium-toolchain.exe blazium-toolchain-windows-amd64.exe
+          stage artifacts/blazium-toolchain-darwin-amd64/blazium-toolchain blazium-toolchain-darwin-amd64
+          stage artifacts/blazium-toolchain-darwin-arm64/blazium-toolchain blazium-toolchain-darwin-arm64
+          cp manifest.json release-assets/manifest.json
+          test -f release-assets/blazium-toolchain-linux-amd64
+          test -f release-assets/blazium-toolchain-windows-amd64.exe
+          ls -la release-assets
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          mapfile -t FILES < <(find release-assets -type f | sort)
+          test "${#FILES[@]}" -ge 3
+          NOTES="blazium-toolchain ${VERSION}
+
+          Official Blazium console toolchain manager (GPL-3.0-or-later).
+          The MIT guest is embedded. Compilers are fetched by \`ps1 setup\`.
+
+          | Platform | Arch | Asset |
+          |----------|------|-------|
+          | Linux | amd64 | \`blazium-toolchain-linux-amd64\` |
+          | Linux | arm64 | \`blazium-toolchain-linux-arm64\` |
+          | Windows | amd64 | \`blazium-toolchain-windows-amd64.exe\` |
+          | macOS | amd64 | \`blazium-toolchain-darwin-amd64\` |
+          | macOS | arm64 | \`blazium-toolchain-darwin-arm64\` |
+          "
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${FILES[@]}" --clobber
+          else
+            gh release create "$TAG" "${FILES[@]}" \
+              --title "blazium-toolchain ${VERSION}" \
+              --notes "$NOTES" \
+              --target "$GITHUB_SHA"
+          fi
+          gh release view "$TAG"

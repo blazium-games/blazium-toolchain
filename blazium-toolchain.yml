@@ -1,0 +1,108 @@
+# Copy into a game repo, or use .blazium-toolchain.yml.
+# Dump what the CLI resolved: blazium-toolchain settings
+
+# prefix: ""                    # cache root (else $BLAZIUM_TOOLCHAIN_PREFIX or OS default)
+smoke_timeout: 120s
+download_timeout: 15m
+json_timeout: 60s
+download_max_bytes: 2147483648  # 2 GiB
+user_agent: blazium-toolchain/0.1.0
+
+# env:                          # set only when the process env is empty
+#   PCSX2_EXE: ""
+#   PS2_BIOS_DIR: ""
+#   ARES_EXE: ""
+#   PROJECT64_EXE: ""
+
+ps1:
+  profile: compile              # compile | dev | iso
+  # overlay: ""
+  fetch:
+    distrib_root: https://distrib.app
+    pcsx_catalog: https://distrib.app/storage/manifests/pcsx-redux/dev-win-cli-x64/manifest.json
+    pcsx_info_base: https://distrib.app/storage/manifests/pcsx-redux/dev-win-cli-x64/
+    pcsx_pinned_zip: https://distrib.app/storage/assets/265/a79/ea7/640c8fce00aca4a92d8638443a0533597780c73adddabc747cb3a50/pcsx-redux-nightly-25100.20260827.8-x64-cli.zip
+
+ps2:
+  profile: compile              # compile | dev | iso
+  iso_volume: BLAZIUM2
+  iso_application: BLAZIUM PS2
+  iso_system: PLAYSTATION
+  cnf_ver: "1.00"
+  cnf_vmode: NTSC
+  default_elf: GAME.ELF
+  bios_prefer: "39001"
+  elf_text_max: 524288          # 512 KiB
+  elf_file_max: 2097152         # 2 MiB
+  # pcsx2_exe: ""
+  # bios_dir: ""
+  sibling_roots:
+    - ps2_stuff
+  bios_search_names:
+    - ps2 bios usa
+    - bios
+  mkdir_path:
+    - 'C:\Program Files\Git\usr\bin\mkdir.exe'
+    - 'C:\Program Files (x86)\Git\usr\bin\mkdir.exe'
+  fetch:
+    windows: https://github.com/ps2dev/ps2dev/releases/download/latest/ps2dev-windows-latest.tar.gz
+    linux: https://github.com/ps2dev/ps2dev/releases/download/latest/ps2dev-ubuntu-latest.tar.gz
+    iconv_zip: https://downloads.sourceforge.net/project/gnuwin32/libiconv/1.9.2-1/libiconv-1.9.2-1-bin.zip
+    msys32:
+      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-gmp-6.3.0-2-any.pkg.tar.zst
+      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-isl-0.28-1-any.pkg.tar.zst
+      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-mpc-1.4.1-1-any.pkg.tar.zst
+      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-mpfr-4.2.2-3-any.pkg.tar.zst
+      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-zstd-1.5.7-2-any.pkg.tar.zst
+      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-gcc-libs-15.1.0-1-any.pkg.tar.zst
+      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-libiconv-1.19-1-any.pkg.tar.zst
+      - https://mirror.msys2.org/mingw/mingw32/mingw-w64-i686-libwinpthread-14.0.0.r302.gd7f3c5201-1-any.pkg.tar.zst
+
+n64:
+  profile: compile              # compile | dev | rom
+  display: "320"                # 320 | 640
+  rdram: "8"                    # 8 | 4
+  rumble: false
+  emu: both                     # ares | project64 | both
+  rom_title: Blazium N64
+  cart_max: 67108864            # 64 MiB
+  # ares_exe: ""
+  # project64_exe: ""
+  make_path:
+    - 'C:\Program Files\Git\usr\bin'
+    - 'C:\Program Files\Git\bin'
+    - 'C:\msys64\usr\bin'
+    - 'C:\msys64\ucrt64\bin'
+  host_mingw_path:
+    - 'C:\Strawberry\c\bin'
+    - 'C:\msys64\ucrt64\bin'
+    - 'C:\msys64\mingw64\bin'
+    - 'C:\msys64\usr\bin'
+  bash_path:
+    - 'C:\Program Files\Git\bin\bash.exe'
+    - 'C:\Program Files\Git\usr\bin\bash.exe'
+    - 'C:\msys64\usr\bin\bash.exe'
+    - 'C:\msys64\ucrt64\bin\bash.exe'
+  sibling_roots:
+    - n64_stuff
+  pj64:
+    unknown_rdram: "8388608"
+    vi_refresh: "1500"
+  fetch:
+    toolchain_base: https://github.com/DragonMinded/libdragon/releases/download/toolchain-continuous-prerelease/
+    toolchain_windows: gcc-toolchain-mips64-win64.zip
+    toolchain_linux: gcc-toolchain-mips64-x86_64.deb
+    toolchain_linux_arm: gcc-toolchain-mips64-aarch64.deb
+    libdragon: https://github.com/DragonMinded/libdragon/archive/refs/heads/preview.zip
+    tiny3d: https://github.com/HailToDodongo/tiny3d/archive/refs/heads/master.zip
+    ares_windows: https://github.com/ares-emulator/ares/releases/download/v148/ares-windows-x64.zip
+
+interdvd:
+  volume: BLAZIUM_DVD
+  preparer: BLAZIUM TOOLCHAIN
+  application: BLAZIUM INTER-DVD
+  provider: BLAZIUM INTER-DVD
+  system: DVD-VIDEO
+  menu_language: en
+  audio_language: en
+  subtitle_language: en

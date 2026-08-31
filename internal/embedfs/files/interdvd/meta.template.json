@@ -1,0 +1,14 @@
+{
+  "schema": "blazium.interdvd.meta/v1",
+  "volume": "BLAZIUM_DVD",
+  "preparer": "BLAZIUM TOOLCHAIN",
+  "application": "BLAZIUM INTER-DVD",
+  "system": "DVD-VIDEO",
+  "provider": "BLAZIUM INTER-DVD",
+  "disc": 1,
+  "discs": 1,
+  "menu_language": "en",
+  "audio_language": "en",
+  "subtitle_language": "en",
+  "extras": []
+}

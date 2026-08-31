@@ -1,0 +1,262 @@
+package n64
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/blazium-games/blazium-toolchain/internal/platforms"
+)
+
+type cookSlice struct {
+	flag   string
+	src    string
+	bin    string
+	symbol string
+	define string
+}
+
+func cookSlices(opts platforms.BuildOptions) []cookSlice {
+	return []cookSlice{
+		{flag: "node", src: opts.Node, bin: "NODE00.bin", symbol: "cooked_node", define: "BLAZIUM_N64_HAS_NODE"},
+		{flag: "mesh", src: opts.Mesh, bin: "MESH00.bin", symbol: "cooked_mesh", define: "BLAZIUM_N64_HAS_MESH"},
+		{flag: "ntex", src: opts.Ntex, bin: "NTEX00.bin", symbol: "cooked_ntex", define: "BLAZIUM_N64_HAS_NTEX"},
+		{flag: "inp", src: opts.Inp, bin: "INP600.bin", symbol: "cooked_inp", define: "BLAZIUM_N64_HAS_INP"},
+		{flag: "script", src: opts.Script, bin: "SCRP00.bin", symbol: "cooked_script", define: "BLAZIUM_N64_HAS_SCRIPT"},
+		{flag: "gdbc", src: opts.Gdbc, bin: "GDBC00.bin", symbol: "cooked_gdbc", define: "BLAZIUM_N64_HAS_GDBC"},
+		{flag: "luau", src: opts.Luau, bin: "LUAU00.bin", symbol: "cooked_luau", define: "BLAZIUM_N64_HAS_LUAU"},
+	}
+}
+
+func hasCookAudio(opts platforms.BuildOptions) bool {
+	return strings.TrimSpace(opts.Sfx) != "" || strings.TrimSpace(opts.Music) != ""
+}
+
+func hasCookDfs(opts platforms.BuildOptions) bool {
+	return hasCookAudio(opts) || strings.TrimSpace(opts.Pack) != "" || strings.TrimSpace(opts.PackDir) != ""
+}
+
+func hasCookSlices(opts platforms.BuildOptions) bool {
+	for _, s := range cookSlices(opts) {
+		if strings.TrimSpace(s.src) != "" {
+			return true
+		}
+	}
+	return hasCookDfs(opts)
+}
+
+func stageCookEmbed(dest string, opts platforms.BuildOptions) error {
+	slices := cookSlices(opts)
+	var present []cookSlice
+	for _, s := range slices {
+		if strings.TrimSpace(s.src) == "" {
+			continue
+		}
+		raw, err := os.ReadFile(s.src)
+		if err != nil {
+			return fmt.Errorf("cook %s: %w", s.flag, err)
+		}
+		if err := os.WriteFile(filepath.Join(dest, s.bin), raw, 0o644); err != nil {
+			return err
+		}
+		present = append(present, s)
+	}
+
+	var hdr strings.Builder
+	hdr.WriteString("#pragma once\n")
+	var mk strings.Builder
+	if len(present) > 0 {
+		var asm strings.Builder
+		asm.WriteString("\t.section .rodata\n")
+		for _, s := range present {
+			// Start/end labels only. A .word size after .incbin lands in GP small-data
+			// and mips64-elf ld fails (R_MIPS_GPREL16) once NODE/MESH is non-empty.
+			asm.WriteString("\t.align 4\n")
+			asm.WriteString("\t.global " + s.symbol + "\n")
+			asm.WriteString("\t.global " + s.symbol + "_end\n")
+			asm.WriteString(s.symbol + ":\n")
+			asm.WriteString("\t.incbin \"" + s.bin + "\"\n")
+			asm.WriteString("\t.align 4\n")
+			asm.WriteString(s.symbol + "_end:\n")
+		}
+		if err := os.WriteFile(filepath.Join(dest, "cook_embed.S"), []byte(asm.String()), 0o644); err != nil {
+			return err
+		}
+		for _, s := range present {
+			hdr.WriteString("#define " + s.define + " 1\n")
+		}
+		mk.WriteString("OBJS += $(BUILD_DIR)/cook_embed.o\n")
+		var flags []string
+		for _, s := range present {
+			flags = append(flags, "-D"+s.define+"=1")
+		}
+		if len(flags) > 0 {
+			mk.WriteString("CXXFLAGS += " + strings.Join(flags, " ") + "\n")
+		}
+	}
+	if err := stageCookAudio(dest, opts, &hdr, &mk); err != nil {
+		return err
+	}
+	if err := stageCookPack(dest, opts, &hdr, &mk); err != nil {
+		return err
+	}
+	if err := stageCookPackDir(dest, opts, &hdr, &mk); err != nil {
+		return err
+	}
+	if wantDisplay640(opts) {
+		hdr.WriteString("#define BLAZIUM_N64_DISPLAY_640 1\n")
+		mk.WriteString("CXXFLAGS += -DBLAZIUM_N64_DISPLAY_640=1\n")
+	}
+	if opts.Rumble {
+		hdr.WriteString("#define BLAZIUM_N64_RUMBLE 1\n")
+		mk.WriteString("CXXFLAGS += -DBLAZIUM_N64_RUMBLE=1\n")
+	}
+	if wantRdram4(opts) {
+		hdr.WriteString("#define BLAZIUM_N64_RDRAM_4 1\n")
+		mk.WriteString("CXXFLAGS += -DBLAZIUM_N64_RDRAM_4=1\n")
+	}
+	if hdr.Len() > len("#pragma once\n") {
+		if err := os.WriteFile(filepath.Join(dest, "cook_flags.h"), []byte(hdr.String()), 0o644); err != nil {
+			return err
+		}
+	}
+	if mk.Len() > 0 {
+		if err := os.WriteFile(filepath.Join(dest, "cook.mk"), []byte(mk.String()), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func stageCookAudio(dest string, opts platforms.BuildOptions, hdr, mk *strings.Builder) error {
+	type wavAsset struct {
+		src, name, define string
+	}
+	assets := []wavAsset{
+		{src: opts.Sfx, name: "SFX00.wav", define: "BLAZIUM_N64_HAS_SFX"},
+		{src: opts.Music, name: "MUSIC00.wav", define: "BLAZIUM_N64_HAS_MUSIC"},
+	}
+	copied := 0
+	if err := os.MkdirAll(filepath.Join(dest, "assets"), 0o755); err != nil {
+		return err
+	}
+	for _, a := range assets {
+		if strings.TrimSpace(a.src) == "" {
+			continue
+		}
+		raw, err := os.ReadFile(a.src)
+		if err != nil {
+			return fmt.Errorf("cook audio %s: %w", a.name, err)
+		}
+		if len(raw) >= 2 && raw[0] == 0x4D && raw[1] == 0x5A {
+			return fmt.Errorf("cook audio %s: PE/MZ refused", a.name)
+		}
+		if len(raw) < 12 || string(raw[0:4]) != "RIFF" || string(raw[8:12]) != "WAVE" {
+			return fmt.Errorf("cook audio %s: need RIFF WAVE (not VAG/wav64)", a.name)
+		}
+		if err := os.WriteFile(filepath.Join(dest, "assets", a.name), raw, 0o644); err != nil {
+			return err
+		}
+		wav64Name := a.name[:len(a.name)-4] + ".wav64"
+		loop := a.name == "MUSIC00.wav"
+		if err := writeWav64File(filepath.Join(dest, "assets", a.name), filepath.Join(dest, "filesystem", wav64Name), loop); err != nil {
+			return fmt.Errorf("wav64 %s: %w", wav64Name, err)
+		}
+		hdr.WriteString("#define " + a.define + " 1\n")
+		mk.WriteString("CXXFLAGS += -D" + a.define + "=1\n")
+		mk.WriteString("$(BUILD_DIR)/$(ROMNAME).dfs: filesystem/" + wav64Name + "\n")
+		copied++
+	}
+	if copied == 0 {
+		return nil
+	}
+	mk.WriteString("$(ROMNAME).z64: $(BUILD_DIR)/$(ROMNAME).dfs\n")
+	return nil
+}
+
+func stageCookPack(dest string, opts platforms.BuildOptions, hdr, mk *strings.Builder) error {
+	src := strings.TrimSpace(opts.Pack)
+	if src == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("cook pack: %w", err)
+	}
+	if len(raw) < 12 {
+		return fmt.Errorf("cook pack: PACK01.bin too small")
+	}
+	if raw[0] == 0x4D && raw[1] == 0x5A {
+		return fmt.Errorf("cook pack: PE/MZ refused")
+	}
+	if string(raw[0:4]) != "PACK" {
+		return fmt.Errorf("cook pack: need PACK magic (not TIM/GTEX/VAG)")
+	}
+	if err := os.MkdirAll(filepath.Join(dest, "filesystem"), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dest, "filesystem", "PACK01.bin"), raw, 0o644); err != nil {
+		return err
+	}
+	hdr.WriteString("#define BLAZIUM_N64_HAS_PACK 1\n")
+	mk.WriteString("CXXFLAGS += -DBLAZIUM_N64_HAS_PACK=1\n")
+	mk.WriteString("$(BUILD_DIR)/$(ROMNAME).dfs: filesystem/PACK01.bin\n")
+	mk.WriteString("$(ROMNAME).z64: $(BUILD_DIR)/$(ROMNAME).dfs\n")
+	return nil
+}
+
+func stageCookPackDir(dest string, opts platforms.BuildOptions, hdr, mk *strings.Builder) error {
+	dir := strings.TrimSpace(opts.PackDir)
+	if dir == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Join(dest, "filesystem"), 0o755); err != nil {
+		return err
+	}
+	staged := 0
+	for i := 0; i <= 23; i++ {
+		kinds := []string{"CAM", "HIT", "ANIM", "SPRN", "TILN", "PRTN", "PTHN", "NAVN", "NAVM", "VEHN", "WAYN"}
+		if i >= 1 {
+			kinds = append([]string{"PACK", "NODE", "MESH", "NTEX"}, kinds...)
+		}
+		for _, kind := range kinds {
+			name := fmt.Sprintf("%s%02d.bin", kind, i)
+			src := filepath.Join(dir, name)
+			raw, err := os.ReadFile(src)
+			if err != nil {
+				continue
+			}
+			if len(raw) >= 2 && raw[0] == 0x4D && raw[1] == 0x5A {
+				return fmt.Errorf("cook pack-dir %s: PE/MZ refused", name)
+			}
+			if kind == "PACK" {
+				if len(raw) < 12 || string(raw[0:4]) != "PACK" {
+					return fmt.Errorf("cook pack-dir %s: need PACK magic", name)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(dest, "filesystem", name), raw, 0o644); err != nil {
+				return err
+			}
+			mk.WriteString("$(BUILD_DIR)/$(ROMNAME).dfs: filesystem/" + name + "\n")
+			staged++
+		}
+	}
+	if staged == 0 {
+		return nil
+	}
+	if !strings.Contains(hdr.String(), "BLAZIUM_N64_HAS_PACK") {
+		hdr.WriteString("#define BLAZIUM_N64_HAS_PACK 1\n")
+		mk.WriteString("CXXFLAGS += -DBLAZIUM_N64_HAS_PACK=1\n")
+	}
+	mk.WriteString("$(ROMNAME).z64: $(BUILD_DIR)/$(ROMNAME).dfs\n")
+	return nil
+}
+
+func wantDisplay640(opts platforms.BuildOptions) bool {
+	return strings.TrimSpace(opts.Display) == "640"
+}
+
+func wantRdram4(opts platforms.BuildOptions) bool {
+	return strings.TrimSpace(opts.Rdram) == "4"
+}
