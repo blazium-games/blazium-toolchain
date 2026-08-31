@@ -16,6 +16,8 @@ const unsigned char *pack_io_cur_ntex(unsigned *sz);
 const unsigned char *pack_io_cur_node(unsigned *sz);
 int pack_io_user_save(const void *data, unsigned sz);
 int pack_io_user_load(void *data, unsigned sz);
+int pack_io_mempak_save(const void *data, unsigned sz);
+int pack_io_mempak_load(void *data, unsigned sz);
 const char *pack_io_user_error(void);
 void pack_io_poke(unsigned off, unsigned char v);
 unsigned char pack_io_peek(unsigned off);

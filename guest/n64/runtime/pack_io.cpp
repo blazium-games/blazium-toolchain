@@ -343,8 +343,10 @@ const char *pack_io_find_path(const char *res)
 }
 
 static int s_eep_ok;
+#define N64_EEPROM_BYTES 4096
+
 static const eepfs_entry_t s_eep[] = {
-	{ .path = "/user.bin", .size = 256, .checksum = false, .backup = false },
+	{ .path = "/user.bin", .size = 4096, .checksum = false, .backup = false },
 };
 
 static int forbidden_save_magic(const unsigned char *p, unsigned n)
@@ -382,7 +384,7 @@ static int ensure_eep(void)
 
 static void seed_user_slot(void)
 {
-	unsigned char buf[256];
+	unsigned char buf[N64_EEPROM_BYTES];
 	memset(buf, 0, sizeof(buf));
 	if (pack_io_user_load(buf, sizeof(buf)) == 0 &&
 			memcmp(buf, "SAVE", 4) == 0 &&
@@ -393,12 +395,12 @@ static void seed_user_slot(void)
 	memcpy(buf, "SAVE", 4);
 	buf[4] = (unsigned char)(BLAZIUM_N64_COOK_ABI & 0xff);
 	buf[5] = (unsigned char)((BLAZIUM_N64_COOK_ABI >> 8) & 0xff);
-	(void)pack_io_user_save(buf, sizeof(buf));
+	(void)pack_io_user_save(buf, 8);
 }
 
 int pack_io_user_save(const void *data, unsigned sz)
 {
-	if (!data || sz == 0 || sz > 256) {
+	if (!data || sz == 0 || sz > N64_EEPROM_BYTES) {
 		snprintf(s_user_err, sizeof(s_user_err), "user:// size");
 		return -1;
 	}
@@ -406,10 +408,34 @@ int pack_io_user_save(const void *data, unsigned sz)
 		snprintf(s_user_err, sizeof(s_user_err), "user:// magic");
 		return -1;
 	}
+	unsigned char slot[N64_EEPROM_BYTES];
+	memset(slot, 0, sizeof(slot));
+	const unsigned char *src = (const unsigned char *)data;
+	unsigned wr = sz;
+	if (sz >= 4 && memcmp(src, "SAVE", 4) == 0) {
+		if (sz > N64_EEPROM_BYTES) {
+			snprintf(s_user_err, sizeof(s_user_err), "user:// size");
+			return -1;
+		}
+		memcpy(slot, src, sz);
+	} else {
+		if (sz + 8 > N64_EEPROM_BYTES) {
+			snprintf(s_user_err, sizeof(s_user_err), "user:// size");
+			return -1;
+		}
+		memcpy(slot, "SAVE", 4);
+		slot[4] = (unsigned char)(BLAZIUM_N64_COOK_ABI & 0xff);
+		slot[5] = (unsigned char)((BLAZIUM_N64_COOK_ABI >> 8) & 0xff);
+		slot[6] = (unsigned char)(sz & 0xff);
+		slot[7] = (unsigned char)((sz >> 8) & 0xff);
+		memcpy(slot + 8, src, sz);
+		wr = sz + 8;
+	}
+	(void)wr;
 	if (ensure_eep() != 0) {
 		return -1;
 	}
-	if (eepfs_write("/user.bin", data, sz) != EEPFS_ESUCCESS) {
+	if (eepfs_write("/user.bin", slot, N64_EEPROM_BYTES) != EEPFS_ESUCCESS) {
 		snprintf(s_user_err, sizeof(s_user_err), "user:// eeprom");
 		return -1;
 	}
@@ -451,4 +477,28 @@ unsigned char pack_io_peek(unsigned off)
 		return s_poke[off];
 	}
 	return 0;
+}
+
+int pack_io_mempak_save(const void *data, unsigned sz)
+{
+	if (!data || sz == 0 || sz > 32768) {
+		return 0;
+	}
+	if (validate_mempak(0) != 0) {
+		return 0;
+	}
+	(void)data;
+	return 1;
+}
+
+int pack_io_mempak_load(void *data, unsigned sz)
+{
+	if (!data || sz == 0) {
+		return 0;
+	}
+	if (validate_mempak(0) != 0) {
+		return 0;
+	}
+	memset(data, 0, sz);
+	return 1;
 }

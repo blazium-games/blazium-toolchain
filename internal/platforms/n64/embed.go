@@ -215,8 +215,12 @@ func stageCookPackDir(dest string, opts platforms.BuildOptions, hdr, mk *strings
 		return err
 	}
 	staged := 0
-	for i := 1; i <= 23; i++ {
-		for _, kind := range []string{"PACK", "NODE", "MESH", "NTEX"} {
+	for i := 0; i <= 23; i++ {
+		kinds := []string{"CAM", "HIT", "ANIM", "SPRN", "TILN"}
+		if i >= 1 {
+			kinds = append([]string{"PACK", "NODE", "MESH", "NTEX"}, kinds...)
+		}
+		for _, kind := range kinds {
 			name := fmt.Sprintf("%s%02d.bin", kind, i)
 			src := filepath.Join(dir, name)
 			raw, err := os.ReadFile(src)

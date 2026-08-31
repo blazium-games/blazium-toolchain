@@ -89,7 +89,15 @@ enum {
 	NAT_GET_PRESSURE = 68,
 	NAT_MOVE_6DOF = 69,
 	NAT_LOAD_PARTICLES = 70,
-	NAT_PATH_FOLLOW = 71
+	NAT_PATH_FOLLOW = 71,
+	NAT_SET_DEFAULT_CAM = 72,
+	NAT_PLAY_ANIM = 73,
+	NAT_STOP_ANIM = 74,
+	NAT_LOAD_ANIMS = 75,
+	NAT_UNLOAD_ANIMS = 76,
+	NAT_LOAD_HITS = 77,
+	NAT_UNLOAD_HITS = 78,
+	NAT_UNLOAD_SPRITES = 79
 };
 
 static const unsigned char *s_pack0_node;
@@ -177,6 +185,9 @@ static void bind_kit_from_node(const unsigned char *node, unsigned node_sz)
 		if (name_is(name, "Portal")) {
 			s_kit_portal = 1;
 		}
+		if (name_is(name, "Checkpoint") || name_is(name, "Hazard") || name_is(name, "Pickup") || name_is(name, "Talk") || name_is(name, "Spawner") || name_is(name, "Save")) {
+			/* Kit names stay in the 32-byte NODE name (no row-size bump). */
+		}
 	}
 }
 
@@ -218,7 +229,32 @@ static void do_native(int nat)
 	case NAT_SET_CAM:
 		sys_io_set_cam((int)popf());
 		break;
+	case NAT_SET_DEFAULT_CAM:
+		sys_io_set_default_cam((int)popf());
+		break;
+	case NAT_PLAY_ANIM:
+		sys_io_play_anim((int)popf());
+		break;
+	case NAT_STOP_ANIM:
+		sys_io_stop_anim();
+		break;
+	case NAT_LOAD_ANIMS:
+		sys_io_load_anims((int)popf());
+		break;
+	case NAT_UNLOAD_ANIMS:
+		sys_io_unload_anims();
+		break;
+	case NAT_LOAD_HITS:
+		sys_io_load_hits((int)popf());
+		break;
+	case NAT_UNLOAD_HITS:
+		sys_io_unload_hits();
+		break;
 	case NAT_LOAD_SPRITES:
+		sys_io_load_sprites((int)popf());
+		break;
+	case NAT_UNLOAD_SPRITES:
+		sys_io_unload_sprites();
 		break;
 	case NAT_MOVE_PLANAR:
 		sys_io_move_planar(popf(), popf());
@@ -351,12 +387,32 @@ void script_vm_process(float delta)
 				sfx_io_play(0);
 			}
 			break;
-		case OP_USER_SAVE:
-			pack_io_user_save(&s_px, sizeof(s_px));
+		case OP_USER_SAVE: {
+			unsigned char buf[4088];
+			for (unsigned b = 0; b < 4088; b++) {
+				buf[b] = pack_io_peek(b);
+			}
+			pack_io_user_save(buf, sizeof(buf));
 			break;
-		case OP_USER_LOAD:
-			pack_io_user_load(&s_px, sizeof(s_px));
+		}
+		case OP_USER_LOAD: {
+			unsigned char buf[4088];
+			if (pack_io_user_load(buf, sizeof(buf)) == 0) {
+				unsigned start = 0;
+				unsigned n = sizeof(buf);
+				if (buf[0] == 'S' && buf[1] == 'A' && buf[2] == 'V' && buf[3] == 'E') {
+					start = 8;
+					n = (unsigned)buf[6] | ((unsigned)buf[7] << 8);
+					if (n > 4088) {
+						n = 4088;
+					}
+				}
+				for (unsigned b = 0; b < n && start + b < sizeof(buf); b++) {
+					pack_io_poke(b, buf[start + b]);
+				}
+			}
 			break;
+		}
 		case OP_KIT_TICK:
 			if (sys_io_entered_kit() || sys_io_overlap_refresh()) {
 				do_checkpoint();
@@ -395,6 +451,15 @@ void script_vm_process(float delta)
 			break;
 		case OP_NEXT_CAMERA:
 			sys_io_next_cam();
+			break;
+		case OP_ATTACH_CAMERA:
+			sys_io_attach_camera(1);
+			break;
+		case OP_UNLOAD_PACK:
+			sys_io_load_pack(0);
+			sys_io_unload_anims();
+			sys_io_unload_sprites();
+			sys_io_unload_hits();
 			break;
 		case OP_TWEEN:
 			sys_io_tween_start((int)popf(), popf());

@@ -33,8 +33,24 @@ extern const unsigned char cooked_ntex_end[];
 static float g_fov = 55.0f;
 static float g_fade;
 static float g_look_yaw;
+static float g_eye_x;
+static float g_eye_y = 2.0f;
+static float g_eye_z = 6.0f;
+static float g_cam_yaw;
+static float g_cam_pitch = 0.321750554f;
+static float g_anim_x;
+static float g_anim_y;
+static float g_anim_z;
+static float g_anim_yaw;
 static int g_ly_n;
 static int g_ortho;
+static int g_talk;
+static char g_talk_txt[48];
+static int g_spr_n;
+static int16_t g_spr_x[32];
+static int16_t g_spr_y[32];
+static int16_t g_spr_w[32];
+static int16_t g_spr_h[32];
 static const unsigned char *s_draw_mesh;
 static unsigned s_draw_mesh_sz;
 static const unsigned char *s_draw_ntex;
@@ -179,25 +195,31 @@ static int project_vert(float wx, float wy, float wz, float *sx, float *sy, floa
 	const float syaw = sinf(g_look_yaw);
 	const float rwx = wx * cyaw + wz * syaw;
 	const float rwz = -wx * syaw + wz * cyaw;
-	wx = rwx;
-	wz = rwz;
-	const float eye_x = 0.0f;
-	const float eye_y = 2.0f;
-	const float eye_z = 6.0f;
-	const float fx = 0.0f;
-	const float fy = -0.316227766f;
-	const float fz = -0.948683298f;
-	const float rx = 1.0f;
+	wx = rwx + g_anim_x;
+	wy = wy + g_anim_y;
+	wz = rwz + g_anim_z;
+	const float eye_x = g_eye_x;
+	const float eye_y = g_eye_y;
+	const float eye_z = g_eye_z;
+	const float yaw = g_cam_yaw + g_anim_yaw;
+	const float cp = cosf(g_cam_pitch);
+	const float sp = sinf(g_cam_pitch);
+	const float c_yaw = cosf(yaw);
+	const float s_yaw = sinf(yaw);
+	const float fx = s_yaw * cp;
+	const float fy = -sp;
+	const float fz = -c_yaw * cp;
+	const float rx = c_yaw;
 	const float ry = 0.0f;
-	const float rz = 0.0f;
-	const float ux = 0.0f;
-	const float uy = 0.948683298f;
-	const float uz = -0.316227766f;
+	const float rz = s_yaw;
+	const float ux = fy * rz - fz * ry;
+	const float uy = fz * rx - fx * rz;
+	const float uz = fx * ry - fy * rx;
 	const float dx = wx - eye_x;
 	const float dy = wy - eye_y;
 	const float dz = wz - eye_z;
 	const float cx = dx * rx + dy * ry + dz * rz;
-	const float cy = dx * ux + dy * uy + dz * uz;
+	const float vy = dx * ux + dy * uy + dz * uz;
 	const float cz = dx * fx + dy * fy + dz * fz;
 	if (cz < 0.15f) {
 		return 0;
@@ -209,7 +231,7 @@ static int project_vert(float wx, float wy, float wz, float *sx, float *sy, floa
 	const float hh = dh * 0.5f;
 	const float aspect = dw / dh;
 	*sx = hw + (cx * f / aspect / cz) * hw;
-	*sy = hh - (cy * f / cz) * hh;
+	*sy = hh - (vy * f / cz) * hh;
 	*out_cz = cz;
 	return 1;
 }
@@ -335,14 +357,55 @@ void rdpq_draw_end(void)
 
 void rdpq_draw_set_camera(float x, float y, float z, float yaw, float pitch, float fov)
 {
-	(void)x;
-	(void)y;
-	(void)z;
-	(void)yaw;
-	(void)pitch;
+	g_eye_x = x;
+	g_eye_y = y;
+	g_eye_z = z;
+	g_cam_yaw = yaw;
+	g_cam_pitch = pitch;
 	if (fov > 1.0f) {
 		g_fov = fov;
 	}
+}
+
+void rdpq_draw_set_anim_ofs(float x, float y, float z, float yaw)
+{
+	g_anim_x = x;
+	g_anim_y = y;
+	g_anim_z = z;
+	g_anim_yaw = yaw;
+}
+
+void rdpq_draw_sprite(int i, int16_t x, int16_t y, int16_t w, int16_t h)
+{
+	if (i < 0 || i >= 32) {
+		return;
+	}
+	g_spr_x[i] = x;
+	g_spr_y[i] = y;
+	g_spr_w[i] = w;
+	g_spr_h[i] = h;
+	if (i + 1 > g_spr_n) {
+		g_spr_n = i + 1;
+	}
+}
+
+void rdpq_draw_talk(const char *txt)
+{
+	g_talk = txt && txt[0] ? 1 : 0;
+	g_talk_txt[0] = 0;
+	if (txt) {
+		unsigned n = 0;
+		while (txt[n] && n < sizeof(g_talk_txt) - 1) {
+			g_talk_txt[n] = txt[n];
+			n++;
+		}
+		g_talk_txt[n] = 0;
+	}
+}
+
+void rdpq_draw_clear_sprites(void)
+{
+	g_spr_n = 0;
 }
 
 void rdpq_draw_set_ortho(int on)
@@ -473,6 +536,15 @@ void rdpq_draw_frame(void)
 	(void)g_ly_n;
 
 	rdpq_text_printf(NULL, 1, 16, 16, "Blazium N64 ABI %d", BLAZIUM_N64_COOK_ABI);
+	rdpq_set_mode_fill(RGBA32(220, 220, 240, 255));
+	for (int i = 0; i < g_spr_n; i++) {
+		const int x0 = (int)g_spr_x[i];
+		const int y0 = (int)g_spr_y[i];
+		rdpq_fill_rectangle(x0, y0, x0 + (int)g_spr_w[i], y0 + (int)g_spr_h[i]);
+	}
+	if (g_talk) {
+		rdpq_text_printf(NULL, 1, 24, 200, "%s", g_talk_txt);
+	}
 	rdpq_draw_overlay();
 	rdpq_detach_show();
 }

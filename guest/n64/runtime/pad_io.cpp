@@ -26,6 +26,7 @@ static float s_dead = 0.2f;
 static float s_sx;
 static float s_sy;
 static unsigned s_held;
+static unsigned s_down;
 
 enum {
 	ACT_ACCEPT = 0,
@@ -47,7 +48,11 @@ enum {
 	BTN_DLEFT = 1 << 6,
 	BTN_DRIGHT = 1 << 7,
 	BTN_DUP = 1 << 8,
-	BTN_DDOWN = 1 << 9
+	BTN_DDOWN = 1 << 9,
+	BTN_CLEFT = 1 << 10,
+	BTN_CRIGHT = 1 << 11,
+	BTN_CUP = 1 << 12,
+	BTN_CDOWN = 1 << 13
 };
 
 #ifdef BLAZIUM_N64_HAS_INP
@@ -134,6 +139,18 @@ static unsigned joy_mask(joypad_buttons_t b)
 	if (b.d_down) {
 		m |= BTN_DDOWN;
 	}
+	if (b.c_left) {
+		m |= BTN_CLEFT;
+	}
+	if (b.c_right) {
+		m |= BTN_CRIGHT;
+	}
+	if (b.c_up) {
+		m |= BTN_CUP;
+	}
+	if (b.c_down) {
+		m |= BTN_CDOWN;
+	}
 	return m;
 }
 #endif
@@ -189,6 +206,16 @@ void pad_io_poll(void)
 				s_held |= 1u << r->id;
 			}
 		}
+		s_down = s_held;
+		{
+			const unsigned heldm = joy_mask(joypad_get_buttons_held(JOYPAD_PORT_1));
+			for (int i = 0; i < s_row_n; i++) {
+				const InpRow *r = &s_rows[i];
+				if (r->buttons && (heldm & r->buttons) && r->id < 32) {
+					s_down |= 1u << r->id;
+				}
+			}
+		}
 		return;
 	}
 #endif
@@ -213,6 +240,42 @@ void pad_io_poll(void)
 	if (b.d_down) {
 		s_held |= 1u << ACT_DOWN;
 	}
+	if (b.z || b.l || b.r || b.c_left || b.c_right || b.c_up || b.c_down) {
+		/* Full N64 pad: Z/L/R + C-buttons stay readable in the fallback path. */
+	}
+	s_down = s_held;
+	{
+		joypad_buttons_t held = joypad_get_buttons_held(JOYPAD_PORT_1);
+		if (held.z) {
+			s_down |= 1u << 11;
+		}
+		if (held.l) {
+			s_down |= 1u << 12;
+		}
+		if (held.r) {
+			s_down |= 1u << 13;
+		}
+		if (held.c_left) {
+			s_down |= 1u << 7;
+		}
+		if (held.c_right) {
+			s_down |= 1u << 8;
+		}
+		if (held.c_up) {
+			s_down |= 1u << 9;
+		}
+		if (held.c_down) {
+			s_down |= 1u << 10;
+		}
+	}
+}
+
+int pad_io_held(int action)
+{
+	if (action < 0 || action > 31) {
+		return 0;
+	}
+	return (s_down & (1u << action)) ? 1 : 0;
 }
 
 int pad_io_pressed(int action)

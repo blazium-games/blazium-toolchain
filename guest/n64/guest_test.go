@@ -228,6 +228,67 @@ func TestGuestDrawGoldFallback(t *testing.T) {
 	}
 }
 
+func TestGuestIndustrialKit(t *testing.T) {
+	sys, err := files.ReadFile("runtime/sys_io.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ss := string(sys)
+	for _, want := range []string{"CAMN", "HITN", "aabb", "load_anims", "SPRN", "TILN"} {
+		if !strings.Contains(ss, want) {
+			t.Fatalf("sys_io.cpp missing %s", want)
+		}
+	}
+	if strings.Contains(ss, "rdpq_draw_set_camera(0, 0, 0, 0, 0, 55.0f)") {
+		t.Fatal("sys_io_tick must not force a dummy camera every frame")
+	}
+	if strings.Contains(ss, "return 0;\n}\n\nint sys_io_raycast") {
+		/* overlap stub was a lone return 0; real AABB must mention mn/mx */
+	}
+	if !strings.Contains(ss, "mn[0]") || !strings.Contains(ss, "mx[0]") {
+		t.Fatal("sys_io.cpp must test AABB min/max")
+	}
+	pack, err := files.ReadFile("runtime/pack_io.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps := string(pack)
+	if !strings.Contains(ps, "4096") {
+		t.Fatal("pack_io.cpp EEPROM must be 4096")
+	}
+	if strings.Contains(ps, ".size = 256") {
+		t.Fatal("pack_io.cpp must not keep the 256-byte eepfs slot")
+	}
+	pad, err := files.ReadFile("runtime/pad_io.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(pad), "c_left") && !strings.Contains(string(pad), "c_up") {
+		t.Fatal("pad_io.cpp must map C-buttons")
+	}
+	if !strings.Contains(string(pad), "BTN_CLEFT") {
+		t.Fatal("pad_io.cpp must define C-button bits")
+	}
+	vm, err := files.ReadFile("runtime/script_vm.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	vs := string(vm)
+	if !strings.Contains(vs, "OP_ATTACH_CAMERA") || !strings.Contains(vs, "sys_io_attach_camera") {
+		t.Fatal("script_vm.cpp must implement OP_ATTACH_CAMERA")
+	}
+	if !strings.Contains(vs, "NAT_PLAY_ANIM") || !strings.Contains(vs, "load_anims") {
+		t.Fatal("script_vm.cpp must wire ANIM natives after 71")
+	}
+	mk, err := files.ReadFile("runtime/Makefile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(mk), "dlopen") {
+		t.Fatal("Makefile still no dlopen")
+	}
+}
+
 func TestOverlayReplacesAndAdds(t *testing.T) {
 	dir := t.TempDir()
 	if err := Install(dir); err != nil {
