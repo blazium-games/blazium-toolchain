@@ -1,6 +1,7 @@
 package n64
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	guest "github.com/blazium-games/blazium-toolchain/guest/n64"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms"
@@ -275,6 +277,34 @@ func TestSetupDevFetchesAres(t *testing.T) {
 	}
 	if !st["ares_ready"].(bool) {
 		t.Fatalf("status ares_ready: %+v", st)
+	}
+}
+
+func TestRunSkipsMissingSingleEmu(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows One-click skip")
+	}
+	dir := t.TempDir()
+	rom := filepath.Join(dir, "g.z64")
+	raw := make([]byte, 64)
+	copy(raw, z64Magic)
+	if err := os.WriteFile(rom, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ARES_EXE", "")
+	t.Setenv("PROJECT64_EXE", filepath.Join(dir, "missing-pj64.exe"))
+	var buf bytes.Buffer
+	err := New().Run(context.Background(), platforms.RunOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir, Stdout: &buf},
+		Exe:           rom,
+		Emu:           "project64",
+		Timeout:       time.Second,
+	})
+	if err != nil {
+		t.Fatalf("missing Project64 must skip, not fail: %v\n%s", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "skip project64") {
+		t.Fatalf("expected skip print, got %q", buf.String())
 	}
 }
 

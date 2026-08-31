@@ -305,14 +305,18 @@ func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
 	})
 	// #endregion
 
+	if opts.Stdout != nil && len(skipped) > 0 {
+		fmt.Fprintf(opts.Stdout, "validators skipped: %s\n", strings.Join(skipped, ", "))
+	}
 	if ran == 0 {
+		// One-click asks for a single host emu; skip+print is success. CI --emu both still fails if nothing booted.
+		if emu != "both" && len(skipped) > 0 {
+			return nil
+		}
 		if runtime.GOOS == "windows" {
 			return fmt.Errorf("%w: neither Ares nor Project64 could boot (set ARES_EXE and/or PROJECT64_EXE)", platforms.ErrMissingTool)
 		}
 		return fmt.Errorf("%w: Ares could not boot (set ARES_EXE)", platforms.ErrMissingTool)
-	}
-	if opts.Stdout != nil && len(skipped) > 0 {
-		fmt.Fprintf(opts.Stdout, "validators skipped: %s\n", strings.Join(skipped, ", "))
 	}
 	return nil
 }
