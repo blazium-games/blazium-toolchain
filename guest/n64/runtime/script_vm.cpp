@@ -174,13 +174,29 @@ static void do_native(int nat)
 int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 		const unsigned char *node, unsigned node_sz)
 {
-	s_code = scrp;
-	s_len = scrp_sz;
+	s_code = NULL;
+	s_len = 0;
 	s_ready = 0;
 	s_sp = 0;
 	(void)node;
 	(void)node_sz;
 	(void)pack_io_find_path("res://STREAM");
+	if (!scrp || scrp_sz < 8) {
+		return 0;
+	}
+	if (scrp[0] == 0x4D && scrp[1] == 0x5A) {
+		return 0;
+	}
+	if (scrp[0] != 'S' || scrp[1] != 'C' || scrp[2] != 'R' || scrp[3] != 'P') {
+		return 0;
+	}
+	const unsigned abi = (unsigned)scrp[4] | ((unsigned)scrp[5] << 8);
+	const unsigned n = (unsigned)scrp[6] | ((unsigned)scrp[7] << 8);
+	if (abi != (unsigned)BLAZIUM_N64_COOK_ABI || 8u + n > scrp_sz) {
+		return 0;
+	}
+	s_code = scrp + 8;
+	s_len = n;
 	return 0;
 }
 

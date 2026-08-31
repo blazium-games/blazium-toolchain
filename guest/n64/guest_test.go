@@ -169,6 +169,7 @@ func TestGuestScriptKitParity(t *testing.T) {
 		"NAT_LOAD_SPRITES", "NAT_MOVE_PLANAR", "NAT_HURT", "NAT_POKE",
 		"NAT_GET_PRESSURE", "NAT_MOVE_6DOF", "NAT_LOAD_PARTICLES", "NAT_PATH_FOLLOW",
 		"OP_JMP", "OP_CALL_NATIVE", "pack_io_find_path", "OP_CALL_ROTATE_Y",
+		"SCRP",
 	} {
 		if !strings.Contains(src, want) {
 			t.Fatalf("script_vm.cpp missing %s", want)

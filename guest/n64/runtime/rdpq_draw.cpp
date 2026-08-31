@@ -4,6 +4,7 @@
 #include "rdpq_draw.h"
 
 #include <libdragon.h>
+#include <math.h>
 #include <string.h>
 
 #ifndef BLAZIUM_N64_COOK_ABI
@@ -31,6 +32,7 @@ extern const unsigned char cooked_ntex_end[];
 
 static float g_fov = 55.0f;
 static float g_fade;
+static float g_look_yaw;
 static int g_ly_n;
 static int g_ortho;
 
@@ -162,6 +164,12 @@ static int mesh_header_ok(const unsigned char *m, unsigned sz, uint32_t *tri_cou
 
 static int project_vert(float wx, float wy, float wz, float *sx, float *sy, float *out_cz)
 {
+	const float cyaw = cosf(g_look_yaw);
+	const float syaw = sinf(g_look_yaw);
+	const float rwx = wx * cyaw + wz * syaw;
+	const float rwz = -wx * syaw + wz * cyaw;
+	wx = rwx;
+	wz = rwz;
 	const float eye_x = 0.0f;
 	const float eye_y = 2.0f;
 	const float eye_z = 6.0f;
@@ -317,7 +325,7 @@ void rdpq_draw_set_ortho(int on)
 
 void rdpq_draw_look(float yaw, float pitch)
 {
-	(void)yaw;
+	g_look_yaw += yaw;
 	(void)pitch;
 }
 
