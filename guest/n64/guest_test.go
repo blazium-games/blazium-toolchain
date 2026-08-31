@@ -65,6 +65,9 @@ func TestMakefileUsesN64MK(t *testing.T) {
 	if strings.Contains(low, "-lt3d") || strings.Contains(low, "-lultra") || strings.Contains(low, "t3d.h") {
 		t.Fatal("Makefile must not link a P8 mesh lib or official SDK")
 	}
+	if strings.Contains(s, "dlopen") || strings.Contains(s, "dlfcn.h") || strings.Contains(s, ".dso") || strings.Contains(s, "n64dso") {
+		t.Fatal("default guest Makefile must not build DSO overlays")
+	}
 }
 
 func TestGuestNoForbiddenSDK(t *testing.T) {
@@ -90,6 +93,9 @@ func TestGuestNoForbiddenSDK(t *testing.T) {
 	}
 	if !strings.Contains(src, "BLAZIUM_N64_DISPLAY_640") {
 		t.Fatal("main.cpp must gate 640x480 on BLAZIUM_N64_DISPLAY_640")
+	}
+	if strings.Contains(src, "dlopen") || strings.Contains(src, "dlfcn.h") || strings.Contains(src, ".dso") || strings.Contains(src, "n64dso") {
+		t.Fatal("main.cpp must not load DSO overlays")
 	}
 }
 
@@ -117,6 +123,9 @@ func TestGuestIOParity(t *testing.T) {
 	}
 	if !strings.Contains(psrc, "(void)on") {
 		t.Fatal("pad_io.cpp must keep rumble stub when flag is off")
+	}
+	if strings.Contains(psrc, "dlopen") || strings.Contains(psrc, "dlfcn.h") || strings.Contains(psrc, ".dso") || strings.Contains(psrc, "n64dso") {
+		t.Fatal("pad_io.cpp must not load DSO overlays")
 	}
 	pack, err := files.ReadFile("runtime/pack_io.cpp")
 	if err != nil {

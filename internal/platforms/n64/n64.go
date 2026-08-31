@@ -181,6 +181,8 @@ func (t *Tool) Status(opts platforms.CommonOptions) (map[string]any, error) {
 	pj64OK := fileExists(env["PROJECT64_EXE"])
 	t3d := or(env["T3D_INST"], siblingTiny3d())
 	t3dOK := t3d != "" && fileExists(t3dLibPath(t3d))
+	dso := walkNamed(env["N64_INST"], hostNames("n64dso")...)
+	dsoOK := dsoToolsReady(env["N64_INST"])
 	comp := compileReady(env) && supported
 	// #region agent log
 	agentLog("B", "n64.go:Status", "compile_ready", map[string]any{
@@ -209,6 +211,8 @@ func (t *Tool) Status(opts platforms.CommonOptions) (map[string]any, error) {
 		"libdragon_branch": "preview",
 		"tiny3d":           t3d,
 		"tiny3d_ready":     t3dOK,
+		"dso":              dso,
+		"dso_ready":        dsoOK,
 	}
 	return out, nil
 }
@@ -677,6 +681,91 @@ func (t *Tool) compileHostTools(ctx context.Context, src, inst string, extraPath
 		}
 	}
 	return writeToolStubs(bin)
+}
+
+func dsoToolNames() []string {
+	return []string{"n64dso", "n64dso-extern", "n64dso-msym"}
+}
+
+func dsoToolsReady(inst string) bool {
+	if inst == "" {
+		return false
+	}
+	for _, name := range dsoToolNames() {
+		if walkNamed(inst, hostNames(name)...) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func (t *Tool) ensureDsoTools(ctx context.Context, extraPath []string, extraEnv map[string]string, opts platforms.BuildOptions) error {
+	inst := extraEnv["N64_INST"]
+	if dsoToolsReady(inst) {
+		return nil
+	}
+	src := siblingLibdragon()
+	if src == "" {
+		return fmt.Errorf("%w: n64dso (sibling n64_stuff/libdragon missing)", platforms.ErrMissingTool)
+	}
+	if inst == "" {
+		return fmt.Errorf("%w: n64dso (N64_INST unset)", platforms.ErrMissingTool)
+	}
+	makeProg := ""
+	if inst != "" {
+		makeProg = walkNamed(inst, hostNames("make")...)
+	}
+	if makeProg == "" {
+		makeProg = lookFile("make")
+	}
+	if makeProg == "" {
+		makeProg = lookFile("mingw32-make")
+	}
+	if makeProg == "" {
+		return fmt.Errorf("%w: make (needed to build n64dso)", platforms.ErrMissingTool)
+	}
+	unixBin := []string{
+		`C:\Program Files\Git\usr\bin`,
+		`C:\Program Files\Git\bin`,
+		`C:\msys64\usr\bin`,
+		`C:\msys64\ucrt64\bin`,
+	}
+	gcc := lookHostMingw("gcc")
+	gxx := lookHostMingw("g++")
+	if gxx == "" {
+		gxx = gcc
+	}
+	if gcc != "" {
+		extraPath = append(extraPath, filepath.Dir(gcc))
+	}
+	extraPath = append(unixBin, extraPath...)
+	env := map[string]string{}
+	for k, v := range extraEnv {
+		env[k] = v
+	}
+	env["N64_INST"] = inst
+	env["INSTALLDIR"] = inst
+	env["LIBDRAGON_PREVIEW"] = "2"
+	// Skip tools/Makefile Windows_NT pacman/date checks; host MinGW is enough.
+	env["OS"] = "host"
+	if gcc != "" {
+		env["CC"] = gcc
+	}
+	if gxx != "" {
+		env["CXX"] = gxx
+	}
+	tools := filepath.Join(src, "tools")
+	if opts.Stdout != nil {
+		fmt.Fprintf(opts.Stdout, "building n64dso tools in %s\n", tools)
+	}
+	args := []string{"n64dso", "n64dso-extern", "n64dso-msym", "n64dso-install", "n64dso-extern-install", "n64dso-msym-install"}
+	if err := t.runEnvInDir(ctx, makeProg, tools, args, extraPath, env, opts.Stdout, opts.Stderr); err != nil {
+		return fmt.Errorf("n64dso tools: %w", err)
+	}
+	if dsoToolsReady(inst) {
+		return nil
+	}
+	return fmt.Errorf("%w: n64dso n64dso-extern n64dso-msym missing after make tools", platforms.ErrMissingTool)
 }
 
 func (t *Tool) ensureAudioconv(ctx context.Context, env map[string]string, stdout, stderr io.Writer) error {

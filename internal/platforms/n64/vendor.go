@@ -100,6 +100,26 @@ func lookFile(name string) string {
 	return p
 }
 
+func lookHostMingw(base string) string {
+	if p := lookFile(base); p != "" {
+		return p
+	}
+	for _, dir := range []string{
+		`C:\Strawberry\c\bin`,
+		`C:\msys64\ucrt64\bin`,
+		`C:\msys64\mingw64\bin`,
+		`C:\msys64\usr\bin`,
+	} {
+		for _, n := range hostNames(base) {
+			p := filepath.Join(dir, n)
+			if fileExists(p) {
+				return p
+			}
+		}
+	}
+	return ""
+}
+
 func forbiddenUltra(p string) bool {
 	n := strings.ToLower(filepath.Clean(p))
 	slash := filepath.ToSlash(n)

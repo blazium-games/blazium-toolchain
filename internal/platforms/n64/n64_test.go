@@ -704,6 +704,9 @@ func TestCICDRequiresN64CompileHello(t *testing.T) {
 	if strings.Contains(compileBlock, "--rumble") || strings.Contains(low, "rumble") {
 		t.Fatal("n64-compile must not require rumble")
 	}
+	if strings.Contains(compileBlock, "ovldemo") || strings.Contains(low, "n64dso") {
+		t.Fatal("n64-compile must not require DSO overlays")
+	}
 }
 
 func TestProject64LinuxRejected(t *testing.T) {
@@ -900,6 +903,39 @@ func TestResolveSampleT3dQuad(t *testing.T) {
 		t.Fatalf("t3dquad -> %q want %q", got, want)
 	}
 	for _, alias := range []string{"00_quad", "tiny3d"} {
+		g, err := resolveSample(alias)
+		if err != nil {
+			t.Fatalf("alias %s: %v", alias, err)
+		}
+		if filepath.Clean(g) != want {
+			t.Fatalf("alias %s -> %q want %q", alias, g, want)
+		}
+	}
+}
+
+func TestResolveSampleOvlDemo(t *testing.T) {
+	root := t.TempDir()
+	lib := filepath.Join(root, "n64_stuff", "libdragon")
+	demo := filepath.Join(lib, "examples", "ovldemo")
+	if err := os.MkdirAll(demo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(lib, "n64.mk"), []byte("# n64\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(demo, "Makefile"), []byte("all:\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	got, err := resolveSample("ovldemo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Clean(demo)
+	if filepath.Clean(got) != want {
+		t.Fatalf("ovldemo -> %q want %q", got, want)
+	}
+	for _, alias := range []string{"overlay", "dso"} {
 		g, err := resolveSample(alias)
 		if err != nil {
 			t.Fatalf("alias %s: %v", alias, err)

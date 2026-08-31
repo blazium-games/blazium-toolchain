@@ -132,6 +132,11 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 		}
 		extraEnv["T3D_INST"] = t3d
 	}
+	if isOvlDemoSample(sample) {
+		if err := t.ensureDsoTools(ctx, extraPath, extraEnv, opts); err != nil {
+			return err
+		}
+	}
 
 	if fileExists(filepath.Join(src, "Makefile")) {
 		if err := t.buildMake(ctx, src, extraPath, extraEnv, opts); err != nil {
@@ -250,6 +255,15 @@ func isT3dSample(sample string) bool {
 	}
 }
 
+func isOvlDemoSample(sample string) bool {
+	switch strings.ToLower(strings.TrimSpace(sample)) {
+	case "ovldemo", "overlay", "dso":
+		return true
+	default:
+		return false
+	}
+}
+
 func resolveSample(sample string) (string, error) {
 	sample = strings.ToLower(strings.TrimSpace(sample))
 	if isT3dSample(sample) {
@@ -268,10 +282,13 @@ func resolveSample(sample string) (string, error) {
 		"hello":      "helloworld",
 		"rdpqdemo":   "rdpqdemo",
 		"rdpq":       "rdpqdemo",
+		"ovldemo":    "ovldemo",
+		"overlay":    "ovldemo",
+		"dso":        "ovldemo",
 	}
 	name, ok := allowed[sample]
 	if !ok {
-		return "", fmt.Errorf("%w: --sample must be helloworld, rdpqdemo, or t3dquad", platforms.ErrUsage)
+		return "", fmt.Errorf("%w: --sample must be helloworld, rdpqdemo, t3dquad, or ovldemo", platforms.ErrUsage)
 	}
 	lib := siblingLibdragon()
 	if lib == "" {
@@ -304,6 +321,7 @@ func findZ64(src, buildDir string) (string, error) {
 	add(filepath.Join(src, "helloworld.z64"))
 	add(filepath.Join(src, "rdpqdemo.z64"))
 	add(filepath.Join(src, "t3d_00_quad.z64"))
+	add(filepath.Join(src, "ovldemo.z64"))
 	if buildDir != "" {
 		_ = filepath.WalkDir(buildDir, func(path string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
