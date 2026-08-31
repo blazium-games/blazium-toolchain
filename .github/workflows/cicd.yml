@@ -1,8 +1,10 @@
-name: Build Toolchain
+name: Build and Sign Toolchain
 
 on:
   push:
-    branches: [master]
+    branches:
+      - main
+      - master
   pull_request:
   workflow_dispatch:
 
@@ -28,31 +30,51 @@ jobs:
         run: go vet ./...
 
   resolve-version:
-    name: Resolve version
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.final.outputs.version }}
+      simple_version: ${{ steps.finalize.outputs.simple_version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Semver action
-        id: semver
-        continue-on-error: true
+
+      - name: Get Version with Bioblaze/game-semver-action
         uses: Bioblaze/game-semver-action@v10
+        id: version
         with:
           personal_github_token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Finalize version
-        id: final
+
+      - name: Finalize version (0.1.0 baseline + CDN monotonic)
+        id: finalize
         run: |
           set -euo pipefail
-          V="${{ steps.semver.outputs.simple_version }}"
-          if [[ -z "$V" ]]; then
-            V="$(jq -r .version manifest.json)"
+          COMPUTED="${{ steps.version.outputs.simple_version }}"
+          BASE="0.1.0"
+          CDN_LATEST="$(curl -fsSL https://cdn.blazium.app/toolchain/toolchain.json | jq -r '.latest // empty' || true)"
+          if [[ "$CDN_LATEST" == "null" ]]; then
+            CDN_LATEST=""
           fi
-          test -n "$V"
-          echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "resolved $V"
+
+          CANDIDATE="$(printf '%s\n%s\n' "$COMPUTED" "$BASE" | sort -V | tail -n1)"
+
+          bump_patch() {
+            local v="$1"
+            local major minor patch
+            IFS=. read -r major minor patch <<< "$v"
+            patch="${patch%%[^0-9]*}"
+            echo "${major}.${minor}.$((patch + 1))"
+          }
+
+          if [[ -n "$CDN_LATEST" ]]; then
+            HIGHER="$(printf '%s\n%s\n' "$CANDIDATE" "$CDN_LATEST" | sort -V | tail -n1)"
+            if [[ "$HIGHER" == "$CDN_LATEST" ]]; then
+              CANDIDATE="$(bump_patch "$CDN_LATEST")"
+            fi
+          fi
+
+          echo "computed=${COMPUTED} base=${BASE} cdn_latest=${CDN_LATEST:-none} => ${CANDIDATE}"
+          echo "simple_version=${CANDIDATE}" >> "$GITHUB_OUTPUT"
 
   ps2-compile:
     name: PS2 compile hello (${{ matrix.os }})
@@ -149,7 +171,7 @@ jobs:
           Write-Host "hello.z64 ok file_bytes=$($bytes.Length)"
 
   build:
-    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    if: ${{ github.event_name != 'pull_request' }}
     needs: [test, resolve-version]
     runs-on: ubuntu-latest
     strategy:
@@ -158,102 +180,441 @@ jobs:
         include:
           - goos: linux
             goarch: amd64
-            artifact: blazium-toolchain
+            hub_arch: x86_64
+            output: blazium-toolchain
           - goos: linux
-            goarch: arm64
-            artifact: blazium-toolchain
+            goarch: 386
+            hub_arch: x86_32
+            output: blazium-toolchain
           - goos: windows
             goarch: amd64
-            artifact: blazium-toolchain.exe
-          - goos: darwin
-            goarch: amd64
-            artifact: blazium-toolchain
-          - goos: darwin
-            goarch: arm64
-            artifact: blazium-toolchain
+            hub_arch: x86_64
+            output: blazium-toolchain.exe
+          - goos: windows
+            goarch: 386
+            hub_arch: x86_32
+            output: blazium-toolchain.exe
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version: "1.23.8"
-      - name: Build
+
+      - name: Install GPG
+        run: sudo apt-get update && sudo apt-get install -y gnupg
+
+      - name: Import GPG key
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          VERSION: ${{ needs.resolve-version.outputs.version }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+      - name: Build application
         run: |
           set -euo pipefail
-          mkdir -p dist
-          go build -trimpath -ldflags "-s -w -X github.com/blazium-games/blazium-toolchain/internal/app.Version=${VERSION}" \
-            -o "dist/${{ matrix.artifact }}" ./cmd/blazium-toolchain
-      - name: Upload
-        uses: actions/upload-artifact@v4
+          export CGO_ENABLED=0
+          export GOOS=${{ matrix.goos }}
+          export GOARCH=${{ matrix.goarch }}
+          mkdir -p build
+          go build -trimpath -ldflags "-s -w -X github.com/blazium-games/blazium-toolchain/internal/app.Version=${{ needs.resolve-version.outputs.simple_version }}" \
+            -o "./build/${{ matrix.output }}" ./cmd/blazium-toolchain
+
+      - name: Compute sha256
+        id: digest
+        run: |
+          SHA256=$(sha256sum build/${{ matrix.output }} | awk '{print $1}')
+          SIZE=$(stat -c%s build/${{ matrix.output }})
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+
+      - name: GPG Signing build
+        if: ${{ matrix.goos != 'windows' }}
+        run: |
+          gpg --batch --yes \
+            --output build/${{ matrix.output }}.sig --detach-sign build/${{ matrix.output }}
+
+      - name: Prepare signed dir (Windows)
+        if: ${{ matrix.goos == 'windows' }}
+        run: mkdir -p signed
+
+      - uses: bioblaze/sslcom-code-signer@v5
+        name: Windows Signing
+        if: ${{ matrix.goos == 'windows' }}
+        continue-on-error: true
+        id: windows_sign
         with:
-          name: blazium-toolchain-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/${{ matrix.artifact }}
-          if-no-files-found: error
+          command: sign
+          username: ${{ secrets.ES_USERNAME }}
+          password: ${{ secrets.ES_PASSWORD }}
+          credential_id: ${{ secrets.CREDENTIAL_ID }}
+          totp_secret: ${{ secrets.ES_TOTP_SECRET }}
+          file_path: ./build/${{ matrix.output }}
+          output_path: ./signed
+          environment_name: PROD
+
+      - name: Prepare Windows artifact
+        if: ${{ matrix.goos == 'windows' }}
+        id: windows_artifact
+        run: |
+          set -euo pipefail
+          mkdir -p signed
+          DEST="./signed/${{ matrix.output }}"
+
+          if [ -f "$DEST" ]; then
+            echo "Using signed Windows binary at $DEST"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          elif SIGNED="$(find ./signed -type f -name '${{ matrix.output }}' | head -n 1)" && [ -n "$SIGNED" ]; then
+            cp "$SIGNED" "$DEST"
+            echo "Using signed Windows binary from $SIGNED"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Windows code signing failed; publishing unsigned build artifact." >&2
+            cp "./build/${{ matrix.output }}" "$DEST"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          ls -la ./signed/
+
+      - name: Upload artifacts (unix)
+        uses: actions/upload-artifact@v4
+        if: ${{ matrix.goos != 'windows' }}
+        with:
+          name: signed-${{ matrix.goos }}-${{ matrix.hub_arch }}
+          path: |
+            build/blazium-toolchain
+            build/blazium-toolchain.sig
+
+      - name: Upload artifacts (windows)
+        uses: actions/upload-artifact@v4
+        if: ${{ matrix.goos == 'windows' }}
+        with:
+          name: signed-windows-${{ matrix.hub_arch }}
+          path: signed/blazium-toolchain.exe
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}
+          out_dir: toolchain/${{ matrix.goos }}/${{ matrix.hub_arch }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}
+          out_dir: toolchain/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ needs.resolve-version.outputs.simple_version }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        if: ${{ matrix.goos != 'windows' }}
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}.sig
+          out_dir: toolchain/${{ matrix.goos }}/${{ matrix.hub_arch }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        if: ${{ matrix.goos != 'windows' }}
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}.sig
+          out_dir: toolchain/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ needs.resolve-version.outputs.simple_version }}
+
+      - name: Updating Cerebro
+        env:
+          URL: https://cdn.blazium.app/toolchain/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ needs.resolve-version.outputs.simple_version }}/${{ matrix.output }}
+        run: |
+          if [[ "${{ matrix.goos }}" != "windows" ]]; then
+            SIG_URL="${URL}.sig"
+            SIGNING="gpg"
+          elif [[ "${{ steps.windows_artifact.outputs.signed }}" == "true" ]]; then
+            SIG_URL=""
+            SIGNING="sslcom"
+          else
+            SIG_URL=""
+            SIGNING=""
+          fi
+
+          curl -s -X POST "${{ secrets.CEREBRO_URL }}/api/v1/tools" \
+          -H "Content-Type: application/json" \
+          -H "BLAZIUM_AUTH: ${{ secrets.BLAZIUM_AUTH }}" \
+          -d "$(cat <<EOF
+          {
+            "name": "Blazium Toolchain",
+            "type": "toolchain",
+            "version": "${{ needs.resolve-version.outputs.simple_version }}",
+            "os": "${{ matrix.goos }}",
+            "arch": "${{ matrix.hub_arch }}",
+            "file": "$URL",
+            "sig": "$SIG_URL",
+            "sha256": "${{ steps.digest.outputs.sha256 }}",
+            "size": ${{ steps.digest.outputs.size }},
+            "signing": "$SIGNING",
+            "released_on": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          }
+          EOF
+          )"
+
+  manifest:
+    needs: [resolve-version, build]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.8"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-linux-x86_64
+          path: artifacts/linux/x86_64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-linux-x86_32
+          path: artifacts/linux/x86_32
+
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        id: download_windows_64
+        with:
+          name: signed-windows-x86_64
+          path: artifacts/windows/x86_64
+
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        id: download_windows_32
+        with:
+          name: signed-windows-x86_32
+          path: artifacts/windows/x86_32
+
+      - name: Download Windows toolchain fallback from CDN
+        if: steps.download_windows_64.outcome != 'success' || steps.download_windows_32.outcome != 'success'
+        run: |
+          set -euo pipefail
+          MANIFEST="$(curl -fsSL https://cdn.blazium.app/toolchain/toolchain.json || echo '{}')"
+          VERSION="${{ needs.resolve-version.outputs.simple_version }}"
+          fetch_arch() {
+            local arch="$1"
+            local dest="artifacts/windows/${arch}/blazium-toolchain.exe"
+            if [ -f "$dest" ]; then
+              return 0
+            fi
+            mkdir -p "artifacts/windows/${arch}"
+            URL="$(echo "$MANIFEST" | jq -r --arg v "$VERSION" --arg a "$arch" '.versions[$v].downloads[]? | select(.platform=="windows" and .arch==$a) | .download_url' | head -n 1)"
+            if [ -z "$URL" ] || [ "$URL" = "null" ]; then
+              URL="$(echo "$MANIFEST" | jq -r --arg a "$arch" '.versions[.latest].downloads[]? | select(.platform=="windows" and .arch==$a) | .download_url' | head -n 1)"
+            fi
+            if [ -z "$URL" ] || [ "$URL" = "null" ]; then
+              echo "Could not resolve Windows toolchain download URL for arch=$arch from toolchain.json." >&2
+              return 1
+            fi
+            curl -fsSL "$URL" -o "$dest"
+          }
+          if [[ "${{ steps.download_windows_64.outcome }}" != "success" ]]; then
+            fetch_arch x86_64
+          fi
+          if [[ "${{ steps.download_windows_32.outcome }}" != "success" ]]; then
+            fetch_arch x86_32 || true
+          fi
+
+      - name: Ensure Windows x86_64 artifact exists
+        run: |
+          set -euo pipefail
+          test -f artifacts/windows/x86_64/blazium-toolchain.exe
+
+      - name: Normalize artifact layout
+        run: |
+          set -euo pipefail
+          normalize_dir() {
+            local dir="$1"
+            [ -d "$dir" ] || return 0
+            if [ -d "${dir}/build" ]; then
+              mv "${dir}/build/"* "${dir}/" 2>/dev/null || true
+              rmdir "${dir}/build" 2>/dev/null || true
+            fi
+            if [ -d "${dir}/signed" ]; then
+              mv "${dir}/signed/"* "${dir}/" 2>/dev/null || true
+              rmdir "${dir}/signed" 2>/dev/null || true
+            fi
+          }
+          for d in artifacts/linux/x86_64 artifacts/linux/x86_32 artifacts/windows/x86_64 artifacts/windows/x86_32; do
+            normalize_dir "$d"
+          done
+          ls -laR artifacts/
+
+      - name: Download existing manifest
+        continue-on-error: true
+        run: curl -fsSL https://cdn.blazium.app/toolchain/toolchain.json -o existing-toolchain.json
+
+      - name: Generate toolchain.json
+        env:
+          CEREBRO_MANIFEST: ${{ secrets.CEREBRO_URL }}/api/v1/tools/toolchain/manifest
+        run: |
+          ARGS=(--version "${{ needs.resolve-version.outputs.simple_version }}" --artifacts artifacts --out toolchain.json)
+          if [ -f existing-toolchain.json ]; then
+            ARGS+=(--base-manifest existing-toolchain.json)
+          fi
+          if [ -n "$CEREBRO_MANIFEST" ]; then
+            ARGS+=(--cerebro-manifest "$CEREBRO_MANIFEST")
+          fi
+          go run ./cmd/generate-toolchain-manifest "${ARGS[@]}"
+
+      - name: Verify toolchain.json checksums
+        run: |
+          chmod +x scripts/verify-toolchain-manifest.sh
+          scripts/verify-toolchain-manifest.sh \
+            --manifest toolchain.json \
+            --version "${{ needs.resolve-version.outputs.simple_version }}" \
+            --artifacts artifacts
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: toolchain.json
+          out_dir: toolchain
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: toolchain.json
+          out_dir: toolchain/${{ needs.resolve-version.outputs.simple_version }}
 
   github-release:
     name: GitHub Release
-    needs: [resolve-version, build, ps2-compile, n64-compile]
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch')
+    needs: [resolve-version, manifest, ps2-compile, n64-compile]
+    if: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: ver
+        run: |
+          set -euo pipefail
+          V="${{ needs.resolve-version.outputs.simple_version }}"
+          test -n "$V"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "tag=v$V" >> "$GITHUB_OUTPUT"
+
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts
-      - name: Stage assets
-        env:
-          VERSION: ${{ needs.resolve-version.outputs.version }}
+          name: signed-linux-x86_64
+          path: artifacts/linux/x86_64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-linux-x86_32
+          path: artifacts/linux/x86_32
+
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        id: download_windows_64
+        with:
+          name: signed-windows-x86_64
+          path: artifacts/windows/x86_64
+
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        id: download_windows_32
+        with:
+          name: signed-windows-x86_32
+          path: artifacts/windows/x86_32
+
+      - name: Normalize and stage release assets
         run: |
           set -euo pipefail
-          mkdir -p release-assets
-          stage() {
-            local src="$1" dest="$2"
-            if [[ -f "$src" ]]; then
-              cp "$src" "release-assets/$dest"
+          normalize_dir() {
+            local dir="$1"
+            [ -d "$dir" ] || return 0
+            if [ -d "${dir}/build" ]; then
+              mv "${dir}/build/"* "${dir}/" 2>/dev/null || true
+              rmdir "${dir}/build" 2>/dev/null || true
+            fi
+            if [ -d "${dir}/signed" ]; then
+              mv "${dir}/signed/"* "${dir}/" 2>/dev/null || true
+              rmdir "${dir}/signed" 2>/dev/null || true
             fi
           }
-          stage artifacts/blazium-toolchain-linux-amd64/blazium-toolchain blazium-toolchain-linux-amd64
-          stage artifacts/blazium-toolchain-linux-arm64/blazium-toolchain blazium-toolchain-linux-arm64
-          stage artifacts/blazium-toolchain-windows-amd64/blazium-toolchain.exe blazium-toolchain-windows-amd64.exe
-          stage artifacts/blazium-toolchain-darwin-amd64/blazium-toolchain blazium-toolchain-darwin-amd64
-          stage artifacts/blazium-toolchain-darwin-arm64/blazium-toolchain blazium-toolchain-darwin-arm64
-          cp manifest.json release-assets/manifest.json
-          test -f release-assets/blazium-toolchain-linux-amd64
-          test -f release-assets/blazium-toolchain-windows-amd64.exe
-          ls -la release-assets
-      - name: Create or update release
+          for d in artifacts/linux/x86_64 artifacts/linux/x86_32 artifacts/windows/x86_64 artifacts/windows/x86_32; do
+            normalize_dir "$d"
+          done
+          mkdir -p release-assets
+          stage() {
+            local src="$1"
+            local dest="$2"
+            if [ -f "$src" ]; then
+              cp "$src" "release-assets/${dest}"
+            fi
+          }
+          stage artifacts/linux/x86_64/blazium-toolchain blazium-toolchain-linux-x86_64
+          stage artifacts/linux/x86_64/blazium-toolchain.sig blazium-toolchain-linux-x86_64.sig
+          stage artifacts/linux/x86_32/blazium-toolchain blazium-toolchain-linux-x86_32
+          stage artifacts/linux/x86_32/blazium-toolchain.sig blazium-toolchain-linux-x86_32.sig
+          stage artifacts/windows/x86_64/blazium-toolchain.exe blazium-toolchain-windows-x86_64.exe
+          stage artifacts/windows/x86_32/blazium-toolchain.exe blazium-toolchain-windows-x86_32.exe
+          test -f release-assets/blazium-toolchain-linux-x86_64
+          test -f release-assets/blazium-toolchain-windows-x86_64.exe
+          ls -la release-assets/
+
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.resolve-version.outputs.version }}
+          VER: ${{ steps.ver.outputs.version }}
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
           set -euo pipefail
-          TAG="v${VERSION}"
           mapfile -t FILES < <(find release-assets -type f | sort)
-          test "${#FILES[@]}" -ge 3
-          NOTES="blazium-toolchain ${VERSION}
+          test "${#FILES[@]}" -ge 2
+          NOTES="blazium-toolchain ${VER}
 
           Official Blazium console toolchain manager (GPL-3.0-or-later).
           The MIT guest is embedded. Compilers are fetched by \`ps1 setup\`.
 
           | Platform | Arch | Asset |
-          |----------|------|-------|
-          | Linux | amd64 | \`blazium-toolchain-linux-amd64\` |
-          | Linux | arm64 | \`blazium-toolchain-linux-arm64\` |
-          | Windows | amd64 | \`blazium-toolchain-windows-amd64.exe\` |
-          | macOS | amd64 | \`blazium-toolchain-darwin-amd64\` |
-          | macOS | arm64 | \`blazium-toolchain-darwin-arm64\` |
+          |----------|------|--------|
+          | Linux | x86_64 | \`blazium-toolchain-linux-x86_64\` |
+          | Linux | x86_32 | \`blazium-toolchain-linux-x86_32\` |
+          | Windows | x86_64 | \`blazium-toolchain-windows-x86_64.exe\` |
+          | Windows | x86_32 | \`blazium-toolchain-windows-x86_32.exe\` |
+
+          CDN:
+          - Manifest: https://cdn.blazium.app/toolchain/toolchain.json
+          - Binaries: https://cdn.blazium.app/toolchain/{os}/{arch}/${VER}/
+
+          Install via Hub or:
+          \`\`\`
+          blazium-cli update apply --product toolchain
+          \`\`\`
           "
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "${FILES[@]}" --clobber
           else
             gh release create "$TAG" "${FILES[@]}" \
-              --title "blazium-toolchain ${VERSION}" \
+              --title "blazium-toolchain ${VER}" \
               --notes "$NOTES" \
-              --target "$GITHUB_SHA"
+              --target "$GITHUB_SHA" \
+              --latest
           fi
           gh release view "$TAG"
