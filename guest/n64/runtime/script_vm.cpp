@@ -97,11 +97,86 @@ static unsigned s_len;
 static int s_ready;
 static int s_kit_player = 1;
 static int s_kit_follow;
+static int s_kit_spawn;
+static int s_kit_portal;
 static float s_grav_vy;
 static float s_px, s_py, s_pz;
 static float s_ck_x, s_ck_y, s_ck_z;
 static float s_stack[8];
 static int s_sp;
+
+enum { kNodeRowBytes = 74 };
+
+static int name_is(const char *a, const char *b)
+{
+	if (!a || !b) {
+		return 0;
+	}
+	while (*a && *b) {
+		char ca = *a++;
+		char cb = *b++;
+		if (ca >= 'A' && ca <= 'Z') {
+			ca = (char)(ca - 'A' + 'a');
+		}
+		if (cb >= 'A' && cb <= 'Z') {
+			cb = (char)(cb - 'A' + 'a');
+		}
+		if (ca != cb) {
+			return 0;
+		}
+	}
+	return *a == *b;
+}
+
+static float read_f32le(const unsigned char *p)
+{
+	unsigned bits = (unsigned)p[0] | ((unsigned)p[1] << 8) | ((unsigned)p[2] << 16) | ((unsigned)p[3] << 24);
+	float f;
+	memcpy(&f, &bits, sizeof(f));
+	return f;
+}
+
+static void bind_kit_from_node(const unsigned char *node, unsigned node_sz)
+{
+	s_kit_spawn = 0;
+	s_kit_portal = 0;
+	if (!node || node_sz < 8) {
+		return;
+	}
+	if (node[0] != 'N' || node[1] != 'O' || node[2] != 'D' || node[3] != 'E') {
+		return;
+	}
+	const unsigned abi = (unsigned)node[4] | ((unsigned)node[5] << 8);
+	const unsigned n = (unsigned)node[6] | ((unsigned)node[7] << 8);
+	if (abi != (unsigned)BLAZIUM_N64_COOK_ABI) {
+		return;
+	}
+	if (8u + n * (unsigned)kNodeRowBytes > node_sz) {
+		return;
+	}
+	for (unsigned i = 0; i < n; i++) {
+		const unsigned char *row = node + 8 + i * (unsigned)kNodeRowBytes;
+		char name[33];
+		memcpy(name, row + 42, 32);
+		name[32] = 0;
+		if (name_is(name, "Spawn")) {
+			const float x = read_f32le(row + 6);
+			const float y = read_f32le(row + 10);
+			const float z = read_f32le(row + 14);
+			s_kit_spawn = 1;
+			s_px = x;
+			s_py = y;
+			s_pz = z;
+			s_ck_x = x;
+			s_ck_y = y;
+			s_ck_z = z;
+			sys_io_spawn_ofs(x, y, z);
+		}
+		if (name_is(name, "Portal")) {
+			s_kit_portal = 1;
+		}
+	}
+}
 
 static float popf(void)
 {
@@ -178,8 +253,7 @@ int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 	s_len = 0;
 	s_ready = 0;
 	s_sp = 0;
-	(void)node;
-	(void)node_sz;
+	bind_kit_from_node(node, node_sz);
 	(void)pack_io_find_path("res://STREAM");
 	if (!scrp || scrp_sz < 8) {
 		return 0;
@@ -373,7 +447,7 @@ int script_vm_ready(void)
 
 int script_vm_kit_spawn(void)
 {
-	return 1;
+	return s_kit_spawn;
 }
 
 int script_vm_kit_player(void)
@@ -383,7 +457,7 @@ int script_vm_kit_player(void)
 
 int script_vm_kit_portal(void)
 {
-	return 1;
+	return s_kit_portal;
 }
 
 int script_vm_kit_checkpoint(void)

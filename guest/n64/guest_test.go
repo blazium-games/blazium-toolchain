@@ -160,6 +160,7 @@ func TestGuestScriptKitParity(t *testing.T) {
 	for _, want := range []string{
 		"OP_INPUT_TRANSLATE", "OP_USER_SAVE", "OP_KIT_TICK", "Checkpoint",
 		"s_kit_player", "pad_io_stick", "sys_io_spawn_ofs", "do_checkpoint",
+		"Spawn", "Portal", "bind_kit_from_node", "s_kit_spawn", "s_kit_portal",
 		"NAT_SET_CHECKPOINT", "NAT_RESPAWN", "s_grav_vy", "s_kit_follow",
 		"OP_SAY", "OP_PLAY_FMV", "OP_PLAY_MUSIC", "OP_MUSIC_VOL",
 		"OP_LOOK_STICK", "OP_SHAKE_CAMERA", "OP_TWEEN", "OP_TIMER",
