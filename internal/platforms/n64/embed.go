@@ -22,6 +22,7 @@ func cookSlices(opts platforms.BuildOptions) []cookSlice {
 		{flag: "node", src: opts.Node, bin: "NODE00.bin", symbol: "cooked_node", define: "BLAZIUM_N64_HAS_NODE"},
 		{flag: "mesh", src: opts.Mesh, bin: "MESH00.bin", symbol: "cooked_mesh", define: "BLAZIUM_N64_HAS_MESH"},
 		{flag: "ntex", src: opts.Ntex, bin: "NTEX00.bin", symbol: "cooked_ntex", define: "BLAZIUM_N64_HAS_NTEX"},
+		{flag: "inp", src: opts.Inp, bin: "INP600.bin", symbol: "cooked_inp", define: "BLAZIUM_N64_HAS_INP"},
 		{flag: "script", src: opts.Script, bin: "SCRP00.bin", symbol: "cooked_script", define: "BLAZIUM_N64_HAS_SCRIPT"},
 		{flag: "gdbc", src: opts.Gdbc, bin: "GDBC00.bin", symbol: "cooked_gdbc", define: "BLAZIUM_N64_HAS_GDBC"},
 		{flag: "luau", src: opts.Luau, bin: "LUAU00.bin", symbol: "cooked_luau", define: "BLAZIUM_N64_HAS_LUAU"},

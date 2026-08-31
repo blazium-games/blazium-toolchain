@@ -213,6 +213,45 @@ func TestStageCookEmbedNtex(t *testing.T) {
 	}
 }
 
+func TestStageCookEmbedInp(t *testing.T) {
+	dir := t.TempDir()
+	inp := filepath.Join(dir, "in-inp.bin")
+	if err := os.WriteFile(inp, []byte("INP6\x01\x00"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(dir, "src")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	opts := platforms.BuildOptions{Inp: inp}
+	if !hasCookSlices(opts) {
+		t.Fatal("expected inp cook slice")
+	}
+	if err := stageCookEmbed(dest, opts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "INP600.bin")); err != nil {
+		t.Fatal(err)
+	}
+	flags, err := os.ReadFile(filepath.Join(dest, "cook_flags.h"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(flags), "BLAZIUM_N64_HAS_INP") {
+		t.Fatalf("%s", flags)
+	}
+	asm, err := os.ReadFile(filepath.Join(dest, "cook_embed.S"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(asm), "size_cooked_") {
+		t.Fatal("size word after incbin breaks mips64-elf GP relocs")
+	}
+	if !strings.Contains(string(asm), "cooked_inp_end") {
+		t.Fatalf("need end label: %s", asm)
+	}
+}
+
 func TestRunRequiresRom(t *testing.T) {
 	err := New().Run(context.Background(), platforms.RunOptions{
 		CommonOptions: platforms.CommonOptions{Prefix: t.TempDir()},

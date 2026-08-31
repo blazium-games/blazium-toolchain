@@ -95,6 +95,17 @@ func TestGuestIOParity(t *testing.T) {
 	if !strings.Contains(string(pad), "pad_io_pressed") || !strings.Contains(string(pad), "pad_io_stick") || !strings.Contains(string(pad), "pad_io_set_deadzone") {
 		t.Fatal("pad_io.h must expose Input action/stick/deadzone")
 	}
+	padSrc, err := files.ReadFile("runtime/pad_io.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	psrc := string(padSrc)
+	if !strings.Contains(psrc, "cooked_inp") || !strings.Contains(psrc, "INP6") {
+		t.Fatal("pad_io.cpp must read cooked INP6")
+	}
+	if strings.Contains(psrc, "TIM") || strings.Contains(psrc, "GTEX") {
+		t.Fatal("pad_io.cpp must not use TIM/GTEX")
+	}
 	pack, err := files.ReadFile("runtime/pack_io.cpp")
 	if err != nil {
 		t.Fatal(err)
