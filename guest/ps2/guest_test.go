@@ -54,7 +54,7 @@ func TestGuestPack1AndDisp(t *testing.T) {
 	}
 	src := string(pack)
 	if (!strings.Contains(src, "MESH01") && !strings.Contains(src, "MESH%02d")) || !strings.Contains(src, "pack_io_swap") {
-		t.Fatal("pack_io.cpp must load MESH%02d / MESH01 and expose pack_io_swap")
+		t.Fatalf("%s", "pack_io.cpp must load MESH%02d / MESH01 and expose pack_io_swap")
 	}
 	if !strings.Contains(src, "STREAM") {
 		t.Fatal("pack_io.cpp must read STREAM.bin for extra packs")
@@ -98,7 +98,7 @@ func TestGuestPack1AndDisp(t *testing.T) {
 		t.Fatal("sfx_io.cpp must load MUSIC00 and expose sfx_io_music_play")
 	}
 	if !strings.Contains(string(sfx), "SFX%02d") || !strings.Contains(string(sfx), "sfx_io_load") || !strings.Contains(string(sfx), "sfx_io_unload") {
-		t.Fatal("sfx_io.cpp must load SFX%02d.bin and expose sfx_io_load/unload")
+		t.Fatalf("%s", "sfx_io.cpp must load SFX%02d.bin and expose sfx_io_load/unload")
 	}
 	if !strings.Contains(string(sfx), "ADPCM_LOOP") || !strings.Contains(string(sfx), "0x10000") {
 		t.Fatal("sfx_io.cpp must loop music VAG on SPU addr 0x10000")
@@ -372,7 +372,7 @@ func TestGuestSysIO(t *testing.T) {
 		t.Fatal("sys_io.cpp must load CAM/HUD/NAV sidecars")
 	}
 	if !strings.Contains(src, "sys_io_load_pack") || !strings.Contains(src, "CAM%02d") {
-		t.Fatal("sys_io.cpp must reload CAM%02d per pack")
+		t.Fatalf("%s", "sys_io.cpp must reload CAM%02d per pack")
 	}
 	if !strings.Contains(src, "sys_io_say_done") || !strings.Contains(src, "s_hud_kind") {
 		t.Fatal("sys_io.cpp must expose say_done and button HUD kinds")

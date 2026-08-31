@@ -154,10 +154,17 @@ func TestLookBashSkipsWSLLauncher(t *testing.T) {
 }
 
 func TestForbiddenUltra(t *testing.T) {
-	if !forbiddenUltra(`C:\ultra`) || !forbiddenUltra(`C:\ultra\GCC\MIPSE\BIN`) {
+	official := filepath.Clean("/ultra")
+	officialBin := filepath.Join(official, "GCC", "MIPSE", "BIN")
+	if !forbiddenUltra(official) || !forbiddenUltra(officialBin) {
 		t.Fatal("must reject official SDK paths")
 	}
-	if forbiddenUltra(`C:\n64-toolchain`) || forbiddenUltra(t.TempDir()) {
+	if runtime.GOOS == "windows" {
+		if !forbiddenUltra(`C:\ultra`) || !forbiddenUltra(`C:\ultra\GCC\MIPSE\BIN`) {
+			t.Fatal("must reject official Windows SDK paths")
+		}
+	}
+	if forbiddenUltra(filepath.Clean("/n64-toolchain")) || forbiddenUltra(t.TempDir()) {
 		t.Fatal("must not reject a normal prefix")
 	}
 }
@@ -610,6 +617,9 @@ func TestOfficialAresURLWindows(t *testing.T) {
 }
 
 func TestSetupDevFetchesAres(t *testing.T) {
+	if officialAresURL() == "" {
+		t.Skip("no official Ares zip for this host")
+	}
 	dir := t.TempDir()
 	plantCompileTools(t, dir)
 	t.Setenv("N64_INST", "")

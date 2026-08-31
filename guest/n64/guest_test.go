@@ -142,7 +142,7 @@ func TestGuestIOParity(t *testing.T) {
 		t.Fatal("pack_io.cpp must seed a SAVE slot and wait for EEPROM idle")
 	}
 	if !strings.Contains(ps, "pack_io_poke") || !strings.Contains(ps, "MESH%02d") || !strings.Contains(ps, "STREAM") {
-		t.Fatal("pack_io.cpp must poke/peek and load MESH%02d / STREAM")
+		t.Fatalf("%s", "pack_io.cpp must poke/peek and load MESH%02d / STREAM")
 	}
 	if !strings.Contains(ps, "fread") || !strings.Contains(ps, "rom://PACK") {
 		t.Fatal("pack_io.cpp must fread extra packs from rom://PACK")
@@ -224,7 +224,7 @@ func TestGuestDrawGoldFallback(t *testing.T) {
 		t.Fatal("rdpq_draw must expose camera/fade")
 	}
 	if !strings.Contains(src, "rdpq_draw_rebind") || !strings.Contains(src, "MESH%02d") {
-		t.Fatal("rdpq_draw must rebind MESH%02d after pack swap")
+		t.Fatalf("%s", "rdpq_draw must rebind MESH%02d after pack swap")
 	}
 }
 
