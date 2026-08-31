@@ -3,6 +3,7 @@ package n64
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -643,5 +644,156 @@ func TestProject64LinuxRejected(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected project64 linux refusal")
+	}
+}
+
+// fakeEmuRunner records spawned names. hang=true waits on ctx (smoke success).
+type fakeEmuRunner struct {
+	names []string
+	hang  func(name string) bool
+}
+
+func (f *fakeEmuRunner) LookPath(name string) (string, error) { return name, nil }
+
+func (f *fakeEmuRunner) Run(ctx context.Context, name string, args []string, stdout, stderr io.Writer) error {
+	return f.RunEnv(ctx, name, args, nil, nil, stdout, stderr)
+}
+
+func (f *fakeEmuRunner) RunEnv(ctx context.Context, name string, args []string, _ []string, _ map[string]string, _, _ io.Writer) error {
+	f.names = append(f.names, name)
+	if f.hang == nil || f.hang(name) {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return nil
+}
+
+func writeTinyZ64(t *testing.T, dir string) string {
+	t.Helper()
+	rom := filepath.Join(dir, "g.z64")
+	raw := make([]byte, 64)
+	copy(raw, z64Magic)
+	if err := os.WriteFile(rom, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return rom
+}
+
+func plantAresDummy(t *testing.T, dir string) string {
+	t.Helper()
+	ares := filepath.Join(dir, "ares.exe")
+	if err := os.WriteFile(ares, []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return ares
+}
+
+func plantPj64ReadyTree(t *testing.T, dir string) string {
+	t.Helper()
+	pj := filepath.Join(dir, "Project64.exe")
+	if err := os.WriteFile(pj, []byte("mz"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "GFX"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "GFX", "parallel-rdp.dll"), []byte("p"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return pj
+}
+
+func emuBaseHas(names []string, part string) bool {
+	part = strings.ToLower(part)
+	for _, n := range names {
+		if strings.Contains(strings.ToLower(filepath.Base(n)), part) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestRunBothSucceedsWhenBothHang(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows Project64 dual-emu")
+	}
+	dir := t.TempDir()
+	rom := writeTinyZ64(t, dir)
+	ares := plantAresDummy(t, dir)
+	pj := plantPj64ReadyTree(t, dir)
+	t.Setenv("ARES_EXE", ares)
+	t.Setenv("PROJECT64_EXE", pj)
+	fake := &fakeEmuRunner{hang: func(string) bool { return true }}
+	var buf bytes.Buffer
+	err := (&Tool{Runner: fake}).Run(context.Background(), platforms.RunOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir, Stdout: &buf},
+		Exe:           rom,
+		Emu:           "both",
+		Timeout:       50 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("both hanging must succeed: %v\n%s", err, buf.String())
+	}
+	if !emuBaseHas(fake.names, "ares") || !emuBaseHas(fake.names, "project64") {
+		t.Fatalf("must invoke both, got %v", fake.names)
+	}
+}
+
+func TestRunBothFailsWhenOnlyAresRan(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows Project64 dual-emu")
+	}
+	dir := t.TempDir()
+	rom := writeTinyZ64(t, dir)
+	ares := plantAresDummy(t, dir)
+	pj := plantPj64ReadyTree(t, dir)
+	t.Setenv("ARES_EXE", ares)
+	t.Setenv("PROJECT64_EXE", pj)
+	fake := &fakeEmuRunner{hang: func(name string) bool {
+		return strings.Contains(strings.ToLower(filepath.Base(name)), "ares")
+	}}
+	var buf bytes.Buffer
+	err := (&Tool{Runner: fake}).Run(context.Background(), platforms.RunOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir, Stdout: &buf},
+		Exe:           rom,
+		Emu:           "both",
+		Timeout:       50 * time.Millisecond,
+	})
+	if err == nil {
+		t.Fatal("one-emu must not be CI green when both validators are installed")
+	}
+	if errors.Is(err, platforms.ErrMissingTool) {
+		t.Fatalf("must not wrap ErrMissingTool: %v", err)
+	}
+	if !strings.Contains(err.Error(), "one-emu is not CI green when both validators are installed") {
+		t.Fatalf("got %v\n%s", err, buf.String())
+	}
+	if !emuBaseHas(fake.names, "ares") || !emuBaseHas(fake.names, "project64") {
+		t.Fatalf("must invoke both, got %v", fake.names)
+	}
+}
+
+func TestRunBothSkipsMissingPj64(t *testing.T) {
+	dir := t.TempDir()
+	rom := writeTinyZ64(t, dir)
+	ares := plantAresDummy(t, dir)
+	t.Setenv("ARES_EXE", ares)
+	t.Setenv("PROJECT64_EXE", filepath.Join(dir, "missing-pj64.exe"))
+	fake := &fakeEmuRunner{hang: func(string) bool { return true }}
+	var buf bytes.Buffer
+	err := (&Tool{Runner: fake}).Run(context.Background(), platforms.RunOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir, Stdout: &buf},
+		Exe:           rom,
+		Emu:           "both",
+		Timeout:       50 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("missing PJ64 must skip+print, not fail: %v\n%s", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "skip project64") {
+		t.Fatalf("expected skip print, got %q", buf.String())
+	}
+	if emuBaseHas(fake.names, "project64") {
+		t.Fatalf("must not spawn missing PJ64: %v", fake.names)
 	}
 }

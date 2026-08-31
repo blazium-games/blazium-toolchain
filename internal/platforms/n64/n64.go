@@ -273,6 +273,8 @@ func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
 	wantPJ := emu == "project64" || emu == "both"
 	ran := 0
 	skipped := []string{}
+	aresReady := wantAres && fileExists(env["ARES_EXE"])
+	pj64Ready := false
 
 	if wantAres {
 		ares := env["ARES_EXE"]
@@ -314,6 +316,7 @@ func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
 				fmt.Fprintln(opts.Stdout, pj64SkipPlugin)
 			}
 		} else {
+			pj64Ready = true
 			if err := t.runOneEmu(ctx, "project64", pj, abs, timeout, opts); err != nil {
 				if pj64PluginInitFail(err) {
 					skipped = append(skipped, "project64 (video plugin failed to init)")
@@ -338,6 +341,9 @@ func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
 
 	if opts.Stdout != nil && len(skipped) > 0 {
 		fmt.Fprintf(opts.Stdout, "validators skipped: %s\n", strings.Join(skipped, ", "))
+	}
+	if emu == "both" && aresReady && pj64Ready && ran < 2 {
+		return fmt.Errorf("one-emu is not CI green when both validators are installed")
 	}
 	if ran == 0 {
 		// One-click asks for a single host emu; skip+print is success. CI --emu both still fails if nothing booted.
