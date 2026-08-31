@@ -234,6 +234,8 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	gtex := fs.String("gtex", "", "optional cooked GTEX (GS PSM) to embed in the PS2 guest")
 	ntex := fs.String("ntex", "", "optional cooked NTEX to embed in the N64 guest")
 	inp := fs.String("inp", "", "optional cooked INP600.bin to embed in the N64 guest")
+	sfx := fs.String("sfx", "", "optional cooked SFX00.wav (N64; toolchain runs audioconv64)")
+	music := fs.String("music", "", "optional cooked MUSIC00.wav (N64; toolchain runs audioconv64)")
 	vag := fs.String("vag", "", "optional cooked VAG to embed in the guest")
 	sprite := fs.String("sprite", "", "optional cooked SPRITE table to embed in the guest")
 	script := fs.String("script", "", "optional cooked SCRIPT.IR to embed in the guest")
@@ -254,7 +256,7 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Overlay: *overlay, ExportSrc: *exportSrc, Tim: *tim, Mesh: *mesh, Gtex: *gtex, Ntex: *ntex, Inp: *inp, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Overlay: *overlay, ExportSrc: *exportSrc, Tim: *tim, Mesh: *mesh, Gtex: *gtex, Ntex: *ntex, Inp: *inp, Sfx: *sfx, Music: *music, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way})
 }
 
 func runExportGuest(p platforms.Platform, args []string, base platforms.CommonOptions, stdout io.Writer) error {
@@ -634,7 +636,7 @@ N64 commands:
   env
   status
   build --out FILE.z64 [--src DIR | --sample helloworld|rdpqdemo] [--overlay DIR] [--export-src DIR]
-    [--ntex|--mesh|--node|--inp|--script|--gdbc|--luau]
+    [--ntex|--mesh|--node|--inp|--sfx|--music|--script|--gdbc|--luau]
   export-guest [--out DIR]
   run [--emu ares|project64|both] [--timeout 120s] GAME.z64
   rom --dir TREE --out FILE.z64 [--elf FILE.elf]

@@ -65,6 +65,8 @@ type BuildOptions struct {
 	Gtex   string // optional cooked GTEX (PS2 GS PSM; do not use Tim)
 	Ntex   string // optional cooked NTEX (N64; do not use Tim/Gtex)
 	Inp    string // optional cooked INP600.bin (N64 InputMap)
+	Sfx    string // optional cooked SFX00.wav (N64; audioconv64 → wav64)
+	Music  string // optional cooked MUSIC00.wav (N64; audioconv64 → wav64)
 	Vag    string // optional cooked VAG to embed (P5+)
 	Sprite string // optional cooked SPRITE table to embed (P8+)
 	Script string // optional cooked SCRIPT.IR / SCRP

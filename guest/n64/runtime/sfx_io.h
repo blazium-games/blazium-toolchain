@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 void sfx_io_init(void);
+void sfx_io_tick(void);
 int sfx_io_audible(void);
 void sfx_io_play(int id);
 void sfx_io_load(int id);

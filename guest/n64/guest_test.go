@@ -134,6 +134,12 @@ func TestGuestIOParity(t *testing.T) {
 	if !strings.Contains(string(sfx), "mixer_init") || !strings.Contains(string(sfx), "MUSIC00") || !strings.Contains(string(sfx), "sfx_io_audible") {
 		t.Fatal("sfx_io.cpp must use mixer and MUSIC00")
 	}
+	if !strings.Contains(string(sfx), "wav64_open") || !strings.Contains(string(sfx), "wav64_play") || !strings.Contains(string(sfx), "mixer_try_play") {
+		t.Fatal("sfx_io.cpp must play wav64 through the mixer")
+	}
+	if strings.Contains(string(sfx), "VAG") || strings.Contains(string(sfx), "libultra") {
+		t.Fatal("sfx_io.cpp must not use VAG or libultra audio")
+	}
 }
 
 func TestGuestScriptKitParity(t *testing.T) {

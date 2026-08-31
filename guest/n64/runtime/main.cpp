@@ -75,5 +75,6 @@ int main(void)
 			user_tick(1.0f / 60.0f);
 		}
 		rdpq_draw_frame();
+		sfx_io_tick();
 	}
 }

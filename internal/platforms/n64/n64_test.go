@@ -252,6 +252,59 @@ func TestStageCookEmbedInp(t *testing.T) {
 	}
 }
 
+func TestStageCookAudioCopiesWav(t *testing.T) {
+	dir := t.TempDir()
+	wav := filepath.Join(dir, "beep.wav")
+	// Minimal RIFF WAVE header + 4 bytes of silence.
+	raw := []byte{
+		'R', 'I', 'F', 'F', 36, 0, 0, 0, 'W', 'A', 'V', 'E',
+		'f', 'm', 't', ' ', 16, 0, 0, 0, 1, 0, 1, 0,
+		0x22, 0x56, 0, 0, 0x44, 0xAC, 0, 0, 2, 0, 16, 0,
+		'd', 'a', 't', 'a', 4, 0, 0, 0, 0, 0, 0, 0,
+	}
+	if err := os.WriteFile(wav, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(dir, "src")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	opts := platforms.BuildOptions{Sfx: wav, Music: wav}
+	if !hasCookAudio(opts) {
+		t.Fatal("expected sfx/music cook")
+	}
+	if err := stageCookEmbed(dest, opts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "assets", "SFX00.wav")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "assets", "MUSIC00.wav")); err != nil {
+		t.Fatal(err)
+	}
+	flags, err := os.ReadFile(filepath.Join(dest, "cook_flags.h"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(flags), "BLAZIUM_N64_HAS_SFX") || !strings.Contains(string(flags), "BLAZIUM_N64_HAS_MUSIC") {
+		t.Fatalf("%s", flags)
+	}
+	mk, err := os.ReadFile(filepath.Join(dest, "cook.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(mk), "SFX00.wav64") || !strings.Contains(string(mk), "$(ROMNAME).z64") {
+		t.Fatalf("%s", mk)
+	}
+	w64, err := os.ReadFile(filepath.Join(dest, "filesystem", "SFX00.wav64"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w64) < 4 || string(w64[0:4]) != "WV64" {
+		t.Fatalf("wav64 magic: %q", w64)
+	}
+}
+
 func TestRunRequiresRom(t *testing.T) {
 	err := New().Run(context.Background(), platforms.RunOptions{
 		CommonOptions: platforms.CommonOptions{Prefix: t.TempDir()},

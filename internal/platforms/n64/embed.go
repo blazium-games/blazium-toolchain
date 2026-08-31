@@ -29,13 +29,17 @@ func cookSlices(opts platforms.BuildOptions) []cookSlice {
 	}
 }
 
+func hasCookAudio(opts platforms.BuildOptions) bool {
+	return strings.TrimSpace(opts.Sfx) != "" || strings.TrimSpace(opts.Music) != ""
+}
+
 func hasCookSlices(opts platforms.BuildOptions) bool {
 	for _, s := range cookSlices(opts) {
 		if strings.TrimSpace(s.src) != "" {
 			return true
 		}
 	}
-	return false
+	return hasCookAudio(opts)
 }
 
 func stageCookEmbed(dest string, opts platforms.BuildOptions) error {
@@ -54,44 +58,97 @@ func stageCookEmbed(dest string, opts platforms.BuildOptions) error {
 		}
 		present = append(present, s)
 	}
-	if len(present) == 0 {
-		return nil
-	}
-
-	var asm strings.Builder
-	asm.WriteString("\t.section .rodata\n")
-	for _, s := range present {
-		// Start/end labels only. A .word size after .incbin lands in GP small-data
-		// and mips64-elf ld fails (R_MIPS_GPREL16) once NODE/MESH is non-empty.
-		asm.WriteString("\t.align 4\n")
-		asm.WriteString("\t.global " + s.symbol + "\n")
-		asm.WriteString("\t.global " + s.symbol + "_end\n")
-		asm.WriteString(s.symbol + ":\n")
-		asm.WriteString("\t.incbin \"" + s.bin + "\"\n")
-		asm.WriteString("\t.align 4\n")
-		asm.WriteString(s.symbol + "_end:\n")
-	}
-	if err := os.WriteFile(filepath.Join(dest, "cook_embed.S"), []byte(asm.String()), 0o644); err != nil {
-		return err
-	}
 
 	var hdr strings.Builder
 	hdr.WriteString("#pragma once\n")
-	for _, s := range present {
-		hdr.WriteString("#define " + s.define + " 1\n")
+	var mk strings.Builder
+	if len(present) > 0 {
+		var asm strings.Builder
+		asm.WriteString("\t.section .rodata\n")
+		for _, s := range present {
+			// Start/end labels only. A .word size after .incbin lands in GP small-data
+			// and mips64-elf ld fails (R_MIPS_GPREL16) once NODE/MESH is non-empty.
+			asm.WriteString("\t.align 4\n")
+			asm.WriteString("\t.global " + s.symbol + "\n")
+			asm.WriteString("\t.global " + s.symbol + "_end\n")
+			asm.WriteString(s.symbol + ":\n")
+			asm.WriteString("\t.incbin \"" + s.bin + "\"\n")
+			asm.WriteString("\t.align 4\n")
+			asm.WriteString(s.symbol + "_end:\n")
+		}
+		if err := os.WriteFile(filepath.Join(dest, "cook_embed.S"), []byte(asm.String()), 0o644); err != nil {
+			return err
+		}
+		for _, s := range present {
+			hdr.WriteString("#define " + s.define + " 1\n")
+		}
+		mk.WriteString("OBJS += $(BUILD_DIR)/cook_embed.o\n")
+		var flags []string
+		for _, s := range present {
+			flags = append(flags, "-D"+s.define+"=1")
+		}
+		if len(flags) > 0 {
+			mk.WriteString("CXXFLAGS += " + strings.Join(flags, " ") + "\n")
+		}
 	}
-	if err := os.WriteFile(filepath.Join(dest, "cook_flags.h"), []byte(hdr.String()), 0o644); err != nil {
+	if err := stageCookAudio(dest, opts, &hdr, &mk); err != nil {
 		return err
 	}
+	if hdr.Len() > len("#pragma once\n") {
+		if err := os.WriteFile(filepath.Join(dest, "cook_flags.h"), []byte(hdr.String()), 0o644); err != nil {
+			return err
+		}
+	}
+	if mk.Len() > 0 {
+		if err := os.WriteFile(filepath.Join(dest, "cook.mk"), []byte(mk.String()), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-	var mk strings.Builder
-	mk.WriteString("OBJS += $(BUILD_DIR)/cook_embed.o\n")
-	var flags []string
-	for _, s := range present {
-		flags = append(flags, "-D"+s.define+"=1")
+func stageCookAudio(dest string, opts platforms.BuildOptions, hdr, mk *strings.Builder) error {
+	type wavAsset struct {
+		src, name, define string
 	}
-	if len(flags) > 0 {
-		mk.WriteString("CXXFLAGS += " + strings.Join(flags, " ") + "\n")
+	assets := []wavAsset{
+		{src: opts.Sfx, name: "SFX00.wav", define: "BLAZIUM_N64_HAS_SFX"},
+		{src: opts.Music, name: "MUSIC00.wav", define: "BLAZIUM_N64_HAS_MUSIC"},
 	}
-	return os.WriteFile(filepath.Join(dest, "cook.mk"), []byte(mk.String()), 0o644)
+	copied := 0
+	if err := os.MkdirAll(filepath.Join(dest, "assets"), 0o755); err != nil {
+		return err
+	}
+	for _, a := range assets {
+		if strings.TrimSpace(a.src) == "" {
+			continue
+		}
+		raw, err := os.ReadFile(a.src)
+		if err != nil {
+			return fmt.Errorf("cook audio %s: %w", a.name, err)
+		}
+		if len(raw) >= 2 && raw[0] == 0x4D && raw[1] == 0x5A {
+			return fmt.Errorf("cook audio %s: PE/MZ refused", a.name)
+		}
+		if len(raw) < 12 || string(raw[0:4]) != "RIFF" || string(raw[8:12]) != "WAVE" {
+			return fmt.Errorf("cook audio %s: need RIFF WAVE (not VAG/wav64)", a.name)
+		}
+		if err := os.WriteFile(filepath.Join(dest, "assets", a.name), raw, 0o644); err != nil {
+			return err
+		}
+		wav64Name := a.name[:len(a.name)-4] + ".wav64"
+		loop := a.name == "MUSIC00.wav"
+		if err := writeWav64File(filepath.Join(dest, "assets", a.name), filepath.Join(dest, "filesystem", wav64Name), loop); err != nil {
+			return fmt.Errorf("wav64 %s: %w", wav64Name, err)
+		}
+		hdr.WriteString("#define " + a.define + " 1\n")
+		mk.WriteString("CXXFLAGS += -D" + a.define + "=1\n")
+		mk.WriteString("$(BUILD_DIR)/$(ROMNAME).dfs: filesystem/" + wav64Name + "\n")
+		copied++
+	}
+	if copied == 0 {
+		return nil
+	}
+	mk.WriteString("$(ROMNAME).z64: $(BUILD_DIR)/$(ROMNAME).dfs\n")
+	return nil
 }

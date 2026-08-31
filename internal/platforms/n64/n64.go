@@ -156,7 +156,7 @@ func (t *Tool) Env(opts platforms.CommonOptions) (platforms.EnvMap, error) {
 		st.Env = map[string]string{}
 	}
 	fresh, _ := t.discover(opts.Prefix)
-	for _, k := range []string{"N64_INST", "N64_GCC", "N64_MK", "ARES_EXE", "PROJECT64_EXE", "N64_MKDFS", "N64_TOOL"} {
+	for _, k := range []string{"N64_INST", "N64_GCC", "N64_MK", "ARES_EXE", "PROJECT64_EXE", "N64_MKDFS", "N64_TOOL", "N64_AUDIOCONV"} {
 		if st.Env[k] == "" || !pathOK(st.Env[k]) {
 			if fresh[k] != "" {
 				st.Env[k] = fresh[k]
@@ -415,6 +415,9 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 		if p := walkNamed(env["N64_INST"], hostNames("n64tool")...); p != "" {
 			env["N64_TOOL"] = p
 		}
+		if p := walkNamed(env["N64_INST"], hostNames("audioconv64")...); p != "" {
+			env["N64_AUDIOCONV"] = p
+		}
 	}
 
 	if env["ARES_EXE"] == "" {
@@ -612,6 +615,63 @@ func (t *Tool) compileHostTools(ctx context.Context, src, inst string, extraPath
 		}
 	}
 	return writeToolStubs(bin)
+}
+
+func (t *Tool) ensureAudioconv(ctx context.Context, env map[string]string, stdout, stderr io.Writer) error {
+	if p := strings.TrimSpace(env["N64_AUDIOCONV"]); p != "" && fileExists(p) {
+		return nil
+	}
+	inst := env["N64_INST"]
+	if inst != "" {
+		if p := walkNamed(inst, hostNames("audioconv64")...); p != "" {
+			env["N64_AUDIOCONV"] = p
+			return nil
+		}
+	}
+	src := siblingLibdragon()
+	if src == "" || inst == "" {
+		return fmt.Errorf("%w: audioconv64 (run blazium-toolchain n64 setup --profile compile)", platforms.ErrMissingTool)
+	}
+	makeProg := filepath.Join(inst, "bin", "make")
+	if runtime.GOOS == "windows" {
+		makeProg += ".exe"
+	}
+	if !fileExists(makeProg) {
+		makeProg = lookFile("make")
+	}
+	if makeProg == "" {
+		return fmt.Errorf("%w: make (needed to build audioconv64)", platforms.ErrMissingTool)
+	}
+	extraPath := []string{filepath.Join(inst, "bin")}
+	if gcc := lookFile("gcc"); gcc != "" {
+		extraPath = append(extraPath, filepath.Dir(gcc))
+	}
+	for _, p := range []string{`C:\Program Files\Git\usr\bin`, `C:\msys64\usr\bin`, `C:\msys64\ucrt64\bin`} {
+		if dirExists(p) {
+			extraPath = append(extraPath, p)
+		}
+	}
+	extraEnv := map[string]string{"N64_INST": inst, "INSTALLDIR": inst, "LIBDRAGON_PREVIEW": "2"}
+	if gcc := lookFile("gcc"); gcc != "" {
+		extraEnv["CC"] = gcc
+	}
+	if gxx := lookFile("g++"); gxx != "" {
+		extraEnv["CXX"] = gxx
+	} else if gcc := lookFile("gcc"); gcc != "" {
+		extraEnv["CXX"] = gcc
+	}
+	tools := filepath.Join(src, "tools")
+	if stdout != nil {
+		fmt.Fprintf(stdout, "building audioconv64 in %s\n", tools)
+	}
+	if err := t.runEnvInDir(ctx, makeProg, tools, []string{"audioconv64", "audioconv64-install"}, extraPath, extraEnv, stdout, stderr); err != nil {
+		return fmt.Errorf("audioconv64: %w", err)
+	}
+	if p := walkNamed(inst, hostNames("audioconv64")...); p != "" {
+		env["N64_AUDIOCONV"] = p
+		return nil
+	}
+	return fmt.Errorf("%w: audioconv64 missing after install", platforms.ErrMissingTool)
 }
 
 func writeToolStubs(bin string) error {
