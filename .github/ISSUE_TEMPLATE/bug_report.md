@@ -18,4 +18,4 @@ blazium-toolchain …
 **Actual**
 
 **Notes**
-Do not attach Sony BIOS images or unpublished game assets.
+Do not attach Sony BIOS images, N64 PIF dumps, or unpublished game assets.

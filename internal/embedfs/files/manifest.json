@@ -9,7 +9,7 @@
     {
       "id": "ps1",
       "status": "supported",
-      "commands": ["setup", "env", "status", "build", "run", "iso"]
+      "commands": ["setup", "env", "status", "build", "export-guest", "run", "iso", "fmv"]
     },
     {
       "id": "interdvd",
@@ -19,7 +19,7 @@
     {
       "id": "ps2",
       "status": "supported",
-      "commands": ["setup", "env", "status", "build", "export-guest", "run", "iso"]
+      "commands": ["setup", "env", "status", "build", "export-guest", "run", "iso", "elf-info", "chd"]
     },
     { "id": "ps3", "status": "planned", "commands": [] },
     { "id": "ps4", "status": "planned", "commands": [] },

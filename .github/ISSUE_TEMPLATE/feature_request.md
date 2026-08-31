@@ -5,7 +5,7 @@ labels: enhancement
 ---
 
 **Platform**
-ps1 / interdvd / other (ps2–ps4 are reserved)
+ps1 / ps2 / n64 / interdvd / other (ps3–ps4 are reserved)
 
 **What should the CLI do**
 

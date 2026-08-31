@@ -16,6 +16,20 @@ import (
 	"github.com/blazium-games/blazium-toolchain/internal/platforms"
 )
 
+func chdir(t *testing.T, dir string) {
+	t.Helper()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(cwd)
+	})
+}
+
 func plantCompileTools(t *testing.T, prefix string) {
 	t.Helper()
 	inst := filepath.Join(prefix, "n64", "n64-inst")
@@ -1050,7 +1064,7 @@ func TestResolveSampleT3dQuad(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(quad, "Makefile"), []byte("all:\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Chdir(root)
+	chdir(t, root)
 	got, err := resolveSample("t3dquad")
 	if err != nil {
 		t.Fatal(err)
@@ -1083,7 +1097,7 @@ func TestResolveSampleOvlDemo(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(demo, "Makefile"), []byte("all:\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Chdir(root)
+	chdir(t, root)
 	got, err := resolveSample("ovldemo")
 	if err != nil {
 		t.Fatal(err)
