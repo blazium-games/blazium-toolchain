@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/blazium-games/blazium-toolchain/internal/platforms"
@@ -67,6 +68,29 @@ func TestEnvStatusWithoutNetwork(t *testing.T) {
 	}
 	if ready, _ := st["iso_ready"].(bool); !ready {
 		t.Fatalf("iso_ready %v", st)
+	}
+}
+
+func TestFFmpegFetchCandidatesSkipStaleAutobuild(t *testing.T) {
+	for _, goos := range []string{"windows", "linux"} {
+		got := ffmpegFetchCandidates(goos)
+		if len(got) == 0 {
+			t.Fatalf("%s: no candidates", goos)
+		}
+		if !strings.Contains(got[0].URL, "/latest/") {
+			t.Fatalf("%s first pin should be the floating latest URL: %s", goos, got[0].URL)
+		}
+		if !strings.Contains(got[len(got)-1].URL, "ffmpeg-master-latest") {
+			t.Fatalf("%s should fall back to master-latest: %+v", goos, got)
+		}
+		for _, a := range got {
+			if strings.Contains(a.URL, "autobuild-") {
+				t.Fatalf("%s still pins a daily autobuild that expires: %s", goos, a.URL)
+			}
+		}
+	}
+	if ffmpegFetchCandidates("darwin") != nil {
+		t.Fatal("darwin has no ffmpeg pin")
 	}
 }
 
