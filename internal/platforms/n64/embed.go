@@ -33,13 +33,17 @@ func hasCookAudio(opts platforms.BuildOptions) bool {
 	return strings.TrimSpace(opts.Sfx) != "" || strings.TrimSpace(opts.Music) != ""
 }
 
+func hasCookDfs(opts platforms.BuildOptions) bool {
+	return hasCookAudio(opts) || strings.TrimSpace(opts.Pack) != ""
+}
+
 func hasCookSlices(opts platforms.BuildOptions) bool {
 	for _, s := range cookSlices(opts) {
 		if strings.TrimSpace(s.src) != "" {
 			return true
 		}
 	}
-	return hasCookAudio(opts)
+	return hasCookDfs(opts)
 }
 
 func stageCookEmbed(dest string, opts platforms.BuildOptions) error {
@@ -92,6 +96,9 @@ func stageCookEmbed(dest string, opts platforms.BuildOptions) error {
 		}
 	}
 	if err := stageCookAudio(dest, opts, &hdr, &mk); err != nil {
+		return err
+	}
+	if err := stageCookPack(dest, opts, &hdr, &mk); err != nil {
 		return err
 	}
 	if hdr.Len() > len("#pragma once\n") {
@@ -149,6 +156,37 @@ func stageCookAudio(dest string, opts platforms.BuildOptions, hdr, mk *strings.B
 	if copied == 0 {
 		return nil
 	}
+	mk.WriteString("$(ROMNAME).z64: $(BUILD_DIR)/$(ROMNAME).dfs\n")
+	return nil
+}
+
+func stageCookPack(dest string, opts platforms.BuildOptions, hdr, mk *strings.Builder) error {
+	src := strings.TrimSpace(opts.Pack)
+	if src == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("cook pack: %w", err)
+	}
+	if len(raw) < 12 {
+		return fmt.Errorf("cook pack: PACK01.bin too small")
+	}
+	if raw[0] == 0x4D && raw[1] == 0x5A {
+		return fmt.Errorf("cook pack: PE/MZ refused")
+	}
+	if string(raw[0:4]) != "PACK" {
+		return fmt.Errorf("cook pack: need PACK magic (not TIM/GTEX/VAG)")
+	}
+	if err := os.MkdirAll(filepath.Join(dest, "filesystem"), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dest, "filesystem", "PACK01.bin"), raw, 0o644); err != nil {
+		return err
+	}
+	hdr.WriteString("#define BLAZIUM_N64_HAS_PACK 1\n")
+	mk.WriteString("CXXFLAGS += -DBLAZIUM_N64_HAS_PACK=1\n")
+	mk.WriteString("$(BUILD_DIR)/$(ROMNAME).dfs: filesystem/PACK01.bin\n")
 	mk.WriteString("$(ROMNAME).z64: $(BUILD_DIR)/$(ROMNAME).dfs\n")
 	return nil
 }

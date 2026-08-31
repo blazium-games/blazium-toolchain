@@ -117,6 +117,9 @@ func TestGuestIOParity(t *testing.T) {
 	if !strings.Contains(ps, "pack_io_poke") || !strings.Contains(ps, "MESH%02d") || !strings.Contains(ps, "STREAM") {
 		t.Fatal("pack_io.cpp must poke/peek and load MESH%02d / STREAM")
 	}
+	if !strings.Contains(ps, "fread") || !strings.Contains(ps, "rom://PACK") {
+		t.Fatal("pack_io.cpp must fread extra packs from rom://PACK")
+	}
 	if !strings.Contains(ps, "N64_LAYERS") || !strings.Contains(ps, "pack_io_can_fit") || !strings.Contains(ps, "N64_EXTRA_RDRAM_CAP") {
 		t.Fatal("pack_io.cpp must RAM-gate layers")
 	}

@@ -305,6 +305,50 @@ func TestStageCookAudioCopiesWav(t *testing.T) {
 	}
 }
 
+func TestStageCookPackCopiesDfs(t *testing.T) {
+	dir := t.TempDir()
+	pack := filepath.Join(dir, "PACK01.bin")
+	raw := []byte{'P', 'A', 'C', 'K', 1, 0, 1, 0, 4, 0, 0, 0, 'p', 'k', '0', '1'}
+	if err := os.WriteFile(pack, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(dir, "src")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	opts := platforms.BuildOptions{Pack: pack}
+	if !hasCookDfs(opts) {
+		t.Fatal("expected pack cook")
+	}
+	if err := stageCookEmbed(dest, opts); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(dest, "filesystem", "PACK01.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got[0:4]) != "PACK" {
+		t.Fatalf("%q", got)
+	}
+	flags, err := os.ReadFile(filepath.Join(dest, "cook_flags.h"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(flags), "BLAZIUM_N64_HAS_PACK") {
+		t.Fatalf("%s", flags)
+	}
+	mk, err := os.ReadFile(filepath.Join(dest, "cook.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(mk), "cooked_pack") || strings.Contains(string(mk), ".incbin") {
+		t.Fatal("extra pack must be DFS, not incbin")
+	}
+	if !strings.Contains(string(mk), "filesystem/PACK01.bin") {
+		t.Fatalf("%s", mk)
+	}
+}
+
 func TestRunRequiresRom(t *testing.T) {
 	err := New().Run(context.Background(), platforms.RunOptions{
 		CommonOptions: platforms.CommonOptions{Prefix: t.TempDir()},
