@@ -39,7 +39,7 @@
 //	blazium-toolchain [--prefix DIR] n64 setup [--profile compile|dev|rom] [--offline]
 //	blazium-toolchain [--prefix DIR] n64 env
 //	blazium-toolchain [--prefix DIR] n64 status
-//	blazium-toolchain [--prefix DIR] n64 build --out FILE.z64 [--src DIR | --sample helloworld|rdpqdemo]
+//	blazium-toolchain [--prefix DIR] n64 build --out FILE.z64 [--src DIR | --sample helloworld|rdpqdemo|t3dquad]
 //	blazium-toolchain [--prefix DIR] n64 export-guest [--out DIR]
 //	blazium-toolchain [--prefix DIR] n64 run [--emu ares|project64|both] [--timeout 120s] GAME.z64
 //	blazium-toolchain [--prefix DIR] n64 rom --dir TREE --out FILE.z64 [--elf FILE.elf]

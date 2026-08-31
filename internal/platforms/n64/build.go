@@ -116,8 +116,18 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 
 	extraPath := []string{filepath.Dir(env["N64_GCC"]), filepath.Join(env["N64_INST"], "bin")}
 	extraEnv := map[string]string{
-		"N64_INST":           env["N64_INST"],
-		"LIBDRAGON_PREVIEW":  "2",
+		"N64_INST":          env["N64_INST"],
+		"LIBDRAGON_PREVIEW": "2",
+	}
+	if isT3dSample(sample) {
+		t3d := siblingTiny3d()
+		if t3d == "" {
+			return fmt.Errorf("%w: sibling n64_stuff/tiny3d not found for --sample t3dquad", platforms.ErrMissingTool)
+		}
+		if err := t.ensureT3dLib(ctx, t3d, extraPath, extraEnv, opts); err != nil {
+			return err
+		}
+		extraEnv["T3D_INST"] = t3d
 	}
 
 	if fileExists(filepath.Join(src, "Makefile")) {
@@ -179,7 +189,20 @@ func (t *Tool) buildMake(ctx context.Context, src string, extraPath []string, ex
 		return fmt.Errorf("%w: make (required to build the libdragon guest; use Git/MSYS2 make)", platforms.ErrMissingTool)
 	}
 	args := []string{"-f", "Makefile", "-C", src}
+	if v := extraEnv["T3D_INST"]; v != "" {
+		args = append(args, "T3D_INST="+v)
+	}
 	return t.runEnv(ctx, makeProg, args, extraPath, extraEnv, opts.Stdout, opts.Stderr)
+}
+
+func (t *Tool) ensureT3dLib(ctx context.Context, t3d string, extraPath []string, extraEnv map[string]string, opts platforms.BuildOptions) error {
+	if fileExists(t3dLibPath(t3d)) {
+		return nil
+	}
+	if opts.Stdout != nil {
+		fmt.Fprintf(opts.Stdout, "building Tiny3D libt3d.a in %s\n", t3d)
+	}
+	return t.buildMake(ctx, t3d, extraPath, extraEnv, opts)
 }
 
 func (t *Tool) compileEnv(opts platforms.CommonOptions) (map[string]string, error) {
@@ -202,7 +225,28 @@ func (t *Tool) runEnv(ctx context.Context, name string, args, extraPath []string
 	return r.Run(ctx, name, args, writerOrDiscard(stdout), writerOrDiscard(stderr))
 }
 
+func isT3dSample(sample string) bool {
+	switch strings.ToLower(strings.TrimSpace(sample)) {
+	case "t3dquad", "00_quad", "tiny3d":
+		return true
+	default:
+		return false
+	}
+}
+
 func resolveSample(sample string) (string, error) {
+	sample = strings.ToLower(strings.TrimSpace(sample))
+	if isT3dSample(sample) {
+		t3d := siblingTiny3d()
+		if t3d == "" {
+			return "", fmt.Errorf("%w: sibling n64_stuff/tiny3d not found for --sample t3dquad", platforms.ErrMissingTool)
+		}
+		p := filepath.Join(t3d, "examples", "00_quad")
+		if !fileExists(filepath.Join(p, "Makefile")) {
+			return "", fmt.Errorf("%w: sample Makefile missing: %s", platforms.ErrMissingTool, p)
+		}
+		return p, nil
+	}
 	allowed := map[string]string{
 		"helloworld": "helloworld",
 		"hello":      "helloworld",
@@ -211,7 +255,7 @@ func resolveSample(sample string) (string, error) {
 	}
 	name, ok := allowed[sample]
 	if !ok {
-		return "", fmt.Errorf("%w: --sample must be helloworld or rdpqdemo", platforms.ErrUsage)
+		return "", fmt.Errorf("%w: --sample must be helloworld, rdpqdemo, or t3dquad", platforms.ErrUsage)
 	}
 	lib := siblingLibdragon()
 	if lib == "" {
@@ -243,6 +287,7 @@ func findZ64(src, buildDir string) (string, error) {
 	add(filepath.Join(src, "runtime.z64"))
 	add(filepath.Join(src, "helloworld.z64"))
 	add(filepath.Join(src, "rdpqdemo.z64"))
+	add(filepath.Join(src, "t3d_00_quad.z64"))
 	if buildDir != "" {
 		_ = filepath.WalkDir(buildDir, func(path string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() {

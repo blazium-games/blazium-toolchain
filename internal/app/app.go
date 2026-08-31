@@ -636,7 +636,7 @@ N64 commands:
   setup [--profile compile|dev|rom] [--offline]
   env
   status
-  build --out FILE.z64 [--src DIR | --sample helloworld|rdpqdemo] [--overlay DIR] [--export-src DIR]
+  build --out FILE.z64 [--src DIR | --sample helloworld|rdpqdemo|t3dquad] [--overlay DIR] [--export-src DIR]
     [--ntex|--mesh|--node|--inp|--sfx|--music|--pack|--script|--gdbc|--luau]
   export-guest [--out DIR]
   run [--emu ares|project64|both] [--timeout 120s] GAME.z64

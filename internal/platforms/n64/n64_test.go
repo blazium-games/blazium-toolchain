@@ -625,6 +625,10 @@ func TestCICDRequiresN64CompileHello(t *testing.T) {
 	if strings.Contains(compileBlock, "n64 run") || strings.Contains(compileBlock, "--emu") {
 		t.Fatal("n64-compile must not spawn n64 run / --emu")
 	}
+	low := strings.ToLower(compileBlock)
+	if strings.Contains(low, "t3dquad") || strings.Contains(low, "tiny3d") || strings.Contains(low, "00_quad") {
+		t.Fatal("n64-compile must not build Tiny3D")
+	}
 }
 
 func TestProject64LinuxRejected(t *testing.T) {
@@ -795,5 +799,48 @@ func TestRunBothSkipsMissingPj64(t *testing.T) {
 	}
 	if emuBaseHas(fake.names, "project64") {
 		t.Fatalf("must not spawn missing PJ64: %v", fake.names)
+	}
+}
+
+func TestResolveSampleT3dQuad(t *testing.T) {
+	root := t.TempDir()
+	t3d := filepath.Join(root, "n64_stuff", "tiny3d")
+	quad := filepath.Join(t3d, "examples", "00_quad")
+	if err := os.MkdirAll(quad, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(t3d, "t3d.mk"), []byte("# t3d\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(quad, "Makefile"), []byte("all:\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	got, err := resolveSample("t3dquad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Clean(quad)
+	if filepath.Clean(got) != want {
+		t.Fatalf("t3dquad -> %q want %q", got, want)
+	}
+	for _, alias := range []string{"00_quad", "tiny3d"} {
+		g, err := resolveSample(alias)
+		if err != nil {
+			t.Fatalf("alias %s: %v", alias, err)
+		}
+		if filepath.Clean(g) != want {
+			t.Fatalf("alias %s -> %q want %q", alias, g, want)
+		}
+	}
+}
+
+func TestResolveSampleUnknownRejected(t *testing.T) {
+	_, err := resolveSample("gltf")
+	if err == nil {
+		t.Fatal("unknown sample must fail")
+	}
+	if !errors.Is(err, platforms.ErrUsage) {
+		t.Fatalf("want ErrUsage, got %v", err)
 	}
 }

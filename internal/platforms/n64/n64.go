@@ -156,7 +156,7 @@ func (t *Tool) Env(opts platforms.CommonOptions) (platforms.EnvMap, error) {
 		st.Env = map[string]string{}
 	}
 	fresh, _ := t.discover(opts.Prefix)
-	for _, k := range []string{"N64_INST", "N64_GCC", "N64_MK", "ARES_EXE", "PROJECT64_EXE", "N64_MKDFS", "N64_TOOL", "N64_AUDIOCONV"} {
+	for _, k := range []string{"N64_INST", "N64_GCC", "N64_MK", "ARES_EXE", "PROJECT64_EXE", "N64_MKDFS", "N64_TOOL", "N64_AUDIOCONV", "T3D_INST"} {
 		if st.Env[k] == "" || !pathOK(st.Env[k]) {
 			if fresh[k] != "" {
 				st.Env[k] = fresh[k]
@@ -179,6 +179,8 @@ func (t *Tool) Status(opts platforms.CommonOptions) (map[string]any, error) {
 	supported := HostSupported()
 	aresOK := fileExists(env["ARES_EXE"])
 	pj64OK := fileExists(env["PROJECT64_EXE"])
+	t3d := or(env["T3D_INST"], siblingTiny3d())
+	t3dOK := t3d != "" && fileExists(t3dLibPath(t3d))
 	comp := compileReady(env) && supported
 	// #region agent log
 	agentLog("B", "n64.go:Status", "compile_ready", map[string]any{
@@ -205,6 +207,8 @@ func (t *Tool) Status(opts platforms.CommonOptions) (map[string]any, error) {
 		"product":          "z64",
 		"expansion_pak":    true,
 		"libdragon_branch": "preview",
+		"tiny3d":           t3d,
+		"tiny3d_ready":     t3dOK,
 	}
 	return out, nil
 }
@@ -415,6 +419,7 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 	copyEnv("N64_GCC")
 	copyEnv("ARES_EXE")
 	copyEnv("PROJECT64_EXE")
+	copyEnv("T3D_INST")
 
 	plat := cache.PlatformDir(prefix, ID)
 	instCandidates := []string{
@@ -484,6 +489,12 @@ func (t *Tool) discover(prefix string) (map[string]string, []string) {
 					break
 				}
 			}
+		}
+	}
+	if env["T3D_INST"] == "" {
+		if t3d := siblingTiny3d(); t3d != "" {
+			env["T3D_INST"] = t3d
+			notes = append(notes, "found sibling n64_stuff/tiny3d")
 		}
 	}
 	if env["PROJECT64_EXE"] == "" && runtime.GOOS == "windows" {

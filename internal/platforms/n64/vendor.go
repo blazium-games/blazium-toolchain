@@ -163,3 +163,20 @@ func siblingLibdragon() string {
 	}
 	return ""
 }
+
+func siblingTiny3d() string {
+	for _, stuff := range siblingN64Stuff() {
+		t3d := filepath.Join(stuff, "tiny3d")
+		if fileExists(filepath.Join(t3d, "t3d.mk")) {
+			return absOr(t3d)
+		}
+	}
+	return ""
+}
+
+func t3dLibPath(root string) string {
+	if root == "" {
+		return ""
+	}
+	return filepath.Join(root, "build", "libt3d.a")
+}
