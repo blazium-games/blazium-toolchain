@@ -218,6 +218,9 @@ func TestStageCookEmbedNtex(t *testing.T) {
 	if strings.Contains(string(flags), "BLAZIUM_N64_RUMBLE") {
 		t.Fatal("default embed must not set rumble")
 	}
+	if strings.Contains(string(flags), "BLAZIUM_N64_RDRAM_4") {
+		t.Fatal("default embed must not set 4 MiB no-pak")
+	}
 }
 
 func TestStageCookEmbedDisplay640(t *testing.T) {
@@ -265,6 +268,45 @@ func TestStageCookEmbedRumble(t *testing.T) {
 	}
 	if !strings.Contains(string(mk), "BLAZIUM_N64_RUMBLE") {
 		t.Fatalf("cook.mk missing rumble: %s", mk)
+	}
+}
+
+func TestStageCookEmbedRdram4(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "src")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := stageCookEmbed(dest, platforms.BuildOptions{Rdram: "4"}); err != nil {
+		t.Fatal(err)
+	}
+	flags, err := os.ReadFile(filepath.Join(dest, "cook_flags.h"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(flags), "BLAZIUM_N64_RDRAM_4") {
+		t.Fatalf("missing 4 MiB flag: %s", flags)
+	}
+	mk, err := os.ReadFile(filepath.Join(dest, "cook.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(mk), "BLAZIUM_N64_RDRAM_4") {
+		t.Fatalf("cook.mk missing 4 MiB: %s", mk)
+	}
+}
+
+func TestNormalizeRdram(t *testing.T) {
+	opts := platforms.BuildOptions{}
+	if err := normalizeRdram(&opts); err != nil || opts.Rdram != "8" {
+		t.Fatalf("empty -> 8: %v %q", err, opts.Rdram)
+	}
+	opts.Rdram = "4"
+	if err := normalizeRdram(&opts); err != nil || opts.Rdram != "4" {
+		t.Fatalf("4: %v %q", err, opts.Rdram)
+	}
+	opts.Rdram = "16"
+	if err := normalizeRdram(&opts); err == nil || !errors.Is(err, platforms.ErrUsage) {
+		t.Fatalf("16 must be ErrUsage, got %v", err)
 	}
 }
 
@@ -442,7 +484,7 @@ func (memFetch) FetchZip(_ context.Context, _, _, destDir string, _ io.Writer) e
 }
 
 func TestAresRunArgsUseSettingsTree(t *testing.T) {
-	args := aresRunArgs("game.z64")
+	args := aresRunArgs("game.z64", true)
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "General/HomebrewMode=true") {
 		t.Fatalf("homebrew key: %v", args)
@@ -454,6 +496,20 @@ func TestAresRunArgsUseSettingsTree(t *testing.T) {
 		t.Fatalf("autosave key: %v", args)
 	}
 	if strings.Contains(joined, "Homebrew Mode=") || strings.Contains(joined, "Expansion Pak=") {
+		t.Fatalf("must use settings tree keys, not UI labels: %v", args)
+	}
+}
+
+func TestAresRunArgsRdram4(t *testing.T) {
+	args := aresRunArgs("game.z64", false)
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "Nintendo64/ExpansionPak=false") {
+		t.Fatalf("4 MiB no-pak must set ExpansionPak=false: %v", args)
+	}
+	if strings.Contains(joined, "Nintendo64/ExpansionPak=true") {
+		t.Fatalf("4 MiB no-pak must not keep ExpansionPak=true: %v", args)
+	}
+	if strings.Contains(joined, "Expansion Pak=") {
 		t.Fatalf("must use settings tree keys, not UI labels: %v", args)
 	}
 }
@@ -650,6 +706,40 @@ func TestRunSkipsPj64WithoutVideoPlugin(t *testing.T) {
 	}
 }
 
+func TestRunSkipsPj64Nopak(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows Project64 skip")
+	}
+	dir := t.TempDir()
+	rom := filepath.Join(dir, "g.z64")
+	raw := make([]byte, 64)
+	copy(raw, z64Magic)
+	if err := os.WriteFile(rom, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pj := filepath.Join(dir, "Project64.exe")
+	if err := os.WriteFile(pj, []byte("mz"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ARES_EXE", "")
+	t.Setenv("PROJECT64_EXE", pj)
+	var buf bytes.Buffer
+	err := New().Run(context.Background(), platforms.RunOptions{
+		CommonOptions: platforms.CommonOptions{Prefix: dir, Stdout: &buf},
+		Exe:           rom,
+		Emu:           "project64",
+		Rdram:         "4",
+		Timeout:       time.Second,
+	})
+	if err != nil {
+		t.Fatalf("4 MiB no-pak must skip Project64, not fail: %v\n%s", err, buf.String())
+	}
+	out := buf.String()
+	if !strings.Contains(out, "4 MiB no-pak skip project64: unknown-ROM pin stays 8 MB") {
+		t.Fatalf("expected 4 MiB no-pak skip print, got %q", out)
+	}
+}
+
 func TestCICDRequiresN64CompileHello(t *testing.T) {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -706,6 +796,9 @@ func TestCICDRequiresN64CompileHello(t *testing.T) {
 	}
 	if strings.Contains(compileBlock, "ovldemo") || strings.Contains(low, "n64dso") {
 		t.Fatal("n64-compile must not require DSO overlays")
+	}
+	if strings.Contains(compileBlock, "--rdram 4") || strings.Contains(low, "nopak") {
+		t.Fatal("n64-compile must not require --rdram 4")
 	}
 }
 

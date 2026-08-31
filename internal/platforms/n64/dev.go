@@ -17,14 +17,19 @@ func officialAresURL() string {
 }
 
 // aresRunArgs are v148 --dump-all-settings keys (not the UI labels).
-func aresRunArgs(rom string) []string {
+// expansionPak is true for the locked 8 MiB machine; false only for --rdram 4.
+func aresRunArgs(rom string, expansionPak bool) []string {
+	pak := "true"
+	if !expansionPak {
+		pak = "false"
+	}
 	return []string{
 		"--system", "Nintendo 64",
 		"--no-file-prompt",
 		"--kiosk",
 		"--setting", "General/HomebrewMode=true",
 		"--setting", "General/AutoSaveMemory=true",
-		"--setting", "Nintendo64/ExpansionPak=true",
+		"--setting", "Nintendo64/ExpansionPak=" + pak,
 		rom,
 	}
 }

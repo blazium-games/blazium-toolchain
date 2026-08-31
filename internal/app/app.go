@@ -256,10 +256,11 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	way := fs.String("way", "", "optional cooked WAY00.bin to embed in the guest")
 	display := fs.String("display", "", "N64 framebuffer: 320 (default) or 640")
 	rumble := fs.Bool("rumble", false, "N64 Rumble Pak (P8 optional)")
+	rdram := fs.String("rdram", "", "N64 RDRAM: 8 (default Expansion Pak) or 4 (no-pak)")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Overlay: *overlay, ExportSrc: *exportSrc, Tim: *tim, Mesh: *mesh, Gtex: *gtex, Ntex: *ntex, Inp: *inp, Sfx: *sfx, Music: *music, Pack: *pack, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way, Display: *display, Rumble: *rumble})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Overlay: *overlay, ExportSrc: *exportSrc, Tim: *tim, Mesh: *mesh, Gtex: *gtex, Ntex: *ntex, Inp: *inp, Sfx: *sfx, Music: *music, Pack: *pack, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way, Display: *display, Rumble: *rumble, Rdram: *rdram})
 }
 
 func runExportGuest(p platforms.Platform, args []string, base platforms.CommonOptions, stdout io.Writer) error {
@@ -325,6 +326,7 @@ func runRun(ctx context.Context, p platforms.Platform, args []string, base platf
 	timeout := fs.Duration("timeout", 120*time.Second, "stop the emulator after this duration (smoke)")
 	pcdrv := fs.String("pcdrv", "", "host directory for pcsx-redux -pcdrvbase (default: EXE dir)")
 	ui := fs.Bool("ui", false, "show the pcsx-redux window (default is -no-ui smoke)")
+	rdram := fs.String("rdram", "", "N64 RDRAM: 8 (default Expansion Pak) or 4 (no-pak)")
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
@@ -332,7 +334,7 @@ func runRun(ctx context.Context, p platforms.Platform, args []string, base platf
 	if fs.NArg() > 0 {
 		exe = fs.Arg(0)
 	}
-	return p.Run(ctx, platforms.RunOptions{CommonOptions: base, Exe: exe, ISO: *iso, Emu: *emu, Timeout: *timeout, Pcdrv: *pcdrv, UI: *ui})
+	return p.Run(ctx, platforms.RunOptions{CommonOptions: base, Exe: exe, ISO: *iso, Emu: *emu, Timeout: *timeout, Pcdrv: *pcdrv, UI: *ui, Rdram: *rdram})
 }
 
 func runRom(ctx context.Context, p platforms.Platform, args []string, base platforms.CommonOptions) error {
@@ -639,9 +641,9 @@ N64 commands:
   env
   status
   build --out FILE.z64 [--src DIR | --sample helloworld|rdpqdemo|t3dquad|ovldemo] [--overlay DIR] [--export-src DIR]
-    [--display 320|640] [--rumble] [--ntex|--mesh|--node|--inp|--sfx|--music|--pack|--script|--gdbc|--luau]
+    [--display 320|640] [--rumble] [--rdram 8|4] [--ntex|--mesh|--node|--inp|--sfx|--music|--pack|--script|--gdbc|--luau]
   export-guest [--out DIR]
-  run [--emu ares|project64|both] [--timeout 120s] GAME.z64
+  run [--emu ares|project64|both] [--timeout 120s] [--rdram 8|4] GAME.z64
   rom --dir TREE --out FILE.z64 [--elf FILE.elf]
 
 License: GPL-3.0-or-later (this repo may contain GCC, PSn00bSDK, mkpsxiso, pcsx-redux, libdragon toolchain).

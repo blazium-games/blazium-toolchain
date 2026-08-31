@@ -87,6 +87,7 @@ type BuildOptions struct {
 	Way     string // optional cooked WAY00.bin
 	Display string // N64 framebuffer: 320 (default) or 640
 	Rumble  bool   // N64 Rumble Pak (P8 optional)
+	Rdram   string // N64 RDRAM: 8 (default Expansion Pak) or 4 (no-pak)
 }
 
 // RunOptions boot the emulator.
@@ -98,6 +99,7 @@ type RunOptions struct {
 	Timeout time.Duration // 0 means default 120s smoke watchdog
 	Pcdrv   string        // host dir for -pcdrvbase; empty uses the EXE directory
 	UI      bool          // show the pcsx-redux window; smoke stays headless
+	Rdram   string        // N64 RDRAM: 8 (default Expansion Pak) or 4 (no-pak)
 }
 
 // ISOOptions spawn an ISO packer (ps1) or master a DVD-Video bridge (interdvd).

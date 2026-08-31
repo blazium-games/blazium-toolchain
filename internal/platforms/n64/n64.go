@@ -306,7 +306,12 @@ func (t *Tool) Run(ctx context.Context, opts platforms.RunOptions) error {
 			}
 		}
 	}
-	if wantPJ {
+	if wantPJ && rdramIs4(opts.Rdram) {
+		skipped = append(skipped, "project64 (4 MiB no-pak; unknown-ROM pin stays 8 MB)")
+		if opts.Stdout != nil {
+			fmt.Fprintln(opts.Stdout, "4 MiB no-pak skip project64: unknown-ROM pin stays 8 MB")
+		}
+	} else if wantPJ {
 		pj := env["PROJECT64_EXE"]
 		if runtime.GOOS != "windows" {
 			skipped = append(skipped, "project64 (not Windows)")
@@ -385,7 +390,7 @@ func (t *Tool) runOneEmu(ctx context.Context, name, exe, rom string, timeout tim
 	defer cancel()
 	var args []string
 	if name == "ares" {
-		args = aresRunArgs(rom)
+		args = aresRunArgs(rom, !rdramIs4(opts.Rdram))
 	} else {
 		args = []string{rom}
 	}

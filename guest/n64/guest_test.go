@@ -150,6 +150,12 @@ func TestGuestIOParity(t *testing.T) {
 	if !strings.Contains(ps, "N64_LAYERS") || !strings.Contains(ps, "pack_io_can_fit") || !strings.Contains(ps, "N64_EXTRA_RDRAM_CAP") {
 		t.Fatal("pack_io.cpp must RAM-gate layers")
 	}
+	if !strings.Contains(ps, "BLAZIUM_N64_RDRAM_4") {
+		t.Fatal("pack_io.cpp must mention BLAZIUM_N64_RDRAM_4")
+	}
+	if !strings.Contains(ps, "2 * 1024 * 1024") {
+		t.Fatal("pack_io.cpp must keep the 2 MiB extra-pack default")
+	}
 	dfs, err := files.ReadFile("runtime/dfs_io.cpp")
 	if err != nil {
 		t.Fatal(err)

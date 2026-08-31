@@ -40,6 +40,9 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	if err := normalizeDisplay(&opts); err != nil {
 		return err
 	}
+	if err := normalizeRdram(&opts); err != nil {
+		return err
+	}
 
 	src := opts.Src
 	sample := strings.ToLower(strings.TrimSpace(opts.Sample))
@@ -244,6 +247,23 @@ func normalizeDisplay(opts *platforms.BuildOptions) error {
 		return nil
 	}
 	return fmt.Errorf("%w: --display must be 320 or 640", platforms.ErrUsage)
+}
+
+func normalizeRdram(opts *platforms.BuildOptions) error {
+	s := strings.TrimSpace(opts.Rdram)
+	if s == "" || s == "8" {
+		opts.Rdram = "8"
+		return nil
+	}
+	if s == "4" {
+		opts.Rdram = "4"
+		return nil
+	}
+	return fmt.Errorf("%w: --rdram must be 8 or 4", platforms.ErrUsage)
+}
+
+func rdramIs4(s string) bool {
+	return strings.TrimSpace(s) == "4"
 }
 
 func isT3dSample(sample string) bool {

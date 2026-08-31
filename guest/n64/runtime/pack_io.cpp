@@ -16,7 +16,11 @@
 #endif
 
 #define N64_LAYERS 16
+#ifdef BLAZIUM_N64_RDRAM_4
+#define N64_EXTRA_RDRAM_CAP (1 * 1024 * 1024)
+#else
 #define N64_EXTRA_RDRAM_CAP (2 * 1024 * 1024)
+#endif
 #define POKE_BYTES (24 * 1024)
 
 static unsigned char s_poke[POKE_BYTES];

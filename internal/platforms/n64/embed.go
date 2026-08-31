@@ -109,6 +109,10 @@ func stageCookEmbed(dest string, opts platforms.BuildOptions) error {
 		hdr.WriteString("#define BLAZIUM_N64_RUMBLE 1\n")
 		mk.WriteString("CXXFLAGS += -DBLAZIUM_N64_RUMBLE=1\n")
 	}
+	if wantRdram4(opts) {
+		hdr.WriteString("#define BLAZIUM_N64_RDRAM_4 1\n")
+		mk.WriteString("CXXFLAGS += -DBLAZIUM_N64_RDRAM_4=1\n")
+	}
 	if hdr.Len() > len("#pragma once\n") {
 		if err := os.WriteFile(filepath.Join(dest, "cook_flags.h"), []byte(hdr.String()), 0o644); err != nil {
 			return err
@@ -201,4 +205,8 @@ func stageCookPack(dest string, opts platforms.BuildOptions, hdr, mk *strings.Bu
 
 func wantDisplay640(opts platforms.BuildOptions) bool {
 	return strings.TrimSpace(opts.Display) == "640"
+}
+
+func wantRdram4(opts platforms.BuildOptions) bool {
+	return strings.TrimSpace(opts.Rdram) == "4"
 }
