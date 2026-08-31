@@ -1,5 +1,5 @@
-// MIT. rdpq first (v1). Gold rdpq_triangle cube when MESH ABI 1 is embedded.
-// Two-color fill rects when MESH is absent or rejected. No Tiny3D / GL.
+// MIT. rdpq first (v1). Gold fill cube when MESH is embedded; TRIFMT_TEX when NTEX is valid.
+// Two-color fill rects when MESH is absent or rejected. No Tiny3D / GL / mksprite.
 
 #include "rdpq_draw.h"
 
@@ -34,7 +34,7 @@ static float g_fade;
 static int g_ly_n;
 static int g_ortho;
 
-#ifdef BLAZIUM_N64_HAS_MESH
+#if defined(BLAZIUM_N64_HAS_MESH) || defined(BLAZIUM_N64_HAS_NTEX)
 static uint16_t ru16le(const unsigned char *p)
 {
 	return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
@@ -52,7 +52,83 @@ static float rf32le(const unsigned char *p)
 	memcpy(&v, &bits, sizeof(v));
 	return v;
 }
+#endif
 
+#ifdef BLAZIUM_N64_HAS_NTEX
+static uint16_t s_texels[2048];
+static int s_ntex_w;
+static int s_ntex_h;
+static int s_ntex_ready;
+
+static int ntex_header_ok(const unsigned char *t, unsigned sz, int *w, int *h)
+{
+	if (!t || sz < 12) {
+		return 0;
+	}
+	if (t[0] == 0x4D && t[1] == 0x5A) {
+		return 0;
+	}
+	if (t[0] == 'T' && t[1] == 'I' && t[2] == 'M' && t[3] == ' ') {
+		return 0;
+	}
+	if (t[0] == 'G' && t[1] == 'T' && t[2] == 'E' && t[3] == 'X') {
+		return 0;
+	}
+	if (t[0] != 'N' || t[1] != 'T' || t[2] != 'E' || t[3] != 'X') {
+		return 0;
+	}
+	if (ru16le(t + 4) != (uint16_t)BLAZIUM_N64_COOK_ABI) {
+		return 0;
+	}
+	const int tw = (int)ru16le(t + 6);
+	const int th = (int)ru16le(t + 8);
+	const int fmt = (int)ru16le(t + 10);
+	if (tw < 1 || th < 1 || fmt != 1) {
+		return 0;
+	}
+	if (tw * th * 2 > 4096) {
+		return 0;
+	}
+	if (sz < 12u + (unsigned)tw * (unsigned)th * 2u) {
+		return 0;
+	}
+	*w = tw;
+	*h = th;
+	return 1;
+}
+
+static int upload_cooked_ntex(int *w, int *h)
+{
+	if (s_ntex_ready < 0) {
+		return 0;
+	}
+	if (s_ntex_ready == 0) {
+		int tw = 0;
+		int th = 0;
+		const unsigned char *t = cooked_ntex;
+		const unsigned sz = (unsigned)(cooked_ntex_end - cooked_ntex);
+		if (!ntex_header_ok(t, sz, &tw, &th) || tw * th > 2048) {
+			s_ntex_ready = -1;
+			return 0;
+		}
+		const unsigned char *px = t + 12;
+		const int n = tw * th;
+		for (int i = 0; i < n; i++) {
+			s_texels[i] = ru16le(px + (unsigned)i * 2u);
+		}
+		s_ntex_w = tw;
+		s_ntex_h = th;
+		s_ntex_ready = 1;
+	}
+	surface_t surf = surface_make_linear(s_texels, FMT_RGBA16, (uint16_t)s_ntex_w, (uint16_t)s_ntex_h);
+	rdpq_tex_upload(TILE0, &surf, NULL);
+	*w = s_ntex_w;
+	*h = s_ntex_h;
+	return 1;
+}
+#endif
+
+#ifdef BLAZIUM_N64_HAS_MESH
 static int mesh_header_ok(const unsigned char *m, unsigned sz, uint32_t *tri_count)
 {
 	if (!m || sz < 12) {
@@ -84,7 +160,7 @@ static int mesh_header_ok(const unsigned char *m, unsigned sz, uint32_t *tri_cou
 	return 1;
 }
 
-static int project_vert(float wx, float wy, float wz, float *sx, float *sy)
+static int project_vert(float wx, float wy, float wz, float *sx, float *sy, float *out_cz)
 {
 	const float eye_x = 0.0f;
 	const float eye_y = 2.0f;
@@ -111,7 +187,29 @@ static int project_vert(float wx, float wy, float wz, float *sx, float *sy)
 	const float aspect = 320.0f / 240.0f;
 	*sx = 160.0f + (cx * f / aspect / cz) * 160.0f;
 	*sy = 120.0f - (cy * f / cz) * 120.0f;
+	*out_cz = cz;
 	return 1;
+}
+
+static void box_uv(float wx, float wy, float wz, float nx, float ny, float nz, float tw, float th, float *s, float *t)
+{
+	const float ax = nx < 0.0f ? -nx : nx;
+	const float ay = ny < 0.0f ? -ny : ny;
+	const float az = nz < 0.0f ? -nz : nz;
+	float u;
+	float v;
+	if (ax >= ay && ax >= az) {
+		u = wy + 0.5f;
+		v = wz + 0.5f;
+	} else if (ay >= ax && ay >= az) {
+		u = wx + 0.5f;
+		v = wz + 0.5f;
+	} else {
+		u = wx + 0.5f;
+		v = wy + 0.5f;
+	}
+	*s = u * tw;
+	*t = v * th;
 }
 
 static int draw_cooked_mesh(void)
@@ -122,23 +220,37 @@ static int draw_cooked_mesh(void)
 	if (!mesh_header_ok(m, sz, &tris)) {
 		return 0;
 	}
+	int tw = 0;
+	int th = 0;
+	int tex = 0;
+#ifdef BLAZIUM_N64_HAS_NTEX
+	tex = upload_cooked_ntex(&tw, &th);
+#endif
 	rdpq_set_mode_standard();
-	rdpq_mode_combiner(RDPQ_COMBINER_FLAT);
-	rdpq_set_prim_color(RGBA32(200, 140, 40, 255));
-	const unsigned char *v = m + 12;
+	if (tex) {
+		rdpq_mode_combiner(RDPQ_COMBINER_TEX);
+	} else {
+		rdpq_mode_combiner(RDPQ_COMBINER_FLAT);
+		rdpq_set_prim_color(RGBA32(200, 140, 40, 255));
+	}
+	const unsigned char *vp = m + 12;
 	for (uint32_t i = 0; i < tris; i++) {
+		float wx[3];
+		float wy[3];
+		float wz[3];
 		float p[3][2];
+		float cz[3];
 		int ok = 1;
 		for (int k = 0; k < 3; k++) {
-			const float wx = rf32le(v + (unsigned)k * 12u);
-			const float wy = rf32le(v + (unsigned)k * 12u + 4u);
-			const float wz = rf32le(v + (unsigned)k * 12u + 8u);
-			if (!project_vert(wx, wy, wz, &p[k][0], &p[k][1])) {
+			wx[k] = rf32le(vp + (unsigned)k * 12u);
+			wy[k] = rf32le(vp + (unsigned)k * 12u + 4u);
+			wz[k] = rf32le(vp + (unsigned)k * 12u + 8u);
+			if (!project_vert(wx[k], wy[k], wz[k], &p[k][0], &p[k][1], &cz[k])) {
 				ok = 0;
 				break;
 			}
 		}
-		v += 36;
+		vp += 36;
 		if (!ok) {
 			continue;
 		}
@@ -146,7 +258,27 @@ static int draw_cooked_mesh(void)
 		if (cross >= 0.0f) {
 			continue;
 		}
-		rdpq_triangle(&TRIFMT_FILL, p[0], p[1], p[2]);
+		if (tex) {
+			const float e1x = wx[1] - wx[0];
+			const float e1y = wy[1] - wy[0];
+			const float e1z = wz[1] - wz[0];
+			const float e2x = wx[2] - wx[0];
+			const float e2y = wy[2] - wy[0];
+			const float e2z = wz[2] - wz[0];
+			const float nx = e1y * e2z - e1z * e2y;
+			const float ny = e1z * e2x - e1x * e2z;
+			const float nz = e1x * e2y - e1y * e2x;
+			float tv[3][5];
+			for (int k = 0; k < 3; k++) {
+				tv[k][0] = p[k][0];
+				tv[k][1] = p[k][1];
+				box_uv(wx[k], wy[k], wz[k], nx, ny, nz, (float)tw, (float)th, &tv[k][2], &tv[k][3]);
+				tv[k][4] = 1.0f / cz[k];
+			}
+			rdpq_triangle(&TRIFMT_TEX, tv[0], tv[1], tv[2]);
+		} else {
+			rdpq_triangle(&TRIFMT_FILL, p[0], p[1], p[2]);
+		}
 	}
 	return 1;
 }
@@ -250,10 +382,6 @@ void rdpq_draw_frame(void)
 	rdpq_fill_rectangle(96, 64, 160, 176);
 	rdpq_set_mode_fill(RGBA32(200, 140, 40, 255));
 	rdpq_fill_rectangle(160, 64, 224, 176);
-#endif
-#ifdef BLAZIUM_N64_HAS_NTEX
-	(void)cooked_ntex;
-	(void)cooked_ntex_end;
 #endif
 	(void)g_fov;
 	(void)g_ortho;
