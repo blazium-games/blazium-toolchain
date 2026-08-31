@@ -237,6 +237,7 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	sfx := fs.String("sfx", "", "optional cooked SFX00.wav (N64; toolchain runs audioconv64)")
 	music := fs.String("music", "", "optional cooked MUSIC00.wav (N64; toolchain runs audioconv64)")
 	pack := fs.String("pack", "", "optional cooked PACK01.bin (N64 extra DragonFS pack)")
+	packDir := fs.String("pack-dir", "", "optional export dir with extra PACK/NODE/MESH/NTEX %02d.bin")
 	vag := fs.String("vag", "", "optional cooked VAG to embed in the guest")
 	sprite := fs.String("sprite", "", "optional cooked SPRITE table to embed in the guest")
 	script := fs.String("script", "", "optional cooked SCRIPT.IR to embed in the guest")
@@ -260,7 +261,7 @@ func runBuild(ctx context.Context, p platforms.Platform, args []string, base pla
 	if err := fs.Parse(args); err != nil {
 		return platforms.ErrUsage
 	}
-	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Overlay: *overlay, ExportSrc: *exportSrc, Tim: *tim, Mesh: *mesh, Gtex: *gtex, Ntex: *ntex, Inp: *inp, Sfx: *sfx, Music: *music, Pack: *pack, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way, Display: *display, Rumble: *rumble, Rdram: *rdram})
+	return p.Build(ctx, platforms.BuildOptions{CommonOptions: base, Src: *src, Out: *out, Sample: *sample, Overlay: *overlay, ExportSrc: *exportSrc, Tim: *tim, Mesh: *mesh, Gtex: *gtex, Ntex: *ntex, Inp: *inp, Sfx: *sfx, Music: *music, Pack: *pack, PackDir: *packDir, Vag: *vag, Sprite: *sprite, Script: *script, Gdbc: *gdbc, Luau: *luau, Str: *str, Xa: *xa, Node: *node, Hud: *hud, Tile: *tile, Scene: *scene, Anim: *anim, Cam: *cam, Hit: *hit, Nav: *nav, Path: *pathTbl, Way: *way, Display: *display, Rumble: *rumble, Rdram: *rdram})
 }
 
 func runExportGuest(p platforms.Platform, args []string, base platforms.CommonOptions, stdout io.Writer) error {
@@ -641,7 +642,7 @@ N64 commands:
   env
   status
   build --out FILE.z64 [--src DIR | --sample helloworld|rdpqdemo|t3dquad|ovldemo] [--overlay DIR] [--export-src DIR]
-    [--display 320|640] [--rumble] [--rdram 8|4] [--ntex|--mesh|--node|--inp|--sfx|--music|--pack|--script|--gdbc|--luau]
+    [--display 320|640] [--rumble] [--rdram 8|4] [--ntex|--mesh|--node|--inp|--sfx|--music|--pack|--pack-dir|--script|--gdbc|--luau]
   export-guest [--out DIR]
   run [--emu ares|project64|both] [--timeout 120s] [--rdram 8|4] GAME.z64
   rom --dir TREE --out FILE.z64 [--elf FILE.elf]

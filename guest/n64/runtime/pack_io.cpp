@@ -5,6 +5,7 @@
 #include "pack_io.h"
 
 #include "dfs_io.h"
+#include "rdpq_draw.h"
 
 #include <libdragon.h>
 #include <stdio.h>
@@ -29,6 +30,15 @@ static int s_cost_rdram;
 static char s_user_err[64];
 static unsigned char *s_blob;
 static unsigned s_blob_sz;
+static unsigned char *s_mesh;
+static unsigned s_mesh_sz;
+static unsigned char *s_ntex;
+static unsigned s_ntex_sz;
+static unsigned char *s_node;
+static unsigned s_node_sz;
+static unsigned char *s_ly[N64_LAYERS];
+static unsigned s_ly_sz[N64_LAYERS];
+static int s_ly_n;
 static const char *s_paths[] = {
 	"rom://MESH%02d.bin",
 	"rom://NTEX%02d.bin",
@@ -56,6 +66,100 @@ static void free_blob(void)
 	s_cost_rdram = 0;
 }
 
+static void free_slices(void)
+{
+	free(s_mesh);
+	s_mesh = NULL;
+	s_mesh_sz = 0;
+	free(s_ntex);
+	s_ntex = NULL;
+	s_ntex_sz = 0;
+	free(s_node);
+	s_node = NULL;
+	s_node_sz = 0;
+}
+
+static void free_layers(void)
+{
+	for (int i = 0; i < s_ly_n; i++) {
+		free(s_ly[i]);
+		s_ly[i] = NULL;
+		s_ly_sz[i] = 0;
+	}
+	s_ly_n = 0;
+	rdpq_draw_clear_layers();
+}
+
+static int load_rom_fmt(const char *fmt, int pack, unsigned char **out, unsigned *out_sz)
+{
+	char path[64];
+	snprintf(path, sizeof(path), fmt, pack);
+	FILE *f = dfs_io_fopen(path);
+	if (!f) {
+		return -1;
+	}
+	if (fseek(f, 0, SEEK_END) != 0) {
+		fclose(f);
+		return -1;
+	}
+	const long sz = ftell(f);
+	if (sz < 12 || sz > N64_EXTRA_RDRAM_CAP) {
+		fclose(f);
+		return -1;
+	}
+	if (fseek(f, 0, SEEK_SET) != 0) {
+		fclose(f);
+		return -1;
+	}
+	unsigned char *buf = (unsigned char *)malloc((size_t)sz);
+	if (!buf) {
+		fclose(f);
+		return -1;
+	}
+	const size_t n = fread(buf, 1, (size_t)sz, f);
+	fclose(f);
+	if (n != (size_t)sz) {
+		free(buf);
+		return -1;
+	}
+	*out = buf;
+	*out_sz = (unsigned)sz;
+	return 0;
+}
+
+/* After pack_io_swap, rebind MESH/NODE/NTEX from rom://MESH%02d.bin (and NODE/NTEX). */
+static int load_rebind_slices(int pack, int pack_bytes)
+{
+	unsigned char *mesh = NULL;
+	unsigned char *ntex = NULL;
+	unsigned char *node = NULL;
+	unsigned mesh_sz = 0;
+	unsigned ntex_sz = 0;
+	unsigned node_sz = 0;
+	if (load_rom_fmt("rom://MESH%02d.bin", pack, &mesh, &mesh_sz) != 0) {
+		/* PACK header-only stub (default jam PACK01) — no MESH%02d rebind yet. */
+		return 0;
+	}
+	(void)load_rom_fmt("rom://NTEX%02d.bin", pack, &ntex, &ntex_sz);
+	(void)load_rom_fmt("rom://NODE%02d.bin", pack, &node, &node_sz);
+	const int extra = (int)(mesh_sz + ntex_sz + node_sz);
+	if (pack_bytes + extra > N64_EXTRA_RDRAM_CAP) {
+		free(mesh);
+		free(ntex);
+		free(node);
+		return -1;
+	}
+	free_slices();
+	s_mesh = mesh;
+	s_mesh_sz = mesh_sz;
+	s_ntex = ntex;
+	s_ntex_sz = ntex_sz;
+	s_node = node;
+	s_node_sz = node_sz;
+	s_cost_rdram = pack_bytes + extra;
+	return 0;
+}
+
 static void seed_user_slot(void);
 
 void pack_io_init(void)
@@ -65,6 +169,10 @@ void pack_io_init(void)
 	s_user_err[0] = 0;
 	s_blob = NULL;
 	s_blob_sz = 0;
+	s_mesh = NULL;
+	s_ntex = NULL;
+	s_node = NULL;
+	s_ly_n = 0;
 	memset(s_poke, 0, sizeof(s_poke));
 	(void)N64_LAYERS;
 	(void)pack_io_swap(1);
@@ -82,6 +190,8 @@ int pack_io_can_fit(int extra_bytes)
 int pack_io_swap(int pack)
 {
 	if (pack <= 0) {
+		free_layers();
+		free_slices();
 		free_blob();
 		s_pack = 0;
 		return 0;
@@ -135,12 +245,75 @@ int pack_io_swap(int pack)
 		free(buf);
 		return -1;
 	}
+	free_layers();
+	free_slices();
 	free_blob();
 	s_blob = buf;
 	s_blob_sz = (unsigned)sz;
 	s_cost_rdram = (int)sz;
 	s_pack = pack;
+	if (load_rebind_slices(pack, (int)sz) != 0) {
+		free_blob();
+		s_pack = 0;
+		return -1;
+	}
 	return 0;
+}
+
+int pack_io_instantiate(int pack)
+{
+	if (pack <= 0 || pack > 23) {
+		return 0;
+	}
+	if (s_ly_n >= N64_LAYERS) {
+		return 0;
+	}
+	unsigned char *mesh = NULL;
+	unsigned mesh_sz = 0;
+	if (load_rom_fmt("rom://MESH%02d.bin", pack, &mesh, &mesh_sz) != 0) {
+		return 0;
+	}
+	if (!pack_io_can_fit((int)mesh_sz)) {
+		free(mesh);
+		return 0;
+	}
+	s_ly[s_ly_n] = mesh;
+	s_ly_sz[s_ly_n] = mesh_sz;
+	s_ly_n++;
+	s_cost_rdram += (int)mesh_sz;
+	if (rdpq_draw_layer_add_mesh(mesh, mesh_sz) == 0) {
+		s_ly_n--;
+		s_ly[s_ly_n] = NULL;
+		s_ly_sz[s_ly_n] = 0;
+		s_cost_rdram -= (int)mesh_sz;
+		free(mesh);
+		return 0;
+	}
+	return 1;
+}
+
+const unsigned char *pack_io_cur_mesh(unsigned *sz)
+{
+	if (sz) {
+		*sz = s_mesh_sz;
+	}
+	return s_mesh;
+}
+
+const unsigned char *pack_io_cur_ntex(unsigned *sz)
+{
+	if (sz) {
+		*sz = s_ntex_sz;
+	}
+	return s_ntex;
+}
+
+const unsigned char *pack_io_cur_node(unsigned *sz)
+{
+	if (sz) {
+		*sz = s_node_sz;
+	}
+	return s_node;
 }
 
 int pack_io_prefetch(const char *path)

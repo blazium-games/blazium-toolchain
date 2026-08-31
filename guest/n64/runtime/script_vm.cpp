@@ -92,6 +92,8 @@ enum {
 	NAT_PATH_FOLLOW = 71
 };
 
+static const unsigned char *s_pack0_node;
+static unsigned s_pack0_node_sz;
 static const unsigned char *s_code;
 static unsigned s_len;
 static int s_ready;
@@ -253,6 +255,8 @@ int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 	s_len = 0;
 	s_ready = 0;
 	s_sp = 0;
+	s_pack0_node = node;
+	s_pack0_node_sz = node_sz;
 	bind_kit_from_node(node, node_sz);
 	(void)pack_io_find_path("res://STREAM");
 	if (!scrp || scrp_sz < 8) {
@@ -272,6 +276,15 @@ int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 	s_code = scrp + 8;
 	s_len = n;
 	return 0;
+}
+
+void script_vm_rebind_node(const unsigned char *node, unsigned node_sz)
+{
+	if (!node || node_sz == 0) {
+		bind_kit_from_node(s_pack0_node, s_pack0_node_sz);
+		return;
+	}
+	bind_kit_from_node(node, node_sz);
 }
 
 void script_vm_process(float delta)
@@ -412,7 +425,7 @@ void script_vm_process(float delta)
 			sys_io_load_pack((int)popf());
 			break;
 		case OP_INSTANTIATE:
-			(void)pack_io_can_fit(128);
+			pushf((float)pack_io_instantiate((int)popf()));
 			break;
 		case OP_SEEK_ANIM:
 			sys_io_seek_anim(popf());

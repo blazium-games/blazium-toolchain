@@ -150,6 +150,9 @@ func TestGuestIOParity(t *testing.T) {
 	if !strings.Contains(ps, "N64_LAYERS") || !strings.Contains(ps, "pack_io_can_fit") || !strings.Contains(ps, "N64_EXTRA_RDRAM_CAP") {
 		t.Fatal("pack_io.cpp must RAM-gate layers")
 	}
+	if !strings.Contains(ps, "rebind") || !strings.Contains(ps, "pack_io_instantiate") {
+		t.Fatal("pack_io.cpp must rebind MESH/NODE/NTEX and instantiate")
+	}
 	if !strings.Contains(ps, "BLAZIUM_N64_RDRAM_4") {
 		t.Fatal("pack_io.cpp must mention BLAZIUM_N64_RDRAM_4")
 	}
@@ -197,7 +200,7 @@ func TestGuestScriptKitParity(t *testing.T) {
 		"NAT_LOAD_SPRITES", "NAT_MOVE_PLANAR", "NAT_HURT", "NAT_POKE",
 		"NAT_GET_PRESSURE", "NAT_MOVE_6DOF", "NAT_LOAD_PARTICLES", "NAT_PATH_FOLLOW",
 		"OP_JMP", "OP_CALL_NATIVE", "pack_io_find_path", "OP_CALL_ROTATE_Y",
-		"SCRP",
+		"SCRP", "pack_io_instantiate", "script_vm_rebind_node",
 	} {
 		if !strings.Contains(src, want) {
 			t.Fatalf("script_vm.cpp missing %s", want)
@@ -219,6 +222,9 @@ func TestGuestDrawGoldFallback(t *testing.T) {
 	}
 	if !strings.Contains(src, "rdpq_draw_set_camera") || !strings.Contains(src, "rdpq_draw_set_fade") {
 		t.Fatal("rdpq_draw must expose camera/fade")
+	}
+	if !strings.Contains(src, "rdpq_draw_rebind") || !strings.Contains(src, "MESH%02d") {
+		t.Fatal("rdpq_draw must rebind MESH%02d after pack swap")
 	}
 }
 

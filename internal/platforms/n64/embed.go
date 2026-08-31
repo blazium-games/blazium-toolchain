@@ -34,7 +34,7 @@ func hasCookAudio(opts platforms.BuildOptions) bool {
 }
 
 func hasCookDfs(opts platforms.BuildOptions) bool {
-	return hasCookAudio(opts) || strings.TrimSpace(opts.Pack) != ""
+	return hasCookAudio(opts) || strings.TrimSpace(opts.Pack) != "" || strings.TrimSpace(opts.PackDir) != ""
 }
 
 func hasCookSlices(opts platforms.BuildOptions) bool {
@@ -99,6 +99,9 @@ func stageCookEmbed(dest string, opts platforms.BuildOptions) error {
 		return err
 	}
 	if err := stageCookPack(dest, opts, &hdr, &mk); err != nil {
+		return err
+	}
+	if err := stageCookPackDir(dest, opts, &hdr, &mk); err != nil {
 		return err
 	}
 	if wantDisplay640(opts) {
@@ -199,6 +202,49 @@ func stageCookPack(dest string, opts platforms.BuildOptions, hdr, mk *strings.Bu
 	hdr.WriteString("#define BLAZIUM_N64_HAS_PACK 1\n")
 	mk.WriteString("CXXFLAGS += -DBLAZIUM_N64_HAS_PACK=1\n")
 	mk.WriteString("$(BUILD_DIR)/$(ROMNAME).dfs: filesystem/PACK01.bin\n")
+	mk.WriteString("$(ROMNAME).z64: $(BUILD_DIR)/$(ROMNAME).dfs\n")
+	return nil
+}
+
+func stageCookPackDir(dest string, opts platforms.BuildOptions, hdr, mk *strings.Builder) error {
+	dir := strings.TrimSpace(opts.PackDir)
+	if dir == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Join(dest, "filesystem"), 0o755); err != nil {
+		return err
+	}
+	staged := 0
+	for i := 1; i <= 23; i++ {
+		for _, kind := range []string{"PACK", "NODE", "MESH", "NTEX"} {
+			name := fmt.Sprintf("%s%02d.bin", kind, i)
+			src := filepath.Join(dir, name)
+			raw, err := os.ReadFile(src)
+			if err != nil {
+				continue
+			}
+			if len(raw) >= 2 && raw[0] == 0x4D && raw[1] == 0x5A {
+				return fmt.Errorf("cook pack-dir %s: PE/MZ refused", name)
+			}
+			if kind == "PACK" {
+				if len(raw) < 12 || string(raw[0:4]) != "PACK" {
+					return fmt.Errorf("cook pack-dir %s: need PACK magic", name)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(dest, "filesystem", name), raw, 0o644); err != nil {
+				return err
+			}
+			mk.WriteString("$(BUILD_DIR)/$(ROMNAME).dfs: filesystem/" + name + "\n")
+			staged++
+		}
+	}
+	if staged == 0 {
+		return nil
+	}
+	if !strings.Contains(hdr.String(), "BLAZIUM_N64_HAS_PACK") {
+		hdr.WriteString("#define BLAZIUM_N64_HAS_PACK 1\n")
+		mk.WriteString("CXXFLAGS += -DBLAZIUM_N64_HAS_PACK=1\n")
+	}
 	mk.WriteString("$(ROMNAME).z64: $(BUILD_DIR)/$(ROMNAME).dfs\n")
 	return nil
 }

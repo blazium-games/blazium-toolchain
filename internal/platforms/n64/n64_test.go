@@ -461,6 +461,50 @@ func TestStageCookPackCopiesDfs(t *testing.T) {
 	}
 }
 
+func TestStageCookPackDirStagesExtras(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "export")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pack := []byte{'P', 'A', 'C', 'K', 1, 0, 1, 0, 4, 0, 0, 0, 'r', 'o', 'o', 'm'}
+	if err := os.WriteFile(filepath.Join(src, "PACK01.bin"), pack, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "MESH01.bin"), []byte("MESH01rebind"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "NODE01.bin"), []byte("NODE01rebind"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "NTEX01.bin"), []byte("NTEX01rebind"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(dir, "src")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	opts := platforms.BuildOptions{PackDir: src}
+	if !hasCookDfs(opts) {
+		t.Fatal("expected pack-dir cook")
+	}
+	if err := stageCookEmbed(dest, opts); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"PACK01.bin", "MESH01.bin", "NODE01.bin", "NTEX01.bin"} {
+		if _, err := os.Stat(filepath.Join(dest, "filesystem", name)); err != nil {
+			t.Fatalf("missing staged %s: %v", name, err)
+		}
+	}
+	mk, err := os.ReadFile(filepath.Join(dest, "cook.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(mk), "filesystem/MESH01.bin") {
+		t.Fatalf("%s", mk)
+	}
+}
+
 func TestRunRequiresRom(t *testing.T) {
 	err := New().Run(context.Background(), platforms.RunOptions{
 		CommonOptions: platforms.CommonOptions{Prefix: t.TempDir()},

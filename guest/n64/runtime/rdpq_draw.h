@@ -18,6 +18,10 @@ void rdpq_draw_set_fade(float a);
 void rdpq_draw_overlay(void);
 int rdpq_draw_primary_mesh_node(void);
 void rdpq_draw_layer_add(int id);
+void rdpq_draw_rebind(const unsigned char *mesh, unsigned mesh_sz, const unsigned char *ntex, unsigned ntex_sz);
+void rdpq_draw_rebind_embedded(void);
+int rdpq_draw_layer_add_mesh(const unsigned char *mesh, unsigned mesh_sz);
+void rdpq_draw_clear_layers(void);
 
 #ifdef __cplusplus
 }

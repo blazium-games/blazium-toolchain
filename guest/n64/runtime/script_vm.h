@@ -9,6 +9,7 @@ extern "C" {
 
 int script_vm_init(const unsigned char *scrp, unsigned scrp_sz,
 		const unsigned char *node, unsigned node_sz);
+void script_vm_rebind_node(const unsigned char *node, unsigned node_sz);
 void script_vm_process(float delta);
 int script_vm_ready(void);
 int script_vm_kit_spawn(void);

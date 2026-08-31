@@ -5,6 +5,7 @@
 #include "dfs_io.h"
 #include "pack_io.h"
 #include "rdpq_draw.h"
+#include "script_vm.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -65,17 +66,25 @@ void sys_io_tick(float delta)
 
 void sys_io_load_pack(int pack)
 {
-	char name[32];
-	snprintf(name, sizeof(name), "CAM%02d.bin", pack);
-	try_open(name);
-	snprintf(name, sizeof(name), "HUD%02d.bin", pack);
-	try_open(name);
-	snprintf(name, sizeof(name), "NAV%02d.bin", pack);
-	try_open(name);
-	try_open("SPRT.bin");
-	try_open("PART.bin");
-	try_open("NAVM.bin");
-	pack_io_swap(pack);
+	/* Slice 1: swap + rebind MESH/NODE/NTEX. CAM/HUD/ANIM are later slices. */
+	if (pack_io_swap(pack) != 0) {
+		return;
+	}
+	if (pack <= 0) {
+		rdpq_draw_rebind_embedded();
+		script_vm_rebind_node(NULL, 0);
+		return;
+	}
+	unsigned mesh_sz = 0;
+	unsigned ntex_sz = 0;
+	unsigned node_sz = 0;
+	const unsigned char *mesh = pack_io_cur_mesh(&mesh_sz);
+	const unsigned char *ntex = pack_io_cur_ntex(&ntex_sz);
+	const unsigned char *node = pack_io_cur_node(&node_sz);
+	if (mesh && mesh_sz >= 12) {
+		rdpq_draw_rebind(mesh, mesh_sz, ntex, ntex_sz);
+	}
+	script_vm_rebind_node(node, node_sz);
 }
 
 int sys_io_overlap_refresh(void)

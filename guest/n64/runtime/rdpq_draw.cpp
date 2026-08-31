@@ -35,6 +35,13 @@ static float g_fade;
 static float g_look_yaw;
 static int g_ly_n;
 static int g_ortho;
+static const unsigned char *s_draw_mesh;
+static unsigned s_draw_mesh_sz;
+static const unsigned char *s_draw_ntex;
+static unsigned s_draw_ntex_sz;
+static const unsigned char *s_ly_mesh[16];
+static unsigned s_ly_mesh_sz[16];
+static int s_ly_mesh_n;
 
 #if defined(BLAZIUM_N64_HAS_MESH) || defined(BLAZIUM_N64_HAS_NTEX)
 static uint16_t ru16le(const unsigned char *p)
@@ -107,8 +114,12 @@ static int upload_cooked_ntex(int *w, int *h)
 	if (s_ntex_ready == 0) {
 		int tw = 0;
 		int th = 0;
-		const unsigned char *t = cooked_ntex;
-		const unsigned sz = (unsigned)(cooked_ntex_end - cooked_ntex);
+		const unsigned char *t = s_draw_ntex;
+		unsigned sz = s_draw_ntex_sz;
+		if (!t) {
+			t = cooked_ntex;
+			sz = (unsigned)(cooked_ntex_end - cooked_ntex);
+		}
 		if (!ntex_header_ok(t, sz, &tw, &th) || tw * th > 2048) {
 			s_ntex_ready = -1;
 			return 0;
@@ -224,10 +235,8 @@ static void box_uv(float wx, float wy, float wz, float nx, float ny, float nz, f
 	*t = v * th;
 }
 
-static int draw_cooked_mesh(void)
+static int draw_mesh_bytes(const unsigned char *m, unsigned sz)
 {
-	const unsigned char *m = cooked_mesh;
-	const unsigned sz = (unsigned)(cooked_mesh_end - cooked_mesh);
 	uint32_t tris = 0;
 	if (!mesh_header_ok(m, sz, &tris)) {
 		return 0;
@@ -294,12 +303,26 @@ static int draw_cooked_mesh(void)
 	}
 	return 1;
 }
+
+static int draw_cooked_mesh(void)
+{
+	const unsigned char *m = s_draw_mesh ? s_draw_mesh : cooked_mesh;
+	const unsigned sz = s_draw_mesh ? s_draw_mesh_sz : (unsigned)(cooked_mesh_end - cooked_mesh);
+	if (!draw_mesh_bytes(m, sz)) {
+		return 0;
+	}
+	for (int i = 0; i < s_ly_mesh_n; i++) {
+		(void)draw_mesh_bytes(s_ly_mesh[i], s_ly_mesh_sz[i]);
+	}
+	return 1;
+}
 #endif
 
 void rdpq_draw_init(void)
 {
 	rdpq_init();
 	rdpq_text_register_font(1, rdpq_font_load_builtin(FONT_BUILTIN_DEBUG_VAR));
+	rdpq_draw_rebind_embedded();
 }
 
 void rdpq_draw_begin(void)
@@ -374,6 +397,56 @@ void rdpq_draw_layer_add(int id)
 {
 	(void)id;
 	g_ly_n++;
+}
+
+/* Rebind current MESH/NTEX pointers (rom://MESH%02d.bin after pack swap). */
+void rdpq_draw_rebind(const unsigned char *mesh, unsigned mesh_sz, const unsigned char *ntex, unsigned ntex_sz)
+{
+	s_draw_mesh = mesh;
+	s_draw_mesh_sz = mesh_sz;
+	s_draw_ntex = ntex;
+	s_draw_ntex_sz = ntex_sz;
+#ifdef BLAZIUM_N64_HAS_NTEX
+	s_ntex_ready = 0;
+#endif
+}
+
+void rdpq_draw_rebind_embedded(void)
+{
+#ifdef BLAZIUM_N64_HAS_MESH
+	s_draw_mesh = cooked_mesh;
+	s_draw_mesh_sz = (unsigned)(cooked_mesh_end - cooked_mesh);
+#else
+	s_draw_mesh = NULL;
+	s_draw_mesh_sz = 0;
+#endif
+#ifdef BLAZIUM_N64_HAS_NTEX
+	s_draw_ntex = cooked_ntex;
+	s_draw_ntex_sz = (unsigned)(cooked_ntex_end - cooked_ntex);
+	s_ntex_ready = 0;
+#else
+	s_draw_ntex = NULL;
+	s_draw_ntex_sz = 0;
+#endif
+	rdpq_draw_clear_layers();
+}
+
+int rdpq_draw_layer_add_mesh(const unsigned char *mesh, unsigned mesh_sz)
+{
+	if (!mesh || mesh_sz < 12 || s_ly_mesh_n >= 16) {
+		return 0;
+	}
+	s_ly_mesh[s_ly_mesh_n] = mesh;
+	s_ly_mesh_sz[s_ly_mesh_n] = mesh_sz;
+	s_ly_mesh_n++;
+	g_ly_n++;
+	return 1;
+}
+
+void rdpq_draw_clear_layers(void)
+{
+	s_ly_mesh_n = 0;
+	g_ly_n = 0;
 }
 
 void rdpq_draw_frame(void)
