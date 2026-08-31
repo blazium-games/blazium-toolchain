@@ -289,6 +289,40 @@ func TestGuestIndustrialKit(t *testing.T) {
 	}
 }
 
+func TestGuestGenreSystems(t *testing.T) {
+	sys, err := files.ReadFile("runtime/sys_io.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ss := string(sys)
+	for _, want := range []string{"PRTN", "PTHN", "NAVM", "billboard", "follow_node", "sys_io_tween_start", "sys_io_path_follow", "sys_io_move_6dof"} {
+		if !strings.Contains(ss, want) {
+			t.Fatalf("sys_io.cpp missing %s", want)
+		}
+	}
+	if strings.Contains(ss, "void sys_io_tween_start(int id, float dur)\n{\n\t(void)id;\n\t(void)dur;\n}") {
+		t.Fatal("sys_io_tween_start must not stay a (void) stub")
+	}
+	if strings.Contains(ss, "void sys_io_path_follow(int path)\n{\n\t(void)path;\n}") {
+		t.Fatal("sys_io_path_follow must not stay a (void) stub")
+	}
+	rdpq, err := files.ReadFile("runtime/rdpq_draw.cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rs := string(rdpq)
+	if !strings.Contains(rs, "g_look_pitch") {
+		t.Fatal("rdpq_draw_look must use pitch")
+	}
+	mk, err := files.ReadFile("runtime/Makefile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(mk), "dlopen") {
+		t.Fatal("Makefile still no dlopen")
+	}
+}
+
 func TestOverlayReplacesAndAdds(t *testing.T) {
 	dir := t.TempDir()
 	if err := Install(dir); err != nil {

@@ -216,7 +216,7 @@ func stageCookPackDir(dest string, opts platforms.BuildOptions, hdr, mk *strings
 	}
 	staged := 0
 	for i := 0; i <= 23; i++ {
-		kinds := []string{"CAM", "HIT", "ANIM", "SPRN", "TILN"}
+		kinds := []string{"CAM", "HIT", "ANIM", "SPRN", "TILN", "PRTN", "PTHN", "NAVN", "NAVM", "VEHN", "WAYN"}
 		if i >= 1 {
 			kinds = append([]string{"PACK", "NODE", "MESH", "NTEX"}, kinds...)
 		}

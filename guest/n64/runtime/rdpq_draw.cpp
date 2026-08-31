@@ -33,6 +33,11 @@ extern const unsigned char cooked_ntex_end[];
 static float g_fov = 55.0f;
 static float g_fade;
 static float g_look_yaw;
+static float g_look_pitch;
+static float g_orbit_az;
+static float g_orbit_el;
+static float g_orbit_rad;
+static float g_shake;
 static float g_eye_x;
 static float g_eye_y = 2.0f;
 static float g_eye_z = 6.0f;
@@ -51,6 +56,16 @@ static int16_t g_spr_x[32];
 static int16_t g_spr_y[32];
 static int16_t g_spr_w[32];
 static int16_t g_spr_h[32];
+static uint8_t g_spr_flip[32];
+static uint8_t g_spr_frame[32];
+static int g_tile_n;
+static int16_t g_tile_x[256];
+static int16_t g_tile_y[256];
+static int g_part_n;
+static float g_part_x[32];
+static float g_part_y[32];
+static float g_part_w[32];
+static float g_part_h[32];
 static const unsigned char *s_draw_mesh;
 static unsigned s_draw_mesh_sz;
 static const unsigned char *s_draw_ntex;
@@ -191,6 +206,16 @@ static int mesh_header_ok(const unsigned char *m, unsigned sz, uint32_t *tri_cou
 
 static int project_vert(float wx, float wy, float wz, float *sx, float *sy, float *out_cz)
 {
+	const float dw = (float)display_get_width();
+	const float dh = (float)display_get_height();
+	const float hw = dw * 0.5f;
+	const float hh = dh * 0.5f;
+	if (g_ortho) {
+		*sx = wx - g_eye_x + hw;
+		*sy = wy - g_eye_y + hh;
+		*out_cz = 1.0f;
+		return 1;
+	}
 	const float cyaw = cosf(g_look_yaw);
 	const float syaw = sinf(g_look_yaw);
 	const float rwx = wx * cyaw + wz * syaw;
@@ -198,12 +223,23 @@ static int project_vert(float wx, float wy, float wz, float *sx, float *sy, floa
 	wx = rwx + g_anim_x;
 	wy = wy + g_anim_y;
 	wz = rwz + g_anim_z;
-	const float eye_x = g_eye_x;
-	const float eye_y = g_eye_y;
-	const float eye_z = g_eye_z;
+	float eye_x = g_eye_x;
+	float eye_y = g_eye_y;
+	float eye_z = g_eye_z;
+	if (g_orbit_rad > 0.01f) {
+		const float cp = cosf(g_orbit_el);
+		eye_x += sinf(g_orbit_az) * cp * g_orbit_rad;
+		eye_y += sinf(g_orbit_el) * g_orbit_rad;
+		eye_z += cosf(g_orbit_az) * cp * g_orbit_rad;
+	}
+	if (g_shake > 0.0f) {
+		eye_x += g_shake * 0.05f;
+		eye_y += g_shake * 0.03f;
+	}
 	const float yaw = g_cam_yaw + g_anim_yaw;
-	const float cp = cosf(g_cam_pitch);
-	const float sp = sinf(g_cam_pitch);
+	const float pitch = g_cam_pitch + g_look_pitch;
+	const float cp = cosf(pitch);
+	const float sp = sinf(pitch);
 	const float c_yaw = cosf(yaw);
 	const float s_yaw = sinf(yaw);
 	const float fx = s_yaw * cp;
@@ -225,10 +261,6 @@ static int project_vert(float wx, float wy, float wz, float *sx, float *sy, floa
 		return 0;
 	}
 	const float f = 1.92098213f;
-	const float dw = (float)display_get_width();
-	const float dh = (float)display_get_height();
-	const float hw = dw * 0.5f;
-	const float hh = dh * 0.5f;
 	const float aspect = dw / dh;
 	*sx = hw + (cx * f / aspect / cz) * hw;
 	*sy = hh - (vy * f / cz) * hh;
@@ -377,6 +409,11 @@ void rdpq_draw_set_anim_ofs(float x, float y, float z, float yaw)
 
 void rdpq_draw_sprite(int i, int16_t x, int16_t y, int16_t w, int16_t h)
 {
+	rdpq_draw_sprite_ex(i, x, y, w, h, 0, 0);
+}
+
+void rdpq_draw_sprite_ex(int i, int16_t x, int16_t y, int16_t w, int16_t h, uint8_t flip, uint8_t frame)
+{
 	if (i < 0 || i >= 32) {
 		return;
 	}
@@ -384,9 +421,45 @@ void rdpq_draw_sprite(int i, int16_t x, int16_t y, int16_t w, int16_t h)
 	g_spr_y[i] = y;
 	g_spr_w[i] = w;
 	g_spr_h[i] = h;
+	g_spr_flip[i] = flip;
+	g_spr_frame[i] = frame;
 	if (i + 1 > g_spr_n) {
 		g_spr_n = i + 1;
 	}
+}
+
+void rdpq_draw_tile_cell(int16_t tx, int16_t ty)
+{
+	if (g_tile_n >= 256) {
+		return;
+	}
+	g_tile_x[g_tile_n] = tx;
+	g_tile_y[g_tile_n] = ty;
+	g_tile_n++;
+}
+
+void rdpq_draw_clear_tiles(void)
+{
+	g_tile_n = 0;
+}
+
+void rdpq_draw_part_quad(int i, float x, float y, float w, float h)
+{
+	if (i < 0 || i >= 32) {
+		return;
+	}
+	g_part_x[i] = x;
+	g_part_y[i] = y;
+	g_part_w[i] = w;
+	g_part_h[i] = h;
+	if (i + 1 > g_part_n) {
+		g_part_n = i + 1;
+	}
+}
+
+void rdpq_draw_clear_parts(void)
+{
+	g_part_n = 0;
 }
 
 void rdpq_draw_talk(const char *txt)
@@ -416,19 +489,19 @@ void rdpq_draw_set_ortho(int on)
 void rdpq_draw_look(float yaw, float pitch)
 {
 	g_look_yaw += yaw;
-	(void)pitch;
+	g_look_pitch += pitch;
 }
 
 void rdpq_draw_orbit_sph(float az, float el, float rad)
 {
-	(void)az;
-	(void)el;
-	(void)rad;
+	g_orbit_az = az;
+	g_orbit_el = el;
+	g_orbit_rad = rad;
 }
 
 void rdpq_draw_shake(float amp)
 {
-	(void)amp;
+	g_shake = amp;
 }
 
 void rdpq_draw_set_fade(float a)
@@ -532,15 +605,70 @@ void rdpq_draw_frame(void)
 	rdpq_fill_rectangle(160, 64, 224, 176);
 #endif
 	(void)g_fov;
-	(void)g_ortho;
 	(void)g_ly_n;
+	if (g_shake > 0.0f) {
+		g_shake *= 0.85f;
+		if (g_shake < 0.01f) {
+			g_shake = 0.0f;
+		}
+	}
 
 	rdpq_text_printf(NULL, 1, 16, 16, "Blazium N64 ABI %d", BLAZIUM_N64_COOK_ABI);
+	rdpq_set_mode_fill(RGBA32(80, 90, 70, 255));
+	for (int i = 0; i < g_tile_n; i++) {
+		const int x0 = (int)g_tile_x[i] * 16;
+		const int y0 = (int)g_tile_y[i] * 16;
+		rdpq_fill_rectangle(x0, y0, x0 + 16, y0 + 16);
+	}
+#ifdef BLAZIUM_N64_HAS_NTEX
+	{
+		int tw = 0;
+		int th = 0;
+		const int tex = upload_cooked_ntex(&tw, &th);
+		if (tex) {
+			rdpq_set_mode_standard();
+			rdpq_mode_combiner(RDPQ_COMBINER_TEX);
+			for (int i = 0; i < g_spr_n; i++) {
+				const float x0 = (float)g_spr_x[i];
+				const float y0 = (float)g_spr_y[i];
+				const float x1 = x0 + (float)g_spr_w[i];
+				const float y1 = y0 + (float)g_spr_h[i];
+				float u0 = (float)g_spr_frame[i] * 8.0f;
+				float u1 = u0 + (float)tw;
+				if (g_spr_flip[i] & 1) {
+					const float t = u0;
+					u0 = u1;
+					u1 = t;
+				}
+				float tv0[5] = { x0, y0, u0, 0.0f, 1.0f };
+				float tv1[5] = { x1, y0, u1, 0.0f, 1.0f };
+				float tv2[5] = { x1, y1, u1, (float)th, 1.0f };
+				float tv3[5] = { x0, y1, u0, (float)th, 1.0f };
+				rdpq_triangle(&TRIFMT_TEX, tv0, tv1, tv2);
+				rdpq_triangle(&TRIFMT_TEX, tv0, tv2, tv3);
+			}
+		} else {
+			rdpq_set_mode_fill(RGBA32(220, 220, 240, 255));
+			for (int i = 0; i < g_spr_n; i++) {
+				const int x0 = (int)g_spr_x[i];
+				const int y0 = (int)g_spr_y[i];
+				rdpq_fill_rectangle(x0, y0, x0 + (int)g_spr_w[i], y0 + (int)g_spr_h[i]);
+			}
+		}
+	}
+#else
 	rdpq_set_mode_fill(RGBA32(220, 220, 240, 255));
 	for (int i = 0; i < g_spr_n; i++) {
 		const int x0 = (int)g_spr_x[i];
 		const int y0 = (int)g_spr_y[i];
 		rdpq_fill_rectangle(x0, y0, x0 + (int)g_spr_w[i], y0 + (int)g_spr_h[i]);
+	}
+#endif
+	rdpq_set_mode_fill(RGBA32(240, 200, 80, 255));
+	for (int i = 0; i < g_part_n; i++) {
+		const int x0 = (int)g_part_x[i];
+		const int y0 = (int)g_part_y[i];
+		rdpq_fill_rectangle(x0, y0, x0 + (int)g_part_w[i], y0 + (int)g_part_h[i]);
 	}
 	if (g_talk) {
 		rdpq_text_printf(NULL, 1, 24, 200, "%s", g_talk_txt);

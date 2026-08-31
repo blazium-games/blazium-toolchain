@@ -8,6 +8,9 @@ extern "C" {
 void pack_io_init(void);
 int pack_io_swap(int pack);
 int pack_io_can_fit(int extra_bytes);
+int pack_io_rdram_used(void);
+int pack_io_rdram_free(void);
+int pack_io_rdram_limit(void);
 int pack_io_instantiate(int pack);
 int pack_io_prefetch(const char *path);
 const char *pack_io_find_path(const char *res);

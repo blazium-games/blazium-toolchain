@@ -187,6 +187,22 @@ int pack_io_can_fit(int extra_bytes)
 	return (s_cost_rdram + extra_bytes) <= N64_EXTRA_RDRAM_CAP;
 }
 
+int pack_io_rdram_used(void)
+{
+	return s_cost_rdram;
+}
+
+int pack_io_rdram_limit(void)
+{
+	return N64_EXTRA_RDRAM_CAP;
+}
+
+int pack_io_rdram_free(void)
+{
+	const int f = N64_EXTRA_RDRAM_CAP - s_cost_rdram;
+	return f < 0 ? 0 : f;
+}
+
 int pack_io_swap(int pack)
 {
 	if (pack <= 0) {

@@ -4,6 +4,7 @@
 
 #include "dfs_io.h"
 #include "pack_io.h"
+#include "pad_io.h"
 #include "rdpq_draw.h"
 #include "script_vm.h"
 
@@ -17,7 +18,24 @@
 #define BLAZIUM_N64_COOK_ABI 1
 #endif
 
-enum { kMaxCams = 8, kMaxHits = 64, kMaxAnims = 16, kMaxSprites = 32, kMaxTiles = 256, kMaxAnimKeys = 64 };
+enum {
+	kMaxCams = 8,
+	kMaxHits = 64,
+	kMaxAnims = 16,
+	kMaxSprites = 32,
+	kMaxTiles = 256,
+	kMaxAnimKeys = 64,
+	kMaxParts = 8,
+	kMaxPaths = 8,
+	kMaxPathPts = 32,
+	kMaxWays = 32,
+	kMaxNavEdges = 96,
+	kMaxNavmVerts = 64,
+	kMaxNavmTris = 32,
+	kMaxVehls = 4,
+	kMaxTweens = 8,
+	kMaxLiveParts = 32
+};
 
 static int s_paused;
 static int s_hud_just_accept;
@@ -72,6 +90,71 @@ struct AnimRow {
 struct SprtRow {
 	int node_id;
 	int16_t x, y, w, h, z;
+	uint8_t flip;
+	uint8_t frame;
+};
+
+struct PartRow {
+	int node_id;
+	unsigned char mode;
+	float rate;
+	float life;
+	float speed;
+	unsigned color;
+	float u0, v0, u1, v1;
+};
+
+struct PathRow {
+	int node_id;
+	int npts;
+	float pts[kMaxPathPts][3];
+};
+
+struct WayRow {
+	int node_id;
+	float pos[3];
+};
+
+struct NavEdge {
+	unsigned short a;
+	unsigned short b;
+};
+
+struct NavmVert {
+	float pos[3];
+};
+
+struct NavmTri {
+	unsigned short a, b, c;
+};
+
+struct VehlRow {
+	int node_id;
+	unsigned char mode;
+	float pos[3];
+	float yaw;
+	float speed;
+	float turn;
+};
+
+struct TweenSlot {
+	int used;
+	int id;
+	float dur;
+	float t;
+	float from[3];
+	float to[3];
+};
+
+struct LivePart {
+	int used;
+	int mode;
+	float x, y, z;
+	float px, py, pz;
+	float vx, vy, vz;
+	float age;
+	float life;
+	float frame;
 };
 
 struct TileRow {
@@ -97,6 +180,43 @@ static TileRow s_tiles[kMaxTiles];
 static int s_tile_n;
 static unsigned char *s_tile_blob;
 static unsigned s_tile_blob_sz;
+static PartRow s_parts[kMaxParts];
+static int s_part_n;
+static unsigned char *s_part_blob;
+static unsigned s_part_blob_sz;
+static PathRow s_paths[kMaxPaths];
+static int s_path_n;
+static unsigned char *s_path_blob;
+static unsigned s_path_blob_sz;
+static WayRow s_ways[kMaxWays];
+static int s_way_n;
+static unsigned char *s_way_blob;
+static unsigned s_way_blob_sz;
+static NavEdge s_nav_edges[kMaxNavEdges];
+static int s_nav_edge_n;
+static unsigned char *s_navn_blob;
+static unsigned s_navn_blob_sz;
+static NavmVert s_navm_verts[kMaxNavmVerts];
+static int s_navm_vn;
+static NavmTri s_navm_tris[kMaxNavmTris];
+static int s_navm_tn;
+static unsigned char *s_navm_blob;
+static unsigned s_navm_blob_sz;
+static VehlRow s_vehls[kMaxVehls];
+static int s_vehl_n;
+static unsigned char *s_vehl_blob;
+static unsigned s_vehl_blob_sz;
+static TweenSlot s_tweens[kMaxTweens];
+static LivePart s_live[kMaxLiveParts];
+static float s_emit_acc[kMaxParts];
+static int s_follow_id = -1;
+static int s_path_id;
+static float s_path_t;
+static int s_nav_cur;
+static int s_drive_id = -1;
+static float s_pitch;
+static float s_roll;
+static int s_parts_playing;
 
 static uint16_t ru16le(const unsigned char *p)
 {
@@ -292,8 +412,10 @@ static void parse_sprn(const unsigned char *p, unsigned sz)
 		s->y = (int16_t)ru16le(r + 6);
 		s->w = (int16_t)ru16le(r + 8);
 		s->h = (int16_t)ru16le(r + 10);
+		s->flip = r[12];
+		s->frame = r[13];
 		s->z = (int16_t)ru16le(r + 14);
-		rdpq_draw_sprite(s_sprt_n, s->x, s->y, s->w, s->h);
+		rdpq_draw_sprite_ex(s_sprt_n, s->x, s->y, s->w, s->h, s->flip, s->frame);
 		s_sprt_n++;
 	}
 }
@@ -316,7 +438,172 @@ static void parse_tiln(const unsigned char *p, unsigned sz)
 		s_tiles[s_tile_n].tx = (int16_t)ru16le(r);
 		s_tiles[s_tile_n].ty = (int16_t)ru16le(r + 2);
 		s_tiles[s_tile_n].solid = r[4];
+		rdpq_draw_tile_cell(s_tiles[s_tile_n].tx, s_tiles[s_tile_n].ty);
 		s_tile_n++;
+	}
+}
+
+static void parse_prtn(const unsigned char *p, unsigned sz)
+{
+	s_part_n = 0;
+	if (!p || sz < 8 || p[0] != 'P' || p[1] != 'R' || p[2] != 'T' || p[3] != 'N') {
+		return;
+	}
+	if (ru16le(p + 4) != (uint16_t)BLAZIUM_N64_COOK_ABI) {
+		return;
+	}
+	const unsigned n = ru16le(p + 6);
+	if (n > (unsigned)kMaxParts || 8u + n * 36u > sz) {
+		return;
+	}
+	for (unsigned i = 0; i < n; i++) {
+		const unsigned char *r = p + 8 + i * 36;
+		PartRow *e = &s_parts[s_part_n];
+		e->node_id = (int)(int16_t)ru16le(r);
+		e->mode = r[2]; /* 0 billboard 1 flipbook 2 trail 3 point 4 stream */
+		e->rate = rf32le(r + 4);
+		e->life = rf32le(r + 8);
+		e->speed = rf32le(r + 12);
+		e->color = (unsigned)r[16] | ((unsigned)r[17] << 8) | ((unsigned)r[18] << 16) | ((unsigned)r[19] << 24);
+		e->u0 = rf32le(r + 20);
+		e->v0 = rf32le(r + 24);
+		e->u1 = rf32le(r + 28);
+		e->v1 = rf32le(r + 32);
+		s_part_n++;
+	}
+}
+
+static void parse_pthn(const unsigned char *p, unsigned sz)
+{
+	s_path_n = 0;
+	if (!p || sz < 8 || p[0] != 'P' || p[1] != 'T' || p[2] != 'H' || p[3] != 'N') {
+		return;
+	}
+	if (ru16le(p + 4) != (uint16_t)BLAZIUM_N64_COOK_ABI) {
+		return;
+	}
+	const unsigned n = ru16le(p + 6);
+	unsigned off = 8;
+	for (unsigned i = 0; i < n && i < (unsigned)kMaxPaths && off + 4 <= sz; i++) {
+		PathRow *path = &s_paths[s_path_n];
+		path->node_id = (int)(int16_t)ru16le(p + off);
+		path->npts = (int)ru16le(p + off + 2);
+		off += 4;
+		if (path->npts > kMaxPathPts) {
+			path->npts = kMaxPathPts;
+		}
+		int k;
+		for (k = 0; k < path->npts && off + 12 <= sz; k++) {
+			path->pts[k][0] = rf32le(p + off);
+			path->pts[k][1] = rf32le(p + off + 4);
+			path->pts[k][2] = rf32le(p + off + 8);
+			off += 12;
+		}
+		path->npts = k;
+		s_path_n++;
+	}
+}
+
+static void parse_wayn(const unsigned char *p, unsigned sz)
+{
+	s_way_n = 0;
+	if (!p || sz < 8 || p[0] != 'W' || p[1] != 'A' || p[2] != 'Y' || p[3] != 'N') {
+		return;
+	}
+	if (ru16le(p + 4) != (uint16_t)BLAZIUM_N64_COOK_ABI) {
+		return;
+	}
+	const unsigned n = ru16le(p + 6);
+	if (n > (unsigned)kMaxWays || 8u + n * 16u > sz) {
+		return;
+	}
+	for (unsigned i = 0; i < n; i++) {
+		const unsigned char *r = p + 8 + i * 16;
+		s_ways[s_way_n].node_id = (int)(int16_t)ru16le(r);
+		s_ways[s_way_n].pos[0] = rf32le(r + 4);
+		s_ways[s_way_n].pos[1] = rf32le(r + 8);
+		s_ways[s_way_n].pos[2] = rf32le(r + 12);
+		s_way_n++;
+	}
+}
+
+static void parse_navn(const unsigned char *p, unsigned sz)
+{
+	s_nav_edge_n = 0;
+	if (!p || sz < 8 || p[0] != 'N' || p[1] != 'A' || p[2] != 'V' || p[3] != 'N') {
+		return;
+	}
+	if (ru16le(p + 4) != (uint16_t)BLAZIUM_N64_COOK_ABI) {
+		return;
+	}
+	const unsigned n = ru16le(p + 6);
+	if (n > (unsigned)kMaxNavEdges || 8u + n * 4u > sz) {
+		return;
+	}
+	for (unsigned i = 0; i < n; i++) {
+		s_nav_edges[s_nav_edge_n].a = ru16le(p + 8 + i * 4);
+		s_nav_edges[s_nav_edge_n].b = ru16le(p + 10 + i * 4);
+		s_nav_edge_n++;
+	}
+}
+
+static void parse_navm(const unsigned char *p, unsigned sz)
+{
+	s_navm_vn = 0;
+	s_navm_tn = 0;
+	if (!p || sz < 12 || p[0] != 'N' || p[1] != 'A' || p[2] != 'V' || p[3] != 'M') {
+		return;
+	}
+	if (ru16le(p + 4) != (uint16_t)BLAZIUM_N64_COOK_ABI) {
+		return;
+	}
+	const unsigned nv = ru16le(p + 6);
+	const unsigned nt = ru16le(p + 8);
+	if (nv > (unsigned)kMaxNavmVerts || nt > (unsigned)kMaxNavmTris) {
+		return;
+	}
+	unsigned off = 12;
+	for (unsigned i = 0; i < nv && off + 12 <= sz; i++) {
+		s_navm_verts[s_navm_vn].pos[0] = rf32le(p + off);
+		s_navm_verts[s_navm_vn].pos[1] = rf32le(p + off + 4);
+		s_navm_verts[s_navm_vn].pos[2] = rf32le(p + off + 8);
+		s_navm_vn++;
+		off += 12;
+	}
+	for (unsigned i = 0; i < nt && off + 6 <= sz; i++) {
+		s_navm_tris[s_navm_tn].a = ru16le(p + off);
+		s_navm_tris[s_navm_tn].b = ru16le(p + off + 2);
+		s_navm_tris[s_navm_tn].c = ru16le(p + off + 4);
+		s_navm_tn++;
+		off += 6;
+	}
+}
+
+static void parse_vehn(const unsigned char *p, unsigned sz)
+{
+	s_vehl_n = 0;
+	if (!p || sz < 8 || p[0] != 'V' || p[1] != 'E' || p[2] != 'H' || p[3] != 'N') {
+		return;
+	}
+	if (ru16le(p + 4) != (uint16_t)BLAZIUM_N64_COOK_ABI) {
+		return;
+	}
+	const unsigned n = ru16le(p + 6);
+	if (n > (unsigned)kMaxVehls || 8u + n * 28u > sz) {
+		return;
+	}
+	for (unsigned i = 0; i < n; i++) {
+		const unsigned char *r = p + 8 + i * 28;
+		VehlRow *v = &s_vehls[s_vehl_n];
+		v->node_id = (int)(int16_t)ru16le(r);
+		v->mode = r[2];
+		v->pos[0] = rf32le(r + 4);
+		v->pos[1] = rf32le(r + 8);
+		v->pos[2] = rf32le(r + 12);
+		v->yaw = rf32le(r + 16);
+		v->speed = rf32le(r + 20);
+		v->turn = rf32le(r + 24);
+		s_vehl_n++;
 	}
 }
 
@@ -361,9 +648,48 @@ static void load_sidecars(int pack)
 	}
 	free_layer(&s_tile_blob, &s_tile_blob_sz);
 	if (load_rom_bytes("rom://TILN%02d.bin", pack, &s_tile_blob, &s_tile_blob_sz) == 0) {
+		rdpq_draw_clear_tiles();
 		parse_tiln(s_tile_blob, s_tile_blob_sz);
 	} else {
 		s_tile_n = 0;
+		rdpq_draw_clear_tiles();
+	}
+	free_layer(&s_part_blob, &s_part_blob_sz);
+	if (load_rom_bytes("rom://PRTN%02d.bin", pack, &s_part_blob, &s_part_blob_sz) == 0) {
+		parse_prtn(s_part_blob, s_part_blob_sz);
+	} else {
+		s_part_n = 0;
+	}
+	free_layer(&s_path_blob, &s_path_blob_sz);
+	if (load_rom_bytes("rom://PTHN%02d.bin", pack, &s_path_blob, &s_path_blob_sz) == 0) {
+		parse_pthn(s_path_blob, s_path_blob_sz);
+	} else {
+		s_path_n = 0;
+	}
+	free_layer(&s_way_blob, &s_way_blob_sz);
+	if (load_rom_bytes("rom://WAYN%02d.bin", pack, &s_way_blob, &s_way_blob_sz) == 0) {
+		parse_wayn(s_way_blob, s_way_blob_sz);
+	} else {
+		s_way_n = 0;
+	}
+	free_layer(&s_navn_blob, &s_navn_blob_sz);
+	if (load_rom_bytes("rom://NAVN%02d.bin", pack, &s_navn_blob, &s_navn_blob_sz) == 0) {
+		parse_navn(s_navn_blob, s_navn_blob_sz);
+	} else {
+		s_nav_edge_n = 0;
+	}
+	free_layer(&s_navm_blob, &s_navm_blob_sz);
+	if (load_rom_bytes("rom://NAVM%02d.bin", pack, &s_navm_blob, &s_navm_blob_sz) == 0) {
+		parse_navm(s_navm_blob, s_navm_blob_sz);
+	} else {
+		s_navm_vn = 0;
+		s_navm_tn = 0;
+	}
+	free_layer(&s_vehl_blob, &s_vehl_blob_sz);
+	if (load_rom_bytes("rom://VEHN%02d.bin", pack, &s_vehl_blob, &s_vehl_blob_sz) == 0) {
+		parse_vehn(s_vehl_blob, s_vehl_blob_sz);
+	} else {
+		s_vehl_n = 0;
 	}
 }
 
@@ -411,7 +737,115 @@ void sys_io_tick(float delta)
 		sys_io_seek_anim(s_anim_t);
 	}
 	if (s_attach) {
-		rdpq_draw_set_camera(s_spawn[0], s_spawn[1] + 2.0f, s_spawn[2] + 6.0f, 0.0f, 0.321750554f, 55.0f);
+		rdpq_draw_set_camera(s_spawn[0], s_spawn[1] + 2.0f, s_spawn[2] + 6.0f, 0.0f, 0.321750554f + s_pitch, 55.0f);
+	}
+	if (s_follow_id >= 0) {
+		rdpq_draw_set_camera(s_spawn[0], s_spawn[1] + 1.5f, s_spawn[2] + 4.0f, 0.0f, s_pitch, 55.0f);
+	}
+	for (int i = 0; i < kMaxTweens; i++) {
+		if (!s_tweens[i].used) {
+			continue;
+		}
+		s_tweens[i].t += delta;
+		float u = s_tweens[i].dur > 0.0001f ? s_tweens[i].t / s_tweens[i].dur : 1.0f;
+		if (u > 1.0f) {
+			u = 1.0f;
+			s_tweens[i].used = 0;
+		}
+		s_spawn[0] = s_tweens[i].from[0] + (s_tweens[i].to[0] - s_tweens[i].from[0]) * u;
+		s_spawn[1] = s_tweens[i].from[1] + (s_tweens[i].to[1] - s_tweens[i].from[1]) * u;
+		s_spawn[2] = s_tweens[i].from[2] + (s_tweens[i].to[2] - s_tweens[i].from[2]) * u;
+	}
+	if (s_drive_id >= 0 && s_drive_id < s_vehl_n) {
+		float sx = 0;
+		float sy = 0;
+		pad_io_stick(&sx, &sy);
+		VehlRow *v = &s_vehls[s_drive_id];
+		v->yaw += sx * v->turn * delta;
+		const float spd = (pad_io_held(0) ? v->speed : v->speed * 0.5f) * sy;
+		if (v->mode == 2) {
+			sys_io_slide(&v->pos[0], &v->pos[1], &v->pos[2], sinf(v->yaw) * spd * delta, s_pitch * spd * delta, cosf(v->yaw) * spd * delta);
+		} else {
+			const float gy = v->mode == 1 ? 0.0f : -0.4f * delta;
+			sys_io_slide(&v->pos[0], &v->pos[1], &v->pos[2], sinf(v->yaw) * spd * delta, gy, cosf(v->yaw) * spd * delta);
+		}
+		s_spawn[0] = v->pos[0];
+		s_spawn[1] = v->pos[1];
+		s_spawn[2] = v->pos[2];
+	}
+	if (s_parts_playing) {
+		rdpq_draw_clear_parts();
+		for (int e = 0; e < s_part_n; e++) {
+			s_emit_acc[e] += delta * (s_parts[e].rate > 0.0f ? s_parts[e].rate : 4.0f);
+			while (s_emit_acc[e] >= 1.0f) {
+				s_emit_acc[e] -= 1.0f;
+				int slot = -1;
+				for (int i = 0; i < kMaxLiveParts; i++) {
+					if (!s_live[i].used) {
+						slot = i;
+						break;
+					}
+				}
+				if (slot < 0) {
+					break;
+				}
+				s_live[slot].used = 1;
+				s_live[slot].mode = s_parts[e].mode;
+				s_live[slot].x = s_spawn[0];
+				s_live[slot].y = s_spawn[1] + 0.5f;
+				s_live[slot].z = s_spawn[2];
+				s_live[slot].px = s_live[slot].x;
+				s_live[slot].py = s_live[slot].y;
+				s_live[slot].pz = s_live[slot].z;
+				s_live[slot].vx = ((float)((slot * 17) % 7) - 3.0f) * 0.15f * s_parts[e].speed;
+				s_live[slot].vy = s_parts[e].speed * 0.4f;
+				s_live[slot].vz = ((float)((slot * 13) % 7) - 3.0f) * 0.15f * s_parts[e].speed;
+				s_live[slot].age = 0.0f;
+				s_live[slot].life = s_parts[e].life > 0.05f ? s_parts[e].life : 0.6f;
+				s_live[slot].frame = 0.0f;
+			}
+		}
+		int drawn = 0;
+		for (int i = 0; i < kMaxLiveParts; i++) {
+			if (!s_live[i].used) {
+				continue;
+			}
+			s_live[i].age += delta;
+			if (s_live[i].age >= s_live[i].life && s_live[i].mode != 4) {
+				s_live[i].used = 0;
+				continue;
+			}
+			if (s_live[i].mode == 4 && s_live[i].age >= s_live[i].life) {
+				s_live[i].age = 0.0f;
+			}
+			s_live[i].px = s_live[i].x;
+			s_live[i].py = s_live[i].y;
+			s_live[i].pz = s_live[i].z;
+			s_live[i].x += s_live[i].vx * delta;
+			s_live[i].y += s_live[i].vy * delta;
+			s_live[i].z += s_live[i].vz * delta;
+			s_live[i].frame += delta * 8.0f;
+			float w = 4.0f;
+			float h = 4.0f;
+			if (s_live[i].mode == 2) {
+				w = 8.0f;
+				h = 2.0f;
+			} else if (s_live[i].mode == 3) {
+				w = 1.0f;
+				h = 1.0f;
+			} else if (s_live[i].mode == 1) {
+				w = 6.0f;
+				h = 6.0f;
+			}
+			float sx = s_live[i].x * 16.0f + 160.0f;
+			float sy = 120.0f - s_live[i].y * 16.0f;
+			(void)s_live[i].z;
+			rdpq_draw_part_quad(drawn, sx, sy, w, h);
+			drawn++;
+			if (drawn >= kMaxLiveParts) {
+				break;
+			}
+		}
 	}
 	(void)s_paused;
 	(void)s_hud_just_accept;
@@ -584,8 +1018,49 @@ void sys_io_attach_camera(int on)
 
 void sys_io_tween_start(int id, float dur)
 {
-	(void)id;
-	(void)dur;
+	int slot = -1;
+	for (int i = 0; i < kMaxTweens; i++) {
+		if (!s_tweens[i].used) {
+			slot = i;
+			break;
+		}
+	}
+	if (slot < 0) {
+		slot = 0;
+	}
+	s_tweens[slot].used = 1;
+	s_tweens[slot].id = id;
+	s_tweens[slot].dur = dur > 0.01f ? dur : 0.5f;
+	s_tweens[slot].t = 0.0f;
+	s_tweens[slot].from[0] = s_spawn[0];
+	s_tweens[slot].from[1] = s_spawn[1];
+	s_tweens[slot].from[2] = s_spawn[2];
+	s_tweens[slot].to[0] = s_spawn[0] + 1.0f;
+	s_tweens[slot].to[1] = s_spawn[1];
+	s_tweens[slot].to[2] = s_spawn[2];
+}
+
+void sys_io_tween_kill(void)
+{
+	for (int i = 0; i < kMaxTweens; i++) {
+		s_tweens[i].used = 0;
+	}
+}
+
+int sys_io_tween_done(int id)
+{
+	for (int i = 0; i < kMaxTweens; i++) {
+		if (s_tweens[i].used && s_tweens[i].id == id) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+void sys_io_follow_node(int id)
+{
+	s_follow_id = id;
+	s_attach = 1;
 }
 
 void sys_io_timer_start(int id, float dur)
@@ -705,7 +1180,13 @@ void sys_io_move_planar(float dx, float dz)
 
 void sys_io_move_6dof(float dx, float dy, float dz)
 {
-	sys_io_slide(&s_spawn[0], &s_spawn[1], &s_spawn[2], dx, dy, dz);
+	float sx = 0;
+	float sy = 0;
+	pad_io_stick(&sx, &sy);
+	s_pitch += dy * 0.05f;
+	s_roll += dx * 0.05f;
+	const float cy = cosf(s_pitch);
+	sys_io_slide(&s_spawn[0], &s_spawn[1], &s_spawn[2], (dx + sx) * cy, dy + s_pitch * 0.1f, dz + sy);
 }
 
 void sys_io_hurt(int amount)
@@ -715,7 +1196,123 @@ void sys_io_hurt(int amount)
 
 void sys_io_path_follow(int path)
 {
-	(void)path;
+	if (path < 0 || path >= s_path_n) {
+		path = 0;
+	}
+	if (s_path_n <= 0 || s_paths[path].npts < 2) {
+		return;
+	}
+	s_path_id = path;
+	s_path_t += 0.02f;
+	if (s_path_t > 1.0f) {
+		s_path_t = 0.0f;
+	}
+	const PathRow *p = &s_paths[path];
+	const float ft = s_path_t * (float)(p->npts - 1);
+	int i0 = (int)ft;
+	if (i0 < 0) {
+		i0 = 0;
+	}
+	if (i0 >= p->npts - 1) {
+		i0 = p->npts - 2;
+	}
+	const float u = ft - (float)i0;
+	s_spawn[0] = p->pts[i0][0] + (p->pts[i0 + 1][0] - p->pts[i0][0]) * u;
+	s_spawn[1] = p->pts[i0][1] + (p->pts[i0 + 1][1] - p->pts[i0][1]) * u;
+	s_spawn[2] = p->pts[i0][2] + (p->pts[i0 + 1][2] - p->pts[i0][2]) * u;
+	sys_io_spawn_ofs(s_spawn[0], s_spawn[1], s_spawn[2]);
+}
+
+void sys_io_nav_follow(int id)
+{
+	if (s_way_n <= 0) {
+		return;
+	}
+	int cur = s_nav_cur;
+	if (cur < 0 || cur >= s_way_n) {
+		cur = 0;
+	}
+	int next = -1;
+	for (int i = 0; i < s_nav_edge_n; i++) {
+		if ((int)s_nav_edges[i].a == cur) {
+			next = (int)s_nav_edges[i].b;
+			break;
+		}
+	}
+	if (next < 0) {
+		next = (cur + 1) % s_way_n;
+	}
+	(void)id;
+	s_nav_cur = next;
+	s_spawn[0] = s_ways[next].pos[0];
+	s_spawn[1] = s_ways[next].pos[1];
+	s_spawn[2] = s_ways[next].pos[2];
+}
+
+int sys_io_navmesh_next(void)
+{
+	if (s_navm_tn <= 0 || s_navm_vn <= 0) {
+		return -1;
+	}
+	int best = 0;
+	float best_d = 1.0e9f;
+	for (int i = 0; i < s_navm_tn; i++) {
+		const NavmTri *t = &s_navm_tris[i];
+		if (t->a >= (unsigned)s_navm_vn || t->b >= (unsigned)s_navm_vn || t->c >= (unsigned)s_navm_vn) {
+			continue;
+		}
+		const float cx = (s_navm_verts[t->a].pos[0] + s_navm_verts[t->b].pos[0] + s_navm_verts[t->c].pos[0]) / 3.0f;
+		const float cz = (s_navm_verts[t->a].pos[2] + s_navm_verts[t->b].pos[2] + s_navm_verts[t->c].pos[2]) / 3.0f;
+		const float dx = cx - s_spawn[0];
+		const float dz = cz - s_spawn[2];
+		const float d = dx * dx + dz * dz;
+		if (d < best_d && d > 0.01f) {
+			best_d = d;
+			best = i;
+		}
+	}
+	const NavmTri *t = &s_navm_tris[best];
+	s_spawn[0] = (s_navm_verts[t->a].pos[0] + s_navm_verts[t->b].pos[0] + s_navm_verts[t->c].pos[0]) / 3.0f;
+	s_spawn[1] = (s_navm_verts[t->a].pos[1] + s_navm_verts[t->b].pos[1] + s_navm_verts[t->c].pos[1]) / 3.0f;
+	s_spawn[2] = (s_navm_verts[t->a].pos[2] + s_navm_verts[t->b].pos[2] + s_navm_verts[t->c].pos[2]) / 3.0f;
+	return best;
+}
+
+int sys_io_load_particles(int pack)
+{
+	free_layer(&s_part_blob, &s_part_blob_sz);
+	if (load_rom_bytes("rom://PRTN%02d.bin", pack, &s_part_blob, &s_part_blob_sz) != 0) {
+		s_part_n = 0;
+		return 0;
+	}
+	parse_prtn(s_part_blob, s_part_blob_sz);
+	s_parts_playing = 1;
+	return s_part_n > 0;
+}
+
+void sys_io_unload_particles(void)
+{
+	free_layer(&s_part_blob, &s_part_blob_sz);
+	s_part_n = 0;
+	s_parts_playing = 0;
+	for (int i = 0; i < kMaxLiveParts; i++) {
+		s_live[i].used = 0;
+	}
+	rdpq_draw_clear_parts();
+}
+
+void sys_io_play_particles(int id)
+{
+	(void)id;
+	s_parts_playing = 1;
+}
+
+void sys_io_drive_vehicle(int id)
+{
+	if (id < 0 || id >= s_vehl_n) {
+		id = 0;
+	}
+	s_drive_id = id;
 }
 
 int sys_io_kit_player(void)

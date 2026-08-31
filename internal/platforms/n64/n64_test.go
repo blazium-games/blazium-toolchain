@@ -513,6 +513,16 @@ func TestStageCookPackDirStagesExtras(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dest, "filesystem", "CAM00.bin")); err != nil {
 		t.Fatalf("missing staged CAM00.bin: %v", err)
 	}
+	prtn := []byte{'P', 'R', 'T', 'N', 1, 0, 0, 0}
+	if err := os.WriteFile(filepath.Join(src, "PRTN00.bin"), prtn, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := stageCookEmbed(dest, opts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "filesystem", "PRTN00.bin")); err != nil {
+		t.Fatalf("missing staged PRTN00.bin: %v", err)
+	}
 }
 
 func TestRunRequiresRom(t *testing.T) {

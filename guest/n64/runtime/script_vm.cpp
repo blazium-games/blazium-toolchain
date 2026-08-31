@@ -97,7 +97,10 @@ enum {
 	NAT_UNLOAD_ANIMS = 76,
 	NAT_LOAD_HITS = 77,
 	NAT_UNLOAD_HITS = 78,
-	NAT_UNLOAD_SPRITES = 79
+	NAT_UNLOAD_SPRITES = 79,
+	NAT_FOLLOW_NODE = 80,
+	NAT_UNLOAD_PARTICLES = 81,
+	NAT_NAVMESH = 82
 };
 
 static const unsigned char *s_pack0_node;
@@ -185,7 +188,7 @@ static void bind_kit_from_node(const unsigned char *node, unsigned node_sz)
 		if (name_is(name, "Portal")) {
 			s_kit_portal = 1;
 		}
-		if (name_is(name, "Checkpoint") || name_is(name, "Hazard") || name_is(name, "Pickup") || name_is(name, "Talk") || name_is(name, "Spawner") || name_is(name, "Save")) {
+		if (name_is(name, "Checkpoint") || name_is(name, "Hazard") || name_is(name, "Pickup") || name_is(name, "Talk") || name_is(name, "Spawner") || name_is(name, "Save") || name_is(name, "Follow") || name_is(name, "Path") || name_is(name, "Waypoint") || name_is(name, "Particles") || name_is(name, "Vehicle") || name_is(name, "Tween") || name_is(name, "LoadZone") || name_is(name, "UnloadZone")) {
 			/* Kit names stay in the 32-byte NODE name (no row-size bump). */
 		}
 	}
@@ -272,9 +275,31 @@ static void do_native(int nat)
 		sys_io_move_6dof(popf(), popf(), popf());
 		break;
 	case NAT_LOAD_PARTICLES:
+		sys_io_load_particles((int)popf());
+		break;
+	case NAT_UNLOAD_PARTICLES:
+		sys_io_unload_particles();
 		break;
 	case NAT_PATH_FOLLOW:
 		sys_io_path_follow((int)popf());
+		break;
+	case NAT_FOLLOW_NODE:
+		sys_io_follow_node((int)popf());
+		break;
+	case NAT_NAVMESH:
+		pushf((float)sys_io_navmesh_next());
+		break;
+	case NAT_RDRAM_USED:
+		pushf((float)pack_io_rdram_used());
+		break;
+	case NAT_RDRAM_FREE:
+		pushf((float)pack_io_rdram_free());
+		break;
+	case NAT_RDRAM_LIMIT:
+		pushf((float)pack_io_rdram_limit());
+		break;
+	case NAT_CAN_LOAD:
+		pushf((float)pack_io_can_fit((int)popf()));
 		break;
 	case NAT_CAN_INSTANTIATE:
 		pushf((float)pack_io_can_fit(64));
@@ -460,6 +485,13 @@ void script_vm_process(float delta)
 			sys_io_unload_anims();
 			sys_io_unload_sprites();
 			sys_io_unload_hits();
+			sys_io_unload_particles();
+			break;
+		case OP_NAV_FOLLOW:
+			sys_io_nav_follow((int)popf());
+			break;
+		case OP_KILL_TWEENS:
+			sys_io_tween_kill();
 			break;
 		case OP_TWEEN:
 			sys_io_tween_start((int)popf(), popf());
