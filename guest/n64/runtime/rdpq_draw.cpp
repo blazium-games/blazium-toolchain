@@ -18,13 +18,13 @@
 #ifdef BLAZIUM_N64_HAS_MESH
 extern "C" {
 extern const unsigned char cooked_mesh[];
-extern const unsigned int size_cooked_mesh;
+extern const unsigned char cooked_mesh_end[];
 }
 #endif
 #ifdef BLAZIUM_N64_HAS_NTEX
 extern "C" {
 extern const unsigned char cooked_ntex[];
-extern const unsigned int size_cooked_ntex;
+extern const unsigned char cooked_ntex_end[];
 }
 #endif
 
@@ -126,11 +126,11 @@ void rdpq_draw_frame(void)
 
 #ifdef BLAZIUM_N64_HAS_MESH
 	(void)cooked_mesh;
-	(void)size_cooked_mesh;
+	(void)cooked_mesh_end;
 #endif
 #ifdef BLAZIUM_N64_HAS_NTEX
 	(void)cooked_ntex;
-	(void)size_cooked_ntex;
+	(void)cooked_ntex_end;
 #endif
 	(void)g_fov;
 	(void)g_ortho;

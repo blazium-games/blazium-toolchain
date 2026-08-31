@@ -60,15 +60,15 @@ func stageCookEmbed(dest string, opts platforms.BuildOptions) error {
 	var asm strings.Builder
 	asm.WriteString("\t.section .rodata\n")
 	for _, s := range present {
+		// Start/end labels only. A .word size after .incbin lands in GP small-data
+		// and mips64-elf ld fails (R_MIPS_GPREL16) once NODE/MESH is non-empty.
 		asm.WriteString("\t.align 4\n")
 		asm.WriteString("\t.global " + s.symbol + "\n")
-		asm.WriteString("\t.global size_" + s.symbol + "\n")
+		asm.WriteString("\t.global " + s.symbol + "_end\n")
 		asm.WriteString(s.symbol + ":\n")
 		asm.WriteString("\t.incbin \"" + s.bin + "\"\n")
-		asm.WriteString(s.symbol + "_end:\n")
 		asm.WriteString("\t.align 4\n")
-		asm.WriteString("size_" + s.symbol + ":\n")
-		asm.WriteString("\t.word " + s.symbol + "_end - " + s.symbol + "\n")
+		asm.WriteString(s.symbol + "_end:\n")
 	}
 	if err := os.WriteFile(filepath.Join(dest, "cook_embed.S"), []byte(asm.String()), 0o644); err != nil {
 		return err

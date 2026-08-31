@@ -201,6 +201,16 @@ func TestStageCookEmbedNtex(t *testing.T) {
 	if !strings.Contains(string(flags), "BLAZIUM_N64_HAS_NTEX") {
 		t.Fatalf("%s", flags)
 	}
+	asm, err := os.ReadFile(filepath.Join(dest, "cook_embed.S"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(asm), "size_cooked_") {
+		t.Fatal("size word after incbin breaks mips64-elf GP relocs")
+	}
+	if !strings.Contains(string(asm), "cooked_ntex_end") {
+		t.Fatalf("need end label: %s", asm)
+	}
 }
 
 func TestRunRequiresRom(t *testing.T) {

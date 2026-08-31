@@ -27,13 +27,13 @@
 #ifdef BLAZIUM_N64_HAS_NODE
 extern "C" {
 extern const unsigned char cooked_node[];
-extern const unsigned int size_cooked_node;
+extern const unsigned char cooked_node_end[];
 }
 #endif
 #ifdef BLAZIUM_N64_HAS_SCRIPT
 extern "C" {
 extern const unsigned char cooked_script[];
-extern const unsigned int size_cooked_script;
+extern const unsigned char cooked_script_end[];
 }
 #endif
 
@@ -54,11 +54,11 @@ int main(void)
 	unsigned node_sz = 0;
 #ifdef BLAZIUM_N64_HAS_SCRIPT
 	scrp = cooked_script;
-	scrp_sz = size_cooked_script;
+	scrp_sz = (unsigned)(cooked_script_end - cooked_script);
 #endif
 #ifdef BLAZIUM_N64_HAS_NODE
 	node = cooked_node;
-	node_sz = size_cooked_node;
+	node_sz = (unsigned)(cooked_node_end - cooked_node);
 #endif
 	script_vm_init(scrp, scrp_sz, node, node_sz);
 	if (user_init) {
