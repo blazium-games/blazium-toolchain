@@ -501,7 +501,7 @@ jobs:
 
   github-release:
     name: GitHub Release
-    needs: [resolve-version, manifest, ps2-compile, n64-compile]
+    needs: [resolve-version, manifest]
     if: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     permissions:
