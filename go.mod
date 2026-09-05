@@ -1,10 +1,9 @@
 module github.com/blazium-games/blazium-toolchain
 
-go 1.23.8
-
-require github.com/klauspost/compress v1.18.2
+go 1.24
 
 require (
-	github.com/ulikunitz/xz v0.5.12 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
+	github.com/klauspost/compress v1.19.2
+	github.com/ulikunitz/xz v0.5.12
+	gopkg.in/yaml.v3 v3.0.1
 )
