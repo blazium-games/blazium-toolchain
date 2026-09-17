@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/blazium-games/blazium-toolchain/internal/embedfs"
@@ -43,8 +42,8 @@ func TestPinsPresent(t *testing.T) {
 			if a.URL == "" || a.Dest == "" {
 				t.Fatalf("%s pin %+v", goos, a)
 			}
-			if !strings.Contains(a.URL, "steamcmd") {
-				t.Fatalf("unexpected url %s", a.URL)
+			if a.SHA256 == "" {
+				t.Fatalf("%s steamcmd pin missing sha256", goos)
 			}
 		}
 	}
