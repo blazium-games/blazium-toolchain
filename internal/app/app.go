@@ -23,6 +23,7 @@ import (
 	n64plat "github.com/blazium-games/blazium-toolchain/internal/platforms/n64"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/ps1"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/ps2"
+	"github.com/blazium-games/blazium-toolchain/internal/platforms/steam"
 	"github.com/blazium-games/blazium-toolchain/internal/report"
 	"github.com/blazium-games/blazium-toolchain/internal/settings"
 )
@@ -47,6 +48,7 @@ func init() {
 	platforms.Register(ps2.New())
 	platforms.Register(n64plat.New())
 	platforms.Register(interdvd.New())
+	platforms.Register(steam.New())
 	future.Register()
 }
 
@@ -635,6 +637,7 @@ Platforms:
   %s
   %s
   interdvd  supported (Interactive DVD ISO9660+UDF)
+  steam     supported (Valve steamcmd cache for blazium-cli deploy)
   ps3       planned
   ps4       planned
 
@@ -662,6 +665,11 @@ PS2 commands:
   iso --dir TREE --out FILE.iso
   elf-info FILE.elf
   chd --iso FILE.iso --out FILE.chd
+
+Steam commands (steamcmd only; upload lives in blazium-cli):
+  setup [--offline]
+  env
+  status
 
 Interactive DVD commands:
   setup [--offline]

@@ -27,6 +27,11 @@
       "id": "n64",
       "status": "supported",
       "commands": ["setup", "env", "status", "build", "export-guest", "run", "rom"]
+    },
+    {
+      "id": "steam",
+      "status": "supported",
+      "commands": ["setup", "env", "status"]
     }
   ],
   "profiles": {
