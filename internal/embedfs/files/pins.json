@@ -73,5 +73,31 @@
         "dest": "ffmpeg"
       }
     ]
+  },
+  "steam": {
+    "windows": [
+      {
+        "id": "steamcmd",
+        "url": "https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip",
+        "sha256": "7669b170dee42db8ee2273775ed7dfb2d173bdba1b849f70d2c7b379290bce13",
+        "dest": "steamcmd"
+      }
+    ],
+    "linux": [
+      {
+        "id": "steamcmd",
+        "url": "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz",
+        "sha256": "cebf0046bfd08cf45da6bc094ae47aa39ebf4155e5ede41373b579b8f1071e7c",
+        "dest": "steamcmd"
+      }
+    ],
+    "darwin": [
+      {
+        "id": "steamcmd",
+        "url": "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_osx.tar.gz",
+        "sha256": "8ecc17c8988e5acadcc78e631c48490f76150f2dfaa6cf8d7b4b67b097bd753b",
+        "dest": "steamcmd"
+      }
+    ]
   }
 }

@@ -9,12 +9,14 @@ import (
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/n64"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/ps1"
 	"github.com/blazium-games/blazium-toolchain/internal/platforms/ps2"
+	"github.com/blazium-games/blazium-toolchain/internal/platforms/steam"
 )
 
 func TestListIncludesPS1AndPlanned(t *testing.T) {
 	platforms.Register(ps1.New())
 	platforms.Register(ps2.New())
 	platforms.Register(n64.New())
+	platforms.Register(steam.New())
 	future.Register()
 	list := platforms.List()
 	ids := map[string]platforms.Status{}
@@ -29,6 +31,9 @@ func TestListIncludesPS1AndPlanned(t *testing.T) {
 	}
 	if ids["n64"] != platforms.StatusSupported {
 		t.Fatalf("n64 status %q", ids["n64"])
+	}
+	if ids["steam"] != platforms.StatusSupported {
+		t.Fatalf("steam status %q", ids["steam"])
 	}
 	for _, id := range []string{"ps3", "ps4"} {
 		if ids[id] != platforms.StatusPlanned {

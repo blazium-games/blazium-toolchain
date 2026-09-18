@@ -50,6 +50,7 @@ type Pins struct {
 	Compile        map[string][]ZipPin `json:"compile"`
 	HostBuild      map[string][]ZipPin `json:"host_build"`
 	InterDVD       map[string][]ZipPin `json:"interdvd"`
+	Steam          map[string][]ZipPin `json:"steam"`
 }
 
 var (

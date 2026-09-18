@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -167,6 +168,24 @@ func TestListJSONHasPS1(t *testing.T) {
 	if !n64ok {
 		t.Fatalf("missing supported n64 in %s", out.String())
 	}
+	var steamok bool
+	for _, info := range list {
+		if info.ID == "steam" && info.Status == platforms.StatusSupported {
+			steamok = true
+			var setup bool
+			for _, c := range info.Commands {
+				if c == "setup" {
+					setup = true
+				}
+			}
+			if !setup {
+				t.Fatalf("steam commands missing setup: %v", info.Commands)
+			}
+		}
+	}
+	if !steamok {
+		t.Fatalf("missing supported steam in %s", out.String())
+	}
 }
 
 func TestPS2IsSupportedNotPlanned(t *testing.T) {
@@ -260,11 +279,46 @@ func TestHelp(t *testing.T) {
 	if Run(context.Background(), []string{"help"}, &out, &bytes.Buffer{}) != ExitOK {
 		t.Fatal("help")
 	}
-	if !strings.Contains(out.String(), "ps1") || !strings.Contains(out.String(), "interdvd") {
+	if !strings.Contains(out.String(), "ps1") || !strings.Contains(out.String(), "interdvd") || !strings.Contains(out.String(), "steam") {
 		t.Fatal(out.String())
 	}
 	if !strings.Contains(out.String(), "Windows and Linux") {
 		t.Fatal(out.String())
+	}
+}
+
+func TestSteamSetupOffline(t *testing.T) {
+	prefix := t.TempDir()
+	dest := filepath.Join(prefix, "steam", "steamcmd")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	name := "steamcmd"
+	if runtime.GOOS == "windows" {
+		name = "steamcmd.exe"
+	}
+	if err := os.WriteFile(filepath.Join(dest, name), []byte("steamcmd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	code := Run(context.Background(), []string{"--prefix", prefix, "--json", "steam", "setup", "--offline"}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("setup %d %s", code, errb.String())
+	}
+	out.Reset()
+	code = Run(context.Background(), []string{"--prefix", prefix, "--json", "steam", "status"}, &out, &errb)
+	if code != ExitOK {
+		t.Fatalf("status %d %s", code, errb.String())
+	}
+	var st map[string]any
+	if err := json.Unmarshal(out.Bytes(), &st); err != nil {
+		t.Fatal(err)
+	}
+	if ready, _ := st["ready"].(bool); !ready {
+		t.Fatalf("%s", out.String())
+	}
+	if st["steamcmd"] == "" {
+		t.Fatalf("%s", out.String())
 	}
 }
 
