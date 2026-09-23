@@ -2,6 +2,24 @@
 
 A CLI that fetches console compilers into a cache and builds PS1, PS2, N64, and Interactive DVD products. GPL-3.0-or-later; the MIT Blazium editor only spawns the binary. `ps3` and `ps4` are reserved and exit `2`.
 
+## Community
+
+- Official website: [https://blazium.app/](https://blazium.app/)
+- IndieDB blog: [https://www.indiedb.com/engines/blazium-engine](https://www.indiedb.com/engines/blazium-engine)
+- Official community: [Blazium Discord](https://discord.gg/sZaf9KYzDp)
+- Docs: [docs.blazium.app](https://docs.blazium.app)
+
+## Ecosystem
+
+| Product | Role | Release |
+|---------|------|---------|
+| [CLI](https://github.com/blazium-games/blazium-cli) | Install editors, projects, remote control, Steam/itch deploy | Linux and Windows, x86_64 and x86_32. Catalog: [cli.json](https://cdn.blazium.app/cli/cli.json) |
+| [Hub](https://github.com/blazium-games/blazium-hub) | Desktop companion; installers bundle the CLI | Linux and Windows, x86_64 and x86_32. Engine builds track `blazium_4.8` |
+| [Crash reporter](https://github.com/blazium-games/blazium_crash_reporter) | Sidecar UI for engine and Hub crash reports | Linux and Windows, x86_64 and x86_32. Catalog: [crash_reporter.json](https://cdn.blazium.app/crash_reporter/crash_reporter.json). Engine builds track `blazium_4.8` |
+| [Toolchain](https://github.com/blazium-games/blazium-toolchain) | PS1, PS2, N64, and Interactive DVD | Linux and Windows, x86_64 and x86_32. Catalog: [toolchain.json](https://cdn.blazium.app/toolchain/toolchain.json) |
+| [Skills](https://github.com/blazium-games/blazium-skills) | Agent skill packs for Claude, Cursor, Codex, and Grok | Own semver, separate from the 0.6.x API baseline. Catalog: [skills.json](https://cdn.blazium.app/skills/skills.json) |
+| [Subagents](https://github.com/blazium-games/blazium-subagents) | Studio roster that loads those skills | Own semver. Catalog: [subagents.json](https://cdn.blazium.app/subagents/subagents.json) |
+
 ```
 blazium-toolchain [--json] [--prefix DIR] version
 blazium-toolchain [--json] list
@@ -55,7 +73,7 @@ go test ./...
 go build -o blazium-toolchain.exe ./cmd/blazium-toolchain
 ```
 
-Drop `.exe` on Unix. Go 1.23.8 or later. GitHub Releases publish linux/windows/darwin binaries.
+Drop `.exe` on Unix. Go 1.23.8 or later. Published binaries are Linux and Windows, x86_64 and x86_32: [toolchain.json](https://cdn.blazium.app/toolchain/toolchain.json). A local `go build` on macOS can still master Interactive DVD; CI does not ship a macOS binary.
 
 ## Project settings
 
@@ -181,7 +199,7 @@ Set `PCSX2_EXE` (and `PS2_BIOS_DIR` if you have a legal BIOS). `ps2 run` smokes 
 
 ## Hosts
 
-PS1/PS2/N64 setup, build, run, iso, and rom are Windows and Linux. Other hosts exit `2`. `env`, `status`, and `export-guest` still work. The CLI itself builds on macOS so Interactive DVD mastering works there.
+PS1/PS2/N64 setup, build, run, iso, and rom are Windows and Linux. Other hosts exit `2`. `env`, `status`, and `export-guest` still work. Building the CLI locally on macOS can still master Interactive DVD. Published release binaries are Linux and Windows only.
 
 CI runs `go test ./...`, `go vet ./...`, `ps2 build --out hello.elf`, and `n64 build --out hello.z64` on Ubuntu and Windows.
 

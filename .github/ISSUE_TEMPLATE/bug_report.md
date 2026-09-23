@@ -4,6 +4,8 @@ about: Unexpected CLI or platform behavior
 labels: bug
 ---
 
+Questions and support: [Blazium Discord](https://discord.gg/sZaf9KYzDp). Website: [https://blazium.app/](https://blazium.app/). Blog: [IndieDB](https://www.indiedb.com/engines/blazium-engine).
+
 **Command**
 ```
 blazium-toolchain …

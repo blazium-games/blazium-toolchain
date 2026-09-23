@@ -1,5 +1,11 @@
 # Contributing
 
+## Community
+
+- Official website: [https://blazium.app/](https://blazium.app/)
+- IndieDB blog: [https://www.indiedb.com/engines/blazium-engine](https://www.indiedb.com/engines/blazium-engine)
+- Official community: [Blazium Discord](https://discord.gg/sZaf9KYzDp)
+
 Go 1.23.8 or later.
 
 ```
@@ -8,7 +14,7 @@ go vet ./...
 go build -o blazium-toolchain.exe ./cmd/blazium-toolchain
 ```
 
-Drop `.exe` on Unix. Windows and Linux can run `ps1` / `ps2` / `n64` setup, build, and run. macOS can still build the CLI and master Interactive DVD.
+Drop `.exe` on Unix. Windows and Linux can run `ps1` / `ps2` / `n64` setup, build, and run. A local build on macOS can still master Interactive DVD. Published binaries are Linux and Windows, x86_64 and x86_32.
 
 Setup writes compilers and SDK zips into `<prefix>/<plat>/` (`inst`, `src`, `guest`, `work`). Discovery is env, then that tree, then a portable copy next to the exe, then PATH. `C:\ultra` is ignored. Sony BIOS and N64 PIF dumps are not fetched.
 
@@ -24,4 +30,4 @@ After you change `manifest.json`, `LICENSE`, or `NOTICE` at the repo root, copy 
 
 When you add a command or change the prefix layout, update `cmd/blazium-toolchain/doc.go`, `README.md`, and `usage()`.
 
-CI compiles `hello.elf` (PS2) and `hello.z64` (N64) on Ubuntu and Windows, then builds linux, windows, and darwin binaries.
+CI compiles `hello.elf` (PS2) and `hello.z64` (N64) on Ubuntu and Windows, then builds Linux and Windows binaries (x86_64 and x86_32).
