@@ -271,15 +271,6 @@ jobs:
         with:
           go-version: "1.23.8"
 
-      - name: Install GPG
-        run: sudo apt-get update && sudo apt-get install -y gnupg
-
-      - name: Import GPG key
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-        run: |
-          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
-
       - name: Build application
         run: |
           set -euo pipefail
@@ -290,13 +281,97 @@ jobs:
           go build -trimpath -ldflags "-s -w -X github.com/blazium-games/blazium-toolchain/internal/app.Version=${{ needs.resolve-version.outputs.simple_version }}" \
             -o "./build/${{ matrix.output }}" ./cmd/blazium-toolchain
 
-      - name: Compute sha256
-        id: digest
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.goos }}-${{ matrix.hub_arch }}
+          path: build/${{ matrix.output }}
+
+  validate:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-linux-x86_64
+          path: artifacts/linux/x86_64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-linux-x86_32
+          path: artifacts/linux/x86_32
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-windows-x86_64
+          path: artifacts/windows/x86_64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-windows-x86_32
+          path: artifacts/windows/x86_32
+
+      - name: Require every build artifact
         run: |
-          SHA256=$(sha256sum build/${{ matrix.output }} | awk '{print $1}')
-          SIZE=$(stat -c%s build/${{ matrix.output }})
-          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
-          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          find_bin() {
+            local dir="$1" name="$2"
+            if [ -f "${dir}/${name}" ] || [ -f "${dir}/build/${name}" ]; then
+              return 0
+            fi
+            echo "missing ${dir}/${name}" >&2
+            return 1
+          }
+          find_bin artifacts/linux/x86_64 blazium-toolchain
+          find_bin artifacts/linux/x86_32 blazium-toolchain
+          find_bin artifacts/windows/x86_64 blazium-toolchain.exe
+          find_bin artifacts/windows/x86_32 blazium-toolchain.exe
+
+  sign:
+    needs: [resolve-version, validate]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            hub_arch: x86_64
+            output: blazium-toolchain
+          - goos: linux
+            hub_arch: x86_32
+            output: blazium-toolchain
+          - goos: windows
+            hub_arch: x86_64
+            output: blazium-toolchain.exe
+          - goos: windows
+            hub_arch: x86_32
+            output: blazium-toolchain.exe
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-${{ matrix.goos }}-${{ matrix.hub_arch }}
+          path: build
+
+      - name: Flatten build artifact
+        run: |
+          set -euo pipefail
+          if [ -f "build/build/${{ matrix.output }}" ]; then
+            mv "build/build/${{ matrix.output }}" "build/${{ matrix.output }}"
+            rmdir build/build || true
+          fi
+          test -f "build/${{ matrix.output }}"
+
+      - name: Install GPG
+        if: ${{ matrix.goos != 'windows' }}
+        run: sudo apt-get update && sudo apt-get install -y gnupg
+
+      - name: Import GPG key
+        if: ${{ matrix.goos != 'windows' }}
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: echo "$GPG_PRIVATE_KEY" | gpg --batch --import
 
       - name: GPG Signing build
         if: ${{ matrix.goos != 'windows' }}
@@ -330,21 +405,25 @@ jobs:
           set -euo pipefail
           mkdir -p signed
           DEST="./signed/${{ matrix.output }}"
-
           if [ -f "$DEST" ]; then
-            echo "Using signed Windows binary at $DEST"
             echo "signed=true" >> "$GITHUB_OUTPUT"
           elif SIGNED="$(find ./signed -type f -name '${{ matrix.output }}' | head -n 1)" && [ -n "$SIGNED" ]; then
             cp "$SIGNED" "$DEST"
-            echo "Using signed Windows binary from $SIGNED"
             echo "signed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Windows code signing failed; publishing unsigned build artifact." >&2
+            echo "Windows code signing failed; keeping unsigned build artifact." >&2
             cp "./build/${{ matrix.output }}" "$DEST"
             echo "signed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          ls -la ./signed/
+      - name: Record Windows signing
+        if: ${{ matrix.goos == 'windows' }}
+        run: |
+          if [[ "${{ steps.windows_artifact.outputs.signed }}" == "true" ]]; then
+            echo sslcom > signed/signing.txt
+          else
+            echo unsigned > signed/signing.txt
+          fi
 
       - name: Upload artifacts (unix)
         uses: actions/upload-artifact@v4
@@ -360,83 +439,12 @@ jobs:
         if: ${{ matrix.goos == 'windows' }}
         with:
           name: signed-windows-${{ matrix.hub_arch }}
-          path: signed/blazium-toolchain.exe
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY }}
-          secret_key: ${{ secrets.DO_SECRET_KEY }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}
-          out_dir: toolchain/${{ matrix.goos }}/${{ matrix.hub_arch }}
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY }}
-          secret_key: ${{ secrets.DO_SECRET_KEY }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}
-          out_dir: toolchain/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ needs.resolve-version.outputs.simple_version }}
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        if: ${{ matrix.goos != 'windows' }}
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY }}
-          secret_key: ${{ secrets.DO_SECRET_KEY }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}.sig
-          out_dir: toolchain/${{ matrix.goos }}/${{ matrix.hub_arch }}
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        if: ${{ matrix.goos != 'windows' }}
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY }}
-          secret_key: ${{ secrets.DO_SECRET_KEY }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}.sig
-          out_dir: toolchain/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ needs.resolve-version.outputs.simple_version }}
-
-      - name: Updating Cerebro
-        env:
-          URL: https://cdn.blazium.app/toolchain/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ needs.resolve-version.outputs.simple_version }}/${{ matrix.output }}
-        run: |
-          if [[ "${{ matrix.goos }}" != "windows" ]]; then
-            SIG_URL="${URL}.sig"
-            SIGNING="gpg"
-          elif [[ "${{ steps.windows_artifact.outputs.signed }}" == "true" ]]; then
-            SIG_URL=""
-            SIGNING="sslcom"
-          else
-            SIG_URL=""
-            SIGNING=""
-          fi
-
-          curl -s -X POST "${{ secrets.CEREBRO_URL }}/api/v1/tools" \
-          -H "Content-Type: application/json" \
-          -H "BLAZIUM_AUTH: ${{ secrets.BLAZIUM_AUTH }}" \
-          -d "$(cat <<EOF
-          {
-            "name": "Blazium Toolchain",
-            "type": "toolchain",
-            "version": "${{ needs.resolve-version.outputs.simple_version }}",
-            "os": "${{ matrix.goos }}",
-            "arch": "${{ matrix.hub_arch }}",
-            "file": "$URL",
-            "sig": "$SIG_URL",
-            "sha256": "${{ steps.digest.outputs.sha256 }}",
-            "size": ${{ steps.digest.outputs.size }},
-            "signing": "$SIGNING",
-            "released_on": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-          }
-          EOF
-          )"
+          path: |
+            signed/blazium-toolchain.exe
+            signed/signing.txt
 
   manifest:
-    needs: [resolve-version, build]
+    needs: [resolve-version, sign]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -457,53 +465,14 @@ jobs:
           path: artifacts/linux/x86_32
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
-        id: download_windows_64
         with:
           name: signed-windows-x86_64
           path: artifacts/windows/x86_64
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
-        id: download_windows_32
         with:
           name: signed-windows-x86_32
           path: artifacts/windows/x86_32
-
-      - name: Download Windows toolchain fallback from CDN
-        if: steps.download_windows_64.outcome != 'success' || steps.download_windows_32.outcome != 'success'
-        run: |
-          set -euo pipefail
-          MANIFEST="$(curl -fsSL https://cdn.blazium.app/toolchain/toolchain.json || echo '{}')"
-          VERSION="${{ needs.resolve-version.outputs.simple_version }}"
-          fetch_arch() {
-            local arch="$1"
-            local dest="artifacts/windows/${arch}/blazium-toolchain.exe"
-            if [ -f "$dest" ]; then
-              return 0
-            fi
-            mkdir -p "artifacts/windows/${arch}"
-            URL="$(echo "$MANIFEST" | jq -r --arg v "$VERSION" --arg a "$arch" '.versions[$v].downloads[]? | select(.platform=="windows" and .arch==$a) | .download_url' | head -n 1)"
-            if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-              URL="$(echo "$MANIFEST" | jq -r --arg a "$arch" '.versions[.latest].downloads[]? | select(.platform=="windows" and .arch==$a) | .download_url' | head -n 1)"
-            fi
-            if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-              echo "Could not resolve Windows toolchain download URL for arch=$arch from toolchain.json." >&2
-              return 1
-            fi
-            curl -fsSL "$URL" -o "$dest"
-          }
-          if [[ "${{ steps.download_windows_64.outcome }}" != "success" ]]; then
-            fetch_arch x86_64
-          fi
-          if [[ "${{ steps.download_windows_32.outcome }}" != "success" ]]; then
-            fetch_arch x86_32 || true
-          fi
-
-      - name: Ensure Windows x86_64 artifact exists
-        run: |
-          set -euo pipefail
-          test -f artifacts/windows/x86_64/blazium-toolchain.exe
 
       - name: Normalize artifact layout
         run: |
@@ -524,6 +493,16 @@ jobs:
             normalize_dir "$d"
           done
           ls -laR artifacts/
+
+      - name: Require every signed artifact
+        run: |
+          set -euo pipefail
+          test -f artifacts/linux/x86_64/blazium-toolchain
+          test -f artifacts/linux/x86_64/blazium-toolchain.sig
+          test -f artifacts/linux/x86_32/blazium-toolchain
+          test -f artifacts/linux/x86_32/blazium-toolchain.sig
+          test -f artifacts/windows/x86_64/blazium-toolchain.exe
+          test -f artifacts/windows/x86_32/blazium-toolchain.exe
 
       - name: Download existing manifest
         continue-on-error: true
@@ -568,6 +547,165 @@ jobs:
           source: toolchain.json
           out_dir: toolchain/${{ needs.resolve-version.outputs.simple_version }}
 
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_64/blazium-toolchain
+          out_dir: toolchain/linux/x86_64
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_64/blazium-toolchain
+          out_dir: toolchain/linux/x86_64/${{ needs.resolve-version.outputs.simple_version }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_64/blazium-toolchain.sig
+          out_dir: toolchain/linux/x86_64
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_64/blazium-toolchain.sig
+          out_dir: toolchain/linux/x86_64/${{ needs.resolve-version.outputs.simple_version }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_32/blazium-toolchain
+          out_dir: toolchain/linux/x86_32
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_32/blazium-toolchain
+          out_dir: toolchain/linux/x86_32/${{ needs.resolve-version.outputs.simple_version }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_32/blazium-toolchain.sig
+          out_dir: toolchain/linux/x86_32
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_32/blazium-toolchain.sig
+          out_dir: toolchain/linux/x86_32/${{ needs.resolve-version.outputs.simple_version }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/windows/x86_64/blazium-toolchain.exe
+          out_dir: toolchain/windows/x86_64
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/windows/x86_64/blazium-toolchain.exe
+          out_dir: toolchain/windows/x86_64/${{ needs.resolve-version.outputs.simple_version }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/windows/x86_32/blazium-toolchain.exe
+          out_dir: toolchain/windows/x86_32
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/windows/x86_32/blazium-toolchain.exe
+          out_dir: toolchain/windows/x86_32/${{ needs.resolve-version.outputs.simple_version }}
+
+      - name: Register with Cerebro
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.simple_version }}
+        run: |
+          set -euo pipefail
+          register() {
+            local os="$1" arch="$2" file="$3" signing="$4"
+            local url="https://cdn.blazium.app/toolchain/${os}/${arch}/${VERSION}/$(basename "$file")"
+            local sig=""
+            if [[ "$signing" == "gpg" ]]; then
+              sig="${url}.sig"
+            elif [[ "$signing" == "unsigned" ]]; then
+              signing=""
+            fi
+            local sha size
+            sha=$(sha256sum "$file" | awk '{print $1}')
+            size=$(stat -c%s "$file")
+            curl -fsS -X POST "${{ secrets.CEREBRO_URL }}/api/v1/tools" \
+              -H "Content-Type: application/json" \
+              -H "BLAZIUM_AUTH: ${{ secrets.BLAZIUM_AUTH }}" \
+              -d "$(cat <<EOF
+          {
+            "name": "Blazium Toolchain",
+            "type": "toolchain",
+            "version": "${VERSION}",
+            "os": "${os}",
+            "arch": "${arch}",
+            "file": "${url}",
+            "sig": "${sig}",
+            "sha256": "${sha}",
+            "size": ${size},
+            "signing": "${signing}",
+            "released_on": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          }
+          EOF
+          )"
+          }
+          win_signing() {
+            local arch="$1"
+            local marker="artifacts/windows/${arch}/signing.txt"
+            if [[ -f "$marker" && "$(tr -d '[:space:]' < "$marker")" == "sslcom" ]]; then
+              echo sslcom
+            else
+              echo unsigned
+            fi
+          }
+          register linux x86_64 artifacts/linux/x86_64/blazium-toolchain gpg
+          register linux x86_32 artifacts/linux/x86_32/blazium-toolchain gpg
+          register windows x86_64 artifacts/windows/x86_64/blazium-toolchain.exe "$(win_signing x86_64)"
+          register windows x86_32 artifacts/windows/x86_32/blazium-toolchain.exe "$(win_signing x86_32)"
+
   github-release:
     name: GitHub Release
     needs: [resolve-version, manifest]
@@ -598,15 +736,11 @@ jobs:
           path: artifacts/linux/x86_32
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
-        id: download_windows_64
         with:
           name: signed-windows-x86_64
           path: artifacts/windows/x86_64
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
-        id: download_windows_32
         with:
           name: signed-windows-x86_32
           path: artifacts/windows/x86_32
@@ -644,7 +778,11 @@ jobs:
           stage artifacts/windows/x86_64/blazium-toolchain.exe blazium-toolchain-windows-x86_64.exe
           stage artifacts/windows/x86_32/blazium-toolchain.exe blazium-toolchain-windows-x86_32.exe
           test -f release-assets/blazium-toolchain-linux-x86_64
+          test -f release-assets/blazium-toolchain-linux-x86_64.sig
+          test -f release-assets/blazium-toolchain-linux-x86_32
+          test -f release-assets/blazium-toolchain-linux-x86_32.sig
           test -f release-assets/blazium-toolchain-windows-x86_64.exe
+          test -f release-assets/blazium-toolchain-windows-x86_32.exe
           ls -la release-assets/
 
       - name: Create or update GitHub Release
