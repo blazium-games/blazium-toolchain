@@ -521,14 +521,6 @@ jobs:
           fi
           go run ./cmd/generate-toolchain-manifest "${ARGS[@]}"
 
-      - name: Verify toolchain.json checksums
-        run: |
-          chmod +x scripts/verify-toolchain-manifest.sh
-          scripts/verify-toolchain-manifest.sh \
-            --manifest toolchain.json \
-            --version "${{ needs.resolve-version.outputs.simple_version }}" \
-            --artifacts artifacts
-
       - uses: BetaHuhn/do-spaces-action@v2
         with:
           access_key: ${{ secrets.DO_ACCESS_KEY }}
@@ -654,6 +646,14 @@ jobs:
           space_region: ${{ secrets.DO_SPACE_REGION }}
           source: artifacts/windows/x86_32/blazium-toolchain.exe
           out_dir: toolchain/windows/x86_32/${{ needs.resolve-version.outputs.simple_version }}
+
+      - name: Verify toolchain.json checksums
+        run: |
+          chmod +x scripts/verify-toolchain-manifest.sh
+          scripts/verify-toolchain-manifest.sh \
+            --manifest toolchain.json \
+            --version "${{ needs.resolve-version.outputs.simple_version }}" \
+            --artifacts artifacts
 
       - name: Register with Cerebro
         env:
