@@ -73,7 +73,18 @@ npx @blazium-engine/toolchain
 npm install -g @blazium-engine/toolchain
 ```
 
-The command is `blazium-toolchain`. npm uses the matching optional platform package when it is installed. It downloads that same version from the CDN only when the optional package is absent.
+The command is `blazium-toolchain`. Install `@blazium-engine/toolchain`. License: GPL-3.0-or-later.
+
+npm installs one of these optional binaries for the current platform:
+
+| Package | Platform | CPU |
+|---------|----------|-----|
+| `@blazium-engine/toolchain-linux-x64` | linux | x64 |
+| `@blazium-engine/toolchain-linux-ia32` | linux | ia32 |
+| `@blazium-engine/toolchain-win32-x64` | win32 | x64 |
+| `@blazium-engine/toolchain-win32-ia32` | win32 | ia32 |
+
+When that optional package is installed, its binary is used and nothing is downloaded. The CDN download runs only if that package is absent.
 
 From source:
 
