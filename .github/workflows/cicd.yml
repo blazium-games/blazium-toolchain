@@ -706,6 +706,84 @@ jobs:
           register windows x86_64 artifacts/windows/x86_64/blazium-toolchain.exe "$(win_signing x86_64)"
           register windows x86_32 artifacts/windows/x86_32/blazium-toolchain.exe "$(win_signing x86_32)"
 
+  publish-npm:
+    needs: [resolve-version, sign]
+    if: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-linux-x86_64
+          path: artifacts/linux/x86_64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-linux-x86_32
+          path: artifacts/linux/x86_32
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-windows-x86_64
+          path: artifacts/windows/x86_64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-windows-x86_32
+          path: artifacts/windows/x86_32
+
+      - name: Stage platform binaries
+        env:
+          BLAZIUM_TOOLCHAIN_VERSION: ${{ needs.resolve-version.outputs.simple_version }}
+        run: |
+          set -euo pipefail
+          test -n "$BLAZIUM_TOOLCHAIN_VERSION"
+          normalize_dir() {
+            local dir="$1"
+            [ -d "$dir" ] || return 0
+            if [ -d "${dir}/build" ]; then
+              mv "${dir}/build/"* "${dir}/" 2>/dev/null || true
+              rmdir "${dir}/build" 2>/dev/null || true
+            fi
+            if [ -d "${dir}/signed" ]; then
+              mv "${dir}/signed/"* "${dir}/" 2>/dev/null || true
+              rmdir "${dir}/signed" 2>/dev/null || true
+            fi
+          }
+          for d in artifacts/linux/x86_64 artifacts/linux/x86_32 artifacts/windows/x86_64 artifacts/windows/x86_32; do
+            normalize_dir "$d"
+          done
+          install_bin() {
+            local src="$1"
+            local dest_dir="$2"
+            local dest_name="$3"
+            test -f "$src"
+            mkdir -p "$dest_dir"
+            cp "$src" "${dest_dir}/${dest_name}"
+            chmod +x "${dest_dir}/${dest_name}"
+          }
+          install_bin artifacts/linux/x86_64/blazium-toolchain npm/packages/toolchain-linux-x64/bin blazium-toolchain
+          install_bin artifacts/linux/x86_32/blazium-toolchain npm/packages/toolchain-linux-ia32/bin blazium-toolchain
+          install_bin artifacts/windows/x86_64/blazium-toolchain.exe npm/packages/toolchain-win32-x64/bin blazium-toolchain.exe
+          install_bin artifacts/windows/x86_32/blazium-toolchain.exe npm/packages/toolchain-win32-ia32/bin blazium-toolchain.exe
+          node npm/stamp-versions.cjs
+
+      - name: Publish npm packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$NODE_AUTH_TOKEN"
+          for pkg in toolchain-linux-x64 toolchain-linux-ia32 toolchain-win32-x64 toolchain-win32-ia32 toolchain; do
+            npm publish --access public "npm/packages/${pkg}"
+          done
+
   github-release:
     name: GitHub Release
     needs: [resolve-version, manifest]

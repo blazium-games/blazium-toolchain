@@ -1,0 +1,34 @@
+{
+  "name": "@blazium-engine/toolchain",
+  "version": "0.0.0",
+  "description": "Blazium toolchain. Fetch console compilers and build PS1, PS2, N64, and Interactive DVD products.",
+  "repository": "https://github.com/blazium-games/blazium-toolchain",
+  "license": "GPL-3.0-or-later",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "blazium-toolchain": "bin/blazium-toolchain.js"
+  },
+  "files": [
+    "bin/blazium-toolchain.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "optionalDependencies": {
+    "@blazium-engine/toolchain-linux-x64": "0.0.0",
+    "@blazium-engine/toolchain-linux-ia32": "0.0.0",
+    "@blazium-engine/toolchain-win32-x64": "0.0.0",
+    "@blazium-engine/toolchain-win32-ia32": "0.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://blazium.app",
+  "bugs": "https://github.com/blazium-games/blazium-toolchain/issues",
+  "author": "Blazium Games",
+  "keywords": [
+    "blazium",
+    "toolchain"
+  ]
+}

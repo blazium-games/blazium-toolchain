@@ -66,6 +66,17 @@ blazium-toolchain [--prefix DIR] n64 rom --dir TREE --out FILE.z64 [--elf FILE.e
 
 ## Install
 
+Linux and Windows, x64 and ia32:
+
+```text
+npx @blazium-engine/toolchain
+npm install -g @blazium-engine/toolchain
+```
+
+The command is `blazium-toolchain`. npm uses the matching optional platform package when it is installed. It downloads that same version from the CDN only when the optional package is absent.
+
+From source:
+
 ```
 git clone https://github.com/blazium-games/blazium-toolchain.git
 cd blazium-toolchain

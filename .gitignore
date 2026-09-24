@@ -16,3 +16,7 @@ Thumbs.db
 /.cache/
 /prefix/
 /third_party/
+npm/packages/toolchain-linux-x64/bin/
+npm/packages/toolchain-linux-ia32/bin/
+npm/packages/toolchain-win32-x64/bin/
+npm/packages/toolchain-win32-ia32/bin/
