@@ -18,6 +18,7 @@ concurrency:
 jobs:
   test:
     name: Test
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -102,7 +103,7 @@ jobs:
 
   ps2-compile:
     name: PS2 compile hello (${{ matrix.os }})
-    needs: [test]
+    needs: [build]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -150,7 +151,7 @@ jobs:
 
   n64-compile:
     name: N64 compile hello (${{ matrix.os }})
-    needs: [test]
+    needs: [build]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -196,7 +197,7 @@ jobs:
 
   ps1-compile:
     name: PS1 compile hello (${{ matrix.os }})
-    needs: [test]
+    needs: [build]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -241,7 +242,7 @@ jobs:
 
   interdvd-setup:
     name: Interactive DVD setup (${{ matrix.os }})
-    needs: [test]
+    needs: [build]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -264,8 +265,8 @@ jobs:
         run: ./${{ matrix.bin }} interdvd status
 
   build:
-    if: ${{ github.event_name != 'pull_request' }}
-    needs: [test, resolve-version]
+    needs: [resolve-version]
+    if: ${{ !cancelled() && (needs.resolve-version.result == 'success' || needs.resolve-version.result == 'skipped') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -302,7 +303,7 @@ jobs:
           export GOOS=${{ matrix.goos }}
           export GOARCH=${{ matrix.goarch }}
           mkdir -p build
-          go build -trimpath -ldflags "-s -w -X github.com/blazium-games/blazium-toolchain/internal/app.Version=${{ needs.resolve-version.outputs.simple_version }}" \
+          go build -trimpath -ldflags "-s -w -X github.com/blazium-games/blazium-toolchain/internal/app.Version=${{ needs.resolve-version.outputs.simple_version || '0.0.0' }}" \
             -o "./build/${{ matrix.output }}" ./cmd/blazium-toolchain
 
       - name: Upload build artifact
@@ -353,7 +354,7 @@ jobs:
           find_bin artifacts/windows/x86_32 blazium-toolchain.exe
 
   sign:
-    needs: [resolve-version, validate]
+    needs: [validate, test, ps1-compile, ps2-compile, n64-compile, interdvd-setup]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     strategy:
@@ -820,7 +821,7 @@ jobs:
             done
           }
           stage_docs toolchain "@blazium-engine/toolchain"
-          node npm/stamp-versions.cjs
+          node npm/stamp-versions.cjs "${{ needs.resolve-version.outputs.simple_version }}"
 
       - name: Publish npm packages
         env:
