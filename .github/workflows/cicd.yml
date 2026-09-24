@@ -51,9 +51,13 @@ jobs:
           set -euo pipefail
           COMPUTED="${{ steps.version.outputs.simple_version }}"
           BASE="0.1.0"
-          CDN_LATEST="$(curl -fsSL https://cdn.blazium.app/toolchain/toolchain.json | jq -r '.latest // empty' || true)"
+          CDN_LATEST="$(curl -fsSL -H 'Cache-Control: no-cache' https://cdn.blazium.app/toolchain/toolchain.json | jq -r '.latest // empty' || true)"
+          NPM_LATEST="$(curl -fsSL -H 'Cache-Control: no-cache' https://registry.npmjs.org/@blazium-engine%2ftoolchain/latest | jq -r '.version // empty' || true)"
           if [[ "$CDN_LATEST" == "null" ]]; then
             CDN_LATEST=""
+          fi
+          if [[ "$NPM_LATEST" == "null" ]]; then
+            NPM_LATEST=""
           fi
 
           CANDIDATE="$(printf '%s\n%s\n' "$COMPUTED" "$BASE" | sort -V | tail -n1)"
@@ -66,14 +70,34 @@ jobs:
             echo "${major}.${minor}.$((patch + 1))"
           }
 
-          if [[ -n "$CDN_LATEST" ]]; then
-            HIGHER="$(printf '%s\n%s\n' "$CANDIDATE" "$CDN_LATEST" | sort -V | tail -n1)"
-            if [[ "$HIGHER" == "$CDN_LATEST" ]]; then
-              CANDIDATE="$(bump_patch "$CDN_LATEST")"
+          FLOOR="$(printf '%s\n%s\n' "$CDN_LATEST" "$NPM_LATEST" | sed '/^$/d' | sort -V | tail -n1 || true)"
+          if [[ -n "$FLOOR" ]]; then
+            HIGHER="$(printf '%s\n%s\n' "$CANDIDATE" "$FLOOR" | sort -V | tail -n1)"
+            if [[ "$HIGHER" == "$FLOOR" ]]; then
+              CANDIDATE="$(bump_patch "$FLOOR")"
             fi
           fi
 
-          echo "computed=${COMPUTED} base=${BASE} cdn_latest=${CDN_LATEST:-none} => ${CANDIDATE}"
+          occupied() {
+            local v="$1"
+            local code
+            code="$(curl -s -o /dev/null -w '%{http_code}' -H 'Cache-Control: no-cache' "https://cdn.blazium.app/toolchain/${v}/toolchain.json" || true)"
+            if [[ "$code" == "200" ]]; then
+              return 0
+            fi
+            code="$(curl -s -o /dev/null -w '%{http_code}' -H 'Cache-Control: no-cache' "https://registry.npmjs.org/@blazium-engine%2ftoolchain/${v}" || true)"
+            [[ "$code" == "200" ]]
+          }
+          for _ in 1 2 3 4 5 6 7 8; do
+            if occupied "$CANDIDATE"; then
+              echo "occupied ${CANDIDATE}"
+              CANDIDATE="$(bump_patch "$CANDIDATE")"
+            else
+              break
+            fi
+          done
+
+          echo "computed=${COMPUTED} base=${BASE} cdn_latest=${CDN_LATEST:-none} npm_latest=${NPM_LATEST:-none} => ${CANDIDATE}"
           echo "simple_version=${CANDIDATE}" >> "$GITHUB_OUTPUT"
 
   ps2-compile:
