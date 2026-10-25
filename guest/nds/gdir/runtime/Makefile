@@ -15,17 +15,30 @@ NITROFSDIR	:= nitrofs
 LIBS		:= -lnds9
 LIBDIRS		:= $(BLOCKSDS)/libs/libnds
 
-# the GDIR VM's tables at the PS2's sizes, the PS2 budgets as the DS's 4 MiB
-# (pack 0 leaves RAM while another pack is the scene, as on the PS1)
-DEFINES		:= -DBLAZIUM_NDS_GDIR=1 -DPACK_IO_RELOAD_PACK0=1 '-DGDIR_FEATURE="nds"' -DPACK_IO_HEAP_REPORT=nds_heap_report \
+# DSI=1 (blazium-toolchain dsi build): the DSi-only ROM. The DSi's 16 MiB
+# as the PS2 budgets, pack 0 stays in RAM; libnds runs the ARM9 at 133 MHz
+# in DSi mode. Otherwise the DS's 4 MiB (pack 0 leaves RAM while another
+# pack is the scene, as on the PS1); a DSi runs that ROM in DSi mode too.
+ifeq ($(DSI),1)
+TARGET_DEFINES	:= -DBLAZIUM_DSI=1 -DPS2_EE_LIMIT=12582912u -DPS2_GS_LIMIT=524288u -DPS2_EXTRA_EE_CAP=4194304u
+else
+TARGET_DEFINES	:= -DPACK_IO_RELOAD_PACK0=1 -DPS2_EE_LIMIT=2621440u -DPS2_GS_LIMIT=524288u -DPS2_EXTRA_EE_CAP=1048576u
+endif
+
+# the GDIR VM's tables at the PS2's sizes
+DEFINES		:= -DBLAZIUM_NDS_GDIR=1 '-DGDIR_FEATURE="nds"' -DPACK_IO_HEAP_REPORT=nds_heap_report \
 		   -DPS2_POKE_N=2048u -DGDIR_POKE_BYTES=2048 -DBLAZIUM_PS2_COOK_ABI=1 -DGDIR_ARRAYS=128 \
-		   -DGDIR_MAX_NODES=512 \
-		   -DPS2_EE_LIMIT=2621440u -DPS2_GS_LIMIT=524288u -DPS2_EXTRA_EE_CAP=1048576u $(GDIR_EXTRA_FLAGS)
+		   -DGDIR_MAX_NODES=512 $(TARGET_DEFINES) $(GDIR_EXTRA_FLAGS)
 
 # the shared runtime is warning-clean on its own compilers, not every GCC
 CXXFLAGS	+= -Wno-error -Wno-unused-function -Wno-unused-variable
 
 include $(BLOCKSDS)/sys/default_makefiles/rom_arm9/Makefile
+
+ifeq ($(DSI),1)
+# a DSiWare title ID: the header's unit code says DSi only (a DS refuses it)
+NDSTOOL_ARGS	+= -u 00030004
+endif
 
 # the VM's loop in ARM code: faster than Thumb on the ARM9 where it matters
 build/gdir/./gdir_vm.cpp.o: CXXFLAGS += -marm

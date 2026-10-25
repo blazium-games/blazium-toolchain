@@ -96,8 +96,17 @@ int main(int argc, char **argv)
 	(void)argc;
 	(void)argv;
 	gs_draw_boot(0);
+#ifdef BLAZIUM_DSI
+	printf("Blazium DSi GDIR guest (%s, %d MHz)\n", isDSiMode() ? "DSi mode" : "DS mode", isDSiMode() ? 133 : 67);
+#else
 	printf("Blazium DS GDIR guest\n");
+#endif
 	cpuStartTiming(0);
+#ifdef BLAZIUM_DSI
+	if (!isDSiMode()) {
+		halt("This build is for the Nintendo DSi.");
+	}
+#endif
 	/* the SD card (a DSi's, or a flashcart's through DLDI): NitroFS reads
 	 * the .nds through it when the ROM is not in slot 1, and saves go there */
 	const bool fat = fatInitDefault();

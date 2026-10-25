@@ -74,3 +74,14 @@ func TestNotices(t *testing.T) {
 		}
 	}
 }
+
+func TestDSiInfo(t *testing.T) {
+	tool := NewDSi()
+	info := tool.Info()
+	if info.ID != "dsi" || info.Status != platforms.StatusSupported {
+		t.Fatalf("info: %+v", info)
+	}
+	if got := tool.guestDir("/p"); got != filepath.Join("/p", "dsi", "guest", "gdir") && !strings.HasSuffix(got, filepath.Join("dsi", "guest", "gdir")) {
+		t.Fatalf("guest dir %s", got)
+	}
+}

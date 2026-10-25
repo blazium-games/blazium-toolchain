@@ -49,6 +49,7 @@ func init() {
 	platforms.Register(ps2.New())
 	platforms.Register(n64plat.New())
 	platforms.Register(nds.New())
+	platforms.Register(nds.NewDSi())
 	platforms.Register(interdvd.New())
 	platforms.Register(steam.New())
 	future.Register()
@@ -141,7 +142,7 @@ func cmdList(jsonOut bool, w io.Writer) int {
 	for _, info := range list {
 		note := ""
 		switch info.ID {
-		case "ps1", "ps2", "n64", "nds":
+		case "ps1", "ps2", "n64", "nds", "dsi":
 			if ps2.HostSupported() {
 				note = "  Windows/Linux; guest bundled in this CLI"
 			} else {

@@ -1,6 +1,8 @@
 // Package nds is the Nintendo DS platform: a DS-mode .nds (which a DSi runs
 // as well) built with BlocksDS, from the GDIR guest (guest/nds) and a PS2
-// GDIR export converted to the PS1 forms (internal/platforms/ps1).
+// GDIR export converted to the PS1 forms (internal/platforms/ps1). The same
+// tool, as NewDSi, is the "dsi" platform: a DSi-only .nds from the same
+// guest, built for the DSi's 133 MHz and 16 MB (guest/nds Makefile DSI=1).
 package nds
 
 import (
@@ -23,13 +25,30 @@ import (
 
 const ID = "nds"
 
-// Tool is the DS implementation of platforms.Platform.
+// DSiID is the DSi-only platform's.
+const DSiID = "dsi"
+
+// Tool is the DS implementation of platforms.Platform (DSi: the DSi-only
+// build).
 type Tool struct {
 	Runner execx.Runner
+	DSi    bool
 }
 
 func New() *Tool {
 	return &Tool{Runner: execx.Host{}}
+}
+
+// NewDSi is the "dsi" platform: the same guest as a DSi-only ROM.
+func NewDSi() *Tool {
+	return &Tool{Runner: execx.Host{}, DSi: true}
+}
+
+func (t *Tool) id() string {
+	if t.DSi {
+		return DSiID
+	}
+	return ID
 }
 
 func (t *Tool) runner() execx.Runner {
@@ -40,6 +59,16 @@ func (t *Tool) runner() execx.Runner {
 }
 
 func (t *Tool) Info() platforms.Info {
+	if t.DSi {
+		return platforms.Info{
+			ID:       DSiID,
+			Name:     "Nintendo DSi",
+			Status:   platforms.StatusSupported,
+			Commands: []string{"setup", "env", "status", "build", "run"},
+			Description: "Nintendo DSi only (DSi mode: 133 MHz, 16 MB; a DS will not run it). BlocksDS builds the GDIR " +
+				"guest (build --sample gdir) into a DSi-exclusive .nds with the export in NitroFS. Run: melonDS in DSi mode.",
+		}
+	}
 	return platforms.Info{
 		ID:       ID,
 		Name:     "Nintendo DS",
@@ -138,14 +167,14 @@ func (t *Tool) Setup(ctx context.Context, opts platforms.SetupOptions) error {
 		return report.Missing("BlocksDS and an arm-none-eabi GCC (BLOCKSDS, ARM_NONE_EABI_PATH or WONDERFUL_TOOLCHAIN)",
 			"install BlocksDS (Wonderful Toolchain: wf-pacman -S toolchain-gcc-arm-none-eabi blocksds-toolchain), or set BLOCKSDS and ARM_NONE_EABI_PATH")
 	}
-	if err := guest.InstallGDIR(GDIRGuestDir(opts.Prefix)); err != nil {
+	if err := guest.InstallGDIR(t.guestDir(opts.Prefix)); err != nil {
 		return err
 	}
-	st := cache.State{Platform: ID, Profile: profile, Env: env}
-	if err := cache.WriteState(opts.Prefix, ID, st); err != nil {
+	st := cache.State{Platform: t.id(), Profile: profile, Env: env}
+	if err := cache.WriteState(opts.Prefix, t.id(), st); err != nil {
 		return err
 	}
-	report.Setup(opts.Stdout, ID, profile, cache.PlatformDir(opts.Prefix, ID), env)
+	report.Setup(opts.Stdout, t.id(), profile, cache.PlatformDir(opts.Prefix, t.id()), env)
 	if env["MELONDS_EXE"] == "" && env["DESMUME_EXE"] == "" {
 		report.Line(opts.Stdout, report.Note, "no MELONDS_EXE or DESMUME_EXE: nds run will not find an emulator")
 	}
@@ -154,7 +183,7 @@ func (t *Tool) Setup(ctx context.Context, opts platforms.SetupOptions) error {
 
 func (t *Tool) Env(opts platforms.CommonOptions) (platforms.EnvMap, error) {
 	fresh := t.discover()
-	st, err := cache.ReadState(opts.Prefix, ID)
+	st, err := cache.ReadState(opts.Prefix, t.id())
 	if err != nil || st.Env == nil {
 		return fresh, nil
 	}
@@ -174,14 +203,14 @@ func (t *Tool) Status(opts platforms.CommonOptions) (map[string]any, error) {
 	comp := compileReady(env)
 	emu := fileExists(env["MELONDS_EXE"]) || fileExists(env["DESMUME_EXE"])
 	return map[string]any{
-		"platform":      ID,
+		"platform":      t.id(),
 		"env":           env,
 		"compile_ready": comp,
 		"run_ready":     comp && emu,
 		"ready":         comp,
 		"product":       "nds",
-		"mode":          "DS (runs on DSi)",
-		"guest_dir":     GDIRGuestDir(opts.Prefix),
+		"mode":          t.mode(),
+		"guest_dir":     t.guestDir(opts.Prefix),
 		"host_os":       runtime.GOOS,
 	}, nil
 }
@@ -191,10 +220,22 @@ func GDIRGuestDir(prefix string) string {
 	return filepath.Join(cache.PlatformDir(prefix, ID), "guest", "gdir")
 }
 
+// guestDir: the DS's or the DSi's (<prefix>/dsi/guest/gdir) staging.
+func (t *Tool) guestDir(prefix string) string {
+	return filepath.Join(cache.PlatformDir(prefix, t.id()), "guest", "gdir")
+}
+
+func (t *Tool) mode() string {
+	if t.DSi {
+		return "DSi only (DSi mode)"
+	}
+	return "DS (runs on DSi)"
+}
+
 func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	env, _ := t.Env(opts.CommonOptions)
 	if !compileReady(env) {
-		return report.Missing("nds compile tools not ready", "blazium-toolchain nds setup")
+		return report.Missing(t.id()+" compile tools not ready", "blazium-toolchain "+t.id()+" setup")
 	}
 	if strings.ToLower(strings.TrimSpace(opts.Sample)) != "gdir" {
 		return report.Usage("nds build needs --sample gdir (the GDIR guest with a PS2 export)")
@@ -206,7 +247,7 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	if err != nil {
 		return err
 	}
-	src := GDIRGuestDir(opts.Prefix)
+	src := t.guestDir(opts.Prefix)
 	if _, err := stageGDIR(src, export, opts.Stdout); err != nil {
 		return err
 	}
@@ -228,6 +269,9 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	}
 	if v := os.Getenv("GDIR_EXTRA_FLAGS"); v != "" {
 		extra["GDIR_EXTRA_FLAGS"] = v
+	}
+	if t.DSi {
+		extra["DSI"] = "1"
 	}
 	if err := t.runEnv(ctx, makeProg, []string{"-C", src}, extra, opts.Stdout, opts.Stderr); err != nil {
 		return report.Fail("make: "+err.Error(), "")
