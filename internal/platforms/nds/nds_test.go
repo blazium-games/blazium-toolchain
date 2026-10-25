@@ -85,3 +85,22 @@ func TestDSiInfo(t *testing.T) {
 		t.Fatalf("guest dir %s", got)
 	}
 }
+
+func TestMarkDSiOnly(t *testing.T) {
+	rom := make([]byte, 0x200)
+	rom[0x12] = 2
+	if err := markDSiOnly(rom); err != nil {
+		t.Fatal(err)
+	}
+	if rom[0x12] != 3 {
+		t.Fatalf("unit code %d", rom[0x12])
+	}
+	got := uint16(rom[0x15e]) | uint16(rom[0x15f])<<8
+	if got != headerCRC(rom[:0x15e]) {
+		t.Fatal("header CRC not fixed")
+	}
+	nds := make([]byte, 0x200)
+	if err := markDSiOnly(nds); err == nil {
+		t.Fatal("a DS-only ROM should not be marked")
+	}
+}

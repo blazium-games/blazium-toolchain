@@ -110,10 +110,11 @@ int main(int argc, char **argv)
 	/* the SD card (a DSi's, or a flashcart's through DLDI): NitroFS reads
 	 * the .nds through it when the ROM is not in slot 1, and saves go there */
 	const bool fat = fatInitDefault();
+	printf("DS: SD card %s\n", fat ? "found" : "not found");
 	if (!nitroFSInit(NULL)) {
 		halt("NitroFS did not start (no game data).");
 	}
-	(void)fat;
+	printf("DS: game data found\n");
 	pad_io_init();
 
 	unsigned mesh_sz = 0, gtex_sz = 0, node_sz = 0, scrp_sz = 0;

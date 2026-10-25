@@ -15,7 +15,8 @@ NITROFSDIR	:= nitrofs
 LIBS		:= -lnds9
 LIBDIRS		:= $(BLOCKSDS)/libs/libnds
 
-# DSI=1 (blazium-toolchain dsi build): the DSi-only ROM. The DSi's 16 MiB
+# DSI=1 (blazium-toolchain dsi build): the DSi-only ROM (dsi build marks
+# its header DSi-exclusive after make). The DSi's 16 MiB
 # as the PS2 budgets, pack 0 stays in RAM; libnds runs the ARM9 at 133 MHz
 # in DSi mode. Otherwise the DS's 4 MiB (pack 0 leaves RAM while another
 # pack is the scene, as on the PS1); a DSi runs that ROM in DSi mode too.
@@ -35,10 +36,6 @@ CXXFLAGS	+= -Wno-error -Wno-unused-function -Wno-unused-variable
 
 include $(BLOCKSDS)/sys/default_makefiles/rom_arm9/Makefile
 
-ifeq ($(DSI),1)
-# a DSiWare title ID: the header's unit code says DSi only (a DS refuses it)
-NDSTOOL_ARGS	+= -u 00030004
-endif
 
 # the VM's loop in ARM code: faster than Thumb on the ARM9 where it matters
 build/gdir/./gdir_vm.cpp.o: CXXFLAGS += -marm

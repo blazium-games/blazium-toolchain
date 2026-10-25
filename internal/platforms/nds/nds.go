@@ -281,6 +281,14 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	if err != nil {
 		return report.Fail("no gdir.nds was made", "")
 	}
+	if t.DSi {
+		// DSi only: the unit code 3, a cartridge title still (title ID high
+		// 00030000), so it keeps the slot-1 access NitroFS reads through;
+		// a DSiWare title ID (00030004) would lose it
+		if err := markDSiOnly(raw); err != nil {
+			return report.Fail("DSi header: "+err.Error(), "")
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(opts.Out), 0o755); err != nil {
 		return err
 	}
@@ -370,4 +378,36 @@ func dirExists(p string) bool {
 	}
 	st, err := os.Stat(p)
 	return err == nil && st.IsDir()
+}
+
+// markDSiOnly sets a DSi-enhanced ROM's unit code to 3 (DSi exclusive) and
+// fixes the header's CRC-16 (over 0x000..0x15D, at 0x15E).
+func markDSiOnly(rom []byte) error {
+	if len(rom) < 0x160 {
+		return fmt.Errorf("ROM too small (%d bytes)", len(rom))
+	}
+	if rom[0x12]&2 == 0 {
+		return fmt.Errorf("not a DSi-enhanced ROM (unit code %d)", rom[0x12])
+	}
+	rom[0x12] = 3
+	crc := headerCRC(rom[:0x15e])
+	rom[0x15e] = byte(crc)
+	rom[0x15f] = byte(crc >> 8)
+	return nil
+}
+
+// headerCRC: CRC-16/MODBUS, as the DS header's.
+func headerCRC(b []byte) uint16 {
+	crc := uint16(0xffff)
+	for _, c := range b {
+		crc ^= uint16(c)
+		for i := 0; i < 8; i++ {
+			if crc&1 != 0 {
+				crc = crc>>1 ^ 0xa001
+			} else {
+				crc >>= 1
+			}
+		}
+	}
+	return crc
 }
