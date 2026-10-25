@@ -1,7 +1,6 @@
 // MIT. Saves for PS2.save_slot / load_slot / memcard_present on the DS: one
 // file, BLAZIUM.SAV, on the SD card (a DSi's own, or a flashcart's through
-// DLDI), next to the .nds where libnds puts the working folder, else at the
-// card's root. It holds four slots of MC_BYTES: "BLZS", the byte count (u16)
+// DLDI), at the card's root, made by the first save. It holds four slots of MC_BYTES: "BLZS", the byte count (u16)
 // and the bytes. Without a card (an emulator with no SD image) there is no
 // memory card, as on a PS2 without one.
 
@@ -9,6 +8,7 @@
 
 #include <fat.h>
 #include <nds.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -40,17 +40,20 @@ static FILE *open_save(void)
 
 int mc_io_boot(void)
 {
-	/* main has run fatInitDefault (NitroFS needs it on a DSi or a flashcart) */
-	static const char *const dirs[] = { "", "sd:/", "fat:/" };
+	/* main has run fatInitDefault (NitroFS needs it on a DSi or a flashcart).
+	 * Nothing is written here: the file is made by the first save. The
+	 * DSi's own SD card first, then a flashcart's (DLDI). */
+	static const char *const dirs[] = { "sd:/", "fat:/" };
 	for (unsigned i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++) {
-		snprintf(s_path, sizeof(s_path), "%sBLAZIUM.SAV", dirs[i]);
-		FILE *f = open_save();
-		if (f) {
-			fclose(f);
-			s_ok = 1;
-			printf("DS save: %s\n", s_path);
-			return 1;
+		DIR *d = opendir(dirs[i]);
+		if (!d) {
+			continue;
 		}
+		closedir(d);
+		snprintf(s_path, sizeof(s_path), "%sBLAZIUM.SAV", dirs[i]);
+		s_ok = 1;
+		printf("DS save: %s\n", s_path);
+		return 1;
 	}
 	printf("DS save: no SD card\n");
 	return 0;
