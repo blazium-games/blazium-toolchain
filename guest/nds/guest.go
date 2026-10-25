@@ -84,3 +84,14 @@ func Overlay(destDir, overlayDir string) error {
 		return os.WriteFile(target, data, 0o644)
 	})
 }
+
+//go:embed notices
+var noticeFiles embed.FS
+
+// Notice is a third-party licence text the .nds carries code under, as of
+// BlocksDS v1.12.0 and picolibc 1.8.10 (nds build prefers the installed
+// BlocksDS's own copies): libnds.txt, fatfs.txt, mpl-2.0.txt (the start-up
+// code and linker scripts), maxmod.txt, dswifi.txt, picolibc.txt.
+func Notice(name string) ([]byte, error) {
+	return noticeFiles.ReadFile("notices/" + name)
+}

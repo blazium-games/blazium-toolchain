@@ -246,6 +246,14 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	if opts.Stdout != nil {
 		report.Line(opts.Stdout, report.Wrote, opts.Out)
 	}
+	// the licences of what BlocksDS linked in, beside the ROM
+	notices, err := writeNotices(opts.Out, env["BLOCKSDS"])
+	if err != nil {
+		return report.Fail("third-party notices: "+err.Error(), "")
+	}
+	if opts.Stdout != nil {
+		report.Line(opts.Stdout, report.Wrote, notices)
+	}
 	return nil
 }
 

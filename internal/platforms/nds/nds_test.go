@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/blazium-games/blazium-toolchain/internal/platforms"
@@ -50,5 +51,26 @@ func TestGDIRExportDir(t *testing.T) {
 	d, err := gdirExportDir("", "/a/b/game.nds")
 	if err != nil || d != "/a/b" {
 		t.Fatalf("got %q %v", d, err)
+	}
+}
+
+func TestNotices(t *testing.T) {
+	dir := t.TempDir()
+	rom := filepath.Join(dir, "GAME.nds")
+	path, err := writeNotices(rom, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != filepath.Join(dir, "GAME.THIRD-PARTY-NOTICES.txt") {
+		t.Fatalf("path %s", path)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"GAME.nds", "libnds", "FatFs", "MPL-2.0", "maxmod", "DSWiFi", "picolibc", "Mozilla Public License"} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("notices lack %q", want)
+		}
 	}
 }
