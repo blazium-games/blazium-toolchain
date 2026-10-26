@@ -6,6 +6,10 @@
 //	start Start, the d-pad as it is, the control stick as the left stick
 //	(L2 and R2 have none; R1 drifts as R2 does).
 //
+// The control stick also works the d-pad's buttons once pushed well over
+// (menus, choices): the GameCube's main input is the stick, and Dolphin's
+// keyboard puts the arrow keys on it. Steering keeps the stick's travel.
+//
 // In a race that is A to drive, X to brake, R to drift and B or L for the
 // item; in menus A accepts and B goes back; Z quits a race to the menu.
 // L and R also report their analogue travel as the DualShock 2's pressure.
@@ -29,6 +33,8 @@ enum {
 
 static int s_ready;
 static unsigned short s_btns[PAD_MAX];
+static unsigned short s_dpad[PAD_MAX];  /* the d-pad itself, without the stick */
+static unsigned short s_sdir[PAD_MAX];  /* the stick's directions as d-pad buttons */
 static unsigned short s_prev[PAD_MAX];
 static float s_lx[PAD_MAX], s_ly[PAD_MAX];
 static int s_conn[PAD_MAX];
@@ -99,6 +105,8 @@ static void read_pad(int i, u32 connected)
 	s_conn[i] = (connected >> i) & 1;
 	if (!s_conn[i]) {
 		s_btns[i] = 0;
+		s_dpad[i] = 0;
+		s_sdir[i] = 0;
 		s_lx[i] = s_ly[i] = 0.0f;
 		return;
 	}
@@ -120,9 +128,21 @@ static void read_pad(int i, u32 connected)
 	const int tl = PAD_TriggerL(i), tr = PAD_TriggerR(i);
 	if (tl > 170) b |= B_L1;
 	if (tr > 170) b |= B_R1;
-	s_btns[i] = b;
+	s_dpad[i] = b & (B_UP | B_DOWN | B_LEFT | B_RIGHT);
 	s_lx[i] = axis(PAD_StickX(i));
 	s_ly[i] = -axis(PAD_StickY(i));
+	/* the stick as d-pad buttons: on past 0.6, off under 0.4 */
+	const float dir[4] = { -s_ly[i], s_ly[i], -s_lx[i], s_lx[i] };
+	const unsigned short bit[4] = { B_UP, B_DOWN, B_LEFT, B_RIGHT };
+	for (int k = 0; k < 4; k++) {
+		if (dir[k] > 0.6f) {
+			s_sdir[i] |= bit[k];
+		} else if (dir[k] < 0.4f) {
+			s_sdir[i] &= (unsigned short)~bit[k];
+		}
+	}
+	b |= s_sdir[i];
+	s_btns[i] = b;
 	memset(s_pressure[i], 0, sizeof(s_pressure[i]));
 	s_pressure[i][8] = (unsigned char)tl;
 	s_pressure[i][9] = (unsigned char)tr;
@@ -197,8 +217,12 @@ static unsigned short action_mask(int action)
 
 int pad_io_pressed(int action)
 {
+	/* held: the stick's directions are left out, so Input.get_axis and
+	 * get_action_strength read its travel, not full lock (the presses,
+	 * just_pressed, keep them for menus) */
 	const unsigned short m = action_mask(action);
-	return (s_ready && m && (s_btns[0] & m)) ? 1 : 0;
+	const unsigned short held = (unsigned short)(s_btns[0] & ~(s_sdir[0] & ~s_dpad[0]));
+	return (s_ready && m && (held & m)) ? 1 : 0;
 }
 
 int pad_io_just_pressed(int action)
@@ -219,16 +243,18 @@ void pad_io_stick(int stick_id, float *x, float *y)
 	if (stick_id == 0) {
 		sx = s_lx[0];
 		sy = s_ly[0];
-		if (s_btns[0] & B_LEFT) {
+		/* the d-pad itself (not the stick's own directions, which would
+		 * turn its travel into full lock) */
+		if (s_dpad[0] & B_LEFT) {
 			sx = -1.0f;
 		}
-		if (s_btns[0] & B_RIGHT) {
+		if (s_dpad[0] & B_RIGHT) {
 			sx = 1.0f;
 		}
-		if (s_btns[0] & B_UP) {
+		if (s_dpad[0] & B_UP) {
 			sy = -1.0f;
 		}
-		if (s_btns[0] & B_DOWN) {
+		if (s_dpad[0] & B_DOWN) {
 			sy = 1.0f;
 		}
 	}
@@ -300,10 +326,10 @@ float pad_io_pad_axis(int pad)
 	if (pad < 0 || pad >= PAD_MAX) {
 		return 0.0f;
 	}
-	if (s_btns[pad] & B_LEFT) {
+	if (s_dpad[pad] & B_LEFT) {
 		return -1.0f;
 	}
-	if (s_btns[pad] & B_RIGHT) {
+	if (s_dpad[pad] & B_RIGHT) {
 		return 1.0f;
 	}
 	const float x = s_lx[pad];

@@ -261,7 +261,7 @@ Saves go to `BLAZIUM.SAV` in the game's `USRDIR`. Install the `.pkg` on a PS3 th
 | `--title-id GBZEBZ` | The game ID: a four-character game code (its fourth letter is the region: E America, P Europe, J Japan) and a two-character maker; also the Memory Card file's owner |
 | `--icon BANNER.PNG` | The banner picture, scaled to 96x32; default the export's `BANNER.PNG`, else a plain one |
 
-Saves go to the file `BLAZIUM` on the Memory Card in slot A (one block). Pads 1 to 4 are GameCube controllers: A cross, B circle, X square, Y triangle, L/R L1/R1 (and the analogue triggers), Z select, Start start. Play the `.iso` in Dolphin, or on a console with Swiss or another disc loader. `gamecube run` starts `DOLPHIN_EXE` on it.
+Saves go to the file `BLAZIUM` on the Memory Card in slot A (one block). Pads 1 to 4 are GameCube controllers: A cross, B circle, X square, Y triangle, L/R L1/R1 (and the analogue triggers), Z select, Start start; the control stick steers and, pushed well over, also works the d-pad in menus (Dolphin puts the arrow keys on it). Play the `.iso` in Dolphin, or on a console with Swiss or another disc loader. `gamecube run` starts `DOLPHIN_EXE` on it.
 
 Only a guest with code of your own (`--overlay`, or `GDIR_EXTRA_FLAGS`) is compiled, with devkitPPC and libogc (devkitPro's `gamecube-dev`; set `DEVKITPRO`). After changing `guest/gamecube`, rebuild the bundled guest with `scripts/gamecube-guest-prebuilt.sh` (`go test ./guest/gamecube` checks that it matches the sources).
 
