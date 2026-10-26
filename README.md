@@ -233,9 +233,7 @@ Set `PCSX2_EXE` (and `PS2_BIOS_DIR` if you have a legal BIOS). `ps2 run` smokes 
 
 ## PS3
 
-`ps3 setup` fetches ps3toolchain's ps3dev release (GCC 7.2 for the PPU and SPU, PSL1GHT, portlibs and the host tools) into `<prefix>/ps3/inst/ps3dev/`, or uses `PS3DEV` / `PSL1GHT` when they're set. ps3dev only ships for Linux, so on Windows the build runs in WSL: setup unpacks the release in the WSL distribution (`PS3DEV_WSL`, `~/ps3dev` by default), which needs `make`, `curl`, `libelf1`, `libgmp10` and `libssl3`.
-
-`ps3 build --sample gdir` builds the bundled GDIR guest with a PS2 GDIR export (`--pack-dir`, else the folder `--out` is in). The RSX draws the PS2 packs as they are, at the TV's resolution (720p, else 480p/576p), with the HUD in the PS2's 640x448 space at 4:3 in the middle. It writes:
+`ps3 build --sample gdir` needs no PS3 SDK, on Windows, Linux or macOS. The GDIR guest comes compiled with the CLI (`guest/ps3/prebuilt`, built with PSL1GHT), and the CLI itself signs it as an NPDRM SELF (`EBOOT.BIN`) and writes `PARAM.SFO` and the `.pkg`, as PSL1GHT's `make_self_npdrm`, `sfo` and `pkg` do. It takes a PS2 GDIR export (`--pack-dir`, else the folder `--out` is in). The RSX draws the PS2 packs as they are, at the TV's resolution (720p, else 480p/576p), with the HUD in the PS2's 640x448 space at 4:3 in the middle. It writes:
 
 - `--out GAME.pkg`: the installable package, with the game folder `TITLEID/` beside it (`PARAM.SFO`, `ICON0.PNG`, `USRDIR/EBOOT.BIN`, `USRDIR/DATA/`).
 - `--out DIR`: `DIR/TITLEID.pkg` and `DIR/TITLEID/`.
@@ -244,13 +242,15 @@ Set `PCSX2_EXE` (and `PS2_BIOS_DIR` if you have a legal BIOS). `ps2 run` smokes 
 |------|--------|
 | `--title NAME` | The name on the XMB; default `--out`'s name |
 | `--title-id BLAZ00001` | Four letters, five digits; also the save folder |
-| `--icon ICON0.PNG` | 320x176 icon; default the export's `ICON0.PNG`, else PSL1GHT's |
+| `--icon ICON0.PNG` | 320x176 icon; default the export's `ICON0.PNG`, else a Blazium one |
+
+Only a guest with code of your own (`--overlay`, or `GDIR_EXTRA_FLAGS`) is compiled, with ps3dev, which is built for Linux: `ps3 setup --profile compile` fetches ps3toolchain's ps3dev release into `<prefix>/ps3/inst/ps3dev/`, or set `PS3DEV`. After changing `guest/ps3/gdir/runtime`, rebuild the bundled guest with `scripts/ps3-guest-prebuilt.sh` (`go test ./guest/ps3` checks that it matches the sources).
 
 Saves go to `BLAZIUM.SAV` in the game's `USRDIR`. Install the `.pkg` on a PS3 that runs homebrew (HEN or CFW), or in RPCS3 (File > Install Packages, with the PS3 system software installed). `ps3 run` starts `RPCS3_EXE` on the game folder or its `EBOOT.BIN`.
 
 ## Hosts
 
-PS1/PS2/N64 setup, build, run, iso, and rom are Windows and Linux. PS3 builds on Linux, and on Windows in WSL. Other hosts exit `2`. `env`, `status`, and `export-guest` still work. Building the CLI locally on macOS can still master Interactive DVD. Published release binaries are Linux and Windows only.
+PS1/PS2/N64 setup, build, run, iso, and rom are Windows and Linux. PS3 builds anywhere (a custom PS3 guest compiles on Linux only). Other hosts exit `2`. `env`, `status`, and `export-guest` still work. Building the CLI locally on macOS can still master Interactive DVD. Published release binaries are Linux and Windows only.
 
 CI runs `go test ./...`, `go vet ./...`, `ps2 build --out hello.elf`, and `n64 build --out hello.z64` on Ubuntu and Windows.
 

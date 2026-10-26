@@ -648,7 +648,7 @@ Platforms:
   %s
   interdvd  supported (Interactive DVD ISO9660+UDF)
   steam     supported (Valve steamcmd cache for blazium-cli deploy)
-  ps3       supported (PlayStation 3 homebrew; Linux, Windows through WSL; guest bundled; product .pkg)
+  ps3       supported (PlayStation 3 homebrew; any host, no SDK; guest bundled; product .pkg)
   ps4       planned
 
 PS1/PS2/N64 host tools: Windows and Linux only. setup/build/run/iso/rom exit 2 on other OSes.
@@ -703,7 +703,7 @@ N64 commands:
   rom --dir TREE --out FILE.z64 [--elf FILE.elf]
 
 PS3 commands:
-  setup [--offline]
+  setup [--profile prebuilt|compile] [--offline]   (compile: ps3dev for --overlay, Linux)
   env
   status
   build --sample gdir --out GAME.pkg|DIR [--pack-dir EXPORT] [--title NAME] [--title-id BLAZ00001] [--icon ICON0.PNG] [--overlay DIR]

@@ -1,14 +1,15 @@
 // Package ps3 is the PlayStation 3 platform: the GDIR guest (guest/ps3)
-// built with PSL1GHT (ps3dev) into a hard drive game, from a PS2 GDIR export
-// whose packs the PS3 reads as they are. The product is a folder named by
-// the title ID (PARAM.SFO, ICON0.PNG, USRDIR/EBOOT.BIN and USRDIR/DATA) and
-// the same game as an installable .pkg, for a PS3 that runs homebrew or for
-// RPCS3.
+// with a PS2 GDIR export, whose packs the PS3 reads as they are, made into
+// a hard drive game. The product is a folder named by the title ID
+// (PARAM.SFO, ICON0.PNG, USRDIR/EBOOT.BIN and USRDIR/DATA) and the same
+// game as an installable .pkg, for a PS3 that runs homebrew or for RPCS3.
 //
-// ps3dev is only built for Linux (github.com/ps3dev/ps3toolchain releases):
-// setup fetches the pinned release into the cache there. On Windows the
-// build runs in WSL (Windows Subsystem for Linux), with ps3dev installed in
-// the WSL distribution: setup fetches the same release and unpacks it there.
+// A build needs no PS3 SDK: the guest comes compiled with this CLI
+// (guest/ps3/prebuilt, built with PSL1GHT), and the CLI itself signs it as
+// an NPDRM SELF (self.go) and writes PARAM.SFO and the .pkg (pkg.go), so
+// ps3 builds on Windows, Linux and macOS alike. Only a guest with code of
+// your own (--overlay, GDIR_EXTRA_FLAGS) is compiled, with ps3dev, which is
+// built for Linux: ps3 setup --profile compile fetches it there.
 package ps3
 
 import (
@@ -33,8 +34,8 @@ import (
 
 const ID = "ps3"
 
-// The ps3dev release setup fetches (ps3toolchain's CI build: GCC 7.2 for
-// the PPU and SPU, PSL1GHT, the portlibs and the host tools).
+// The ps3dev release setup --profile compile fetches (ps3toolchain's CI
+// build: GCC 7.2 for the PPU and SPU, PSL1GHT, the portlibs, the host tools).
 const (
 	ps3devURL    = "https://github.com/ps3dev/ps3toolchain/releases/download/2026-06-09/ps3dev-92534e60-ubuntu-latest.tar.gz"
 	ps3devSHA256 = "24a5b1c6d1c5da7a71178c8b4e5c381484fd1ab8a73a89ebfb27264dbb3d4063"
@@ -78,23 +79,14 @@ func (t *Tool) Info() platforms.Info {
 		Name:     "PlayStation 3",
 		Status:   platforms.StatusSupported,
 		Commands: []string{"setup", "env", "status", "build", "run"},
-		Description: "PlayStation 3 (homebrew: a PS3 with HEN or CFW, or RPCS3). PSL1GHT builds the GDIR guest " +
-			"(build --sample gdir) with a PS2 export into a hard drive game folder and a .pkg. " +
-			"Linux, and Windows through WSL. Run: RPCS3.",
+		Description: "PlayStation 3 (homebrew: a PS3 with HEN or CFW, or RPCS3). build --sample gdir makes a PS2 export " +
+			"into a hard drive game folder and a .pkg with the bundled guest, on Windows, Linux and macOS, no SDK needed. " +
+			"Run: RPCS3.",
 	}
 }
 
 // envKeys are what discover finds and Env reports.
-var envKeys = []string{"PS3DEV", "PSL1GHT", "PS3_MAKE", "PS3_WSL", "PS3DEV_WSL", "RPCS3_EXE"}
-
-// useWSL: on Windows, unless PS3_WSL=0 and a ps3dev is set (a ps3dev
-// built for MSYS2), the build runs in WSL.
-func useWSL(env map[string]string) bool {
-	if runtime.GOOS != "windows" {
-		return false
-	}
-	return env["PS3_WSL"] != "0"
-}
+var envKeys = []string{"PS3DEV", "PSL1GHT", "PS3_MAKE", "RPCS3_EXE"}
 
 func (t *Tool) discover(prefix string) map[string]string {
 	env := map[string]string{}
@@ -103,30 +95,24 @@ func (t *Tool) discover(prefix string) map[string]string {
 			env[k] = v
 		}
 	}
-	if useWSL(env) {
-		if env["PS3DEV_WSL"] == "" {
-			env["PS3DEV_WSL"] = "~/ps3dev"
-		}
-	} else {
-		if env["PS3DEV"] == "" {
-			for _, c := range []string{
-				filepath.Join(cache.InstDir(prefix, ID), "ps3dev"),
-				"/usr/local/ps3dev",
-				"/opt/ps3dev",
-			} {
-				if fileExists(filepath.Join(c, "ppu_rules")) {
-					env["PS3DEV"] = c
-					break
-				}
+	if env["PS3DEV"] == "" {
+		for _, c := range []string{
+			filepath.Join(cache.InstDir(prefix, ID), "ps3dev"),
+			"/usr/local/ps3dev",
+			"/opt/ps3dev",
+		} {
+			if fileExists(filepath.Join(c, "ppu_rules")) {
+				env["PS3DEV"] = c
+				break
 			}
 		}
-		if env["PSL1GHT"] == "" && env["PS3DEV"] != "" {
-			env["PSL1GHT"] = env["PS3DEV"]
-		}
-		if env["PS3_MAKE"] == "" {
-			if p, err := exec.LookPath("make"); err == nil {
-				env["PS3_MAKE"] = p
-			}
+	}
+	if env["PSL1GHT"] == "" && env["PS3DEV"] != "" {
+		env["PSL1GHT"] = env["PS3DEV"]
+	}
+	if env["PS3_MAKE"] == "" {
+		if p, err := exec.LookPath("make"); err == nil {
+			env["PS3_MAKE"] = p
 		}
 	}
 	if env["RPCS3_EXE"] == "" {
@@ -140,10 +126,8 @@ func (t *Tool) discover(prefix string) map[string]string {
 	return env
 }
 
+// compileReady: ps3dev is there to compile a guest of your own.
 func compileReady(env map[string]string) bool {
-	if useWSL(env) {
-		return env["WSL_READY"] == "1"
-	}
 	ps3dev, psl1ght := env["PS3DEV"], env["PSL1GHT"]
 	if ps3dev == "" || psl1ght == "" {
 		return false
@@ -160,29 +144,32 @@ func (t *Tool) Setup(ctx context.Context, opts platforms.SetupOptions) error {
 	env := t.discover(opts.Prefix)
 	profile := opts.Profile
 	if profile == "" {
-		profile = "compile"
+		profile = "prebuilt"
 	}
 	log := opts.Stdout
-	if useWSL(env) {
-		if err := t.setupWSL(ctx, opts, env, log); err != nil {
-			return err
-		}
-	} else if !compileReady(env) {
-		if runtime.GOOS != "linux" {
-			return report.Missing("ps3dev (PSL1GHT and the PPU GCC)", "ps3dev is built for Linux: build it with github.com/ps3dev/ps3toolchain and set PS3DEV")
-		}
-		if opts.Offline {
-			return report.Missing("ps3dev (PSL1GHT and the PPU GCC)", "run ps3 setup without --offline, or set PS3DEV")
-		}
-		dest := cache.InstDir(opts.Prefix, ID)
-		if err := t.fetcher().FetchZip(ctx, ps3devURL, ps3devSHA256, dest, log); err != nil {
-			return err
-		}
-		env["PS3DEV"] = filepath.Join(dest, "ps3dev")
-		env["PSL1GHT"] = env["PS3DEV"]
+	switch profile {
+	case "prebuilt", "dev":
+	case "compile":
 		if !compileReady(env) {
-			return report.Fail("the ps3dev release did not unpack as expected in "+dest, "delete "+dest+" and run ps3 setup again")
+			if runtime.GOOS != "linux" {
+				return report.Missing("ps3dev (only a guest with code of your own needs it)",
+					"ps3dev is built for Linux; build it with github.com/ps3dev/ps3toolchain and set PS3DEV, or leave out --overlay")
+			}
+			if opts.Offline {
+				return report.Missing("ps3dev (PSL1GHT and the PPU GCC)", "run ps3 setup --profile compile without --offline, or set PS3DEV")
+			}
+			dest := cache.InstDir(opts.Prefix, ID)
+			if err := t.fetcher().FetchZip(ctx, ps3devURL, ps3devSHA256, dest, log); err != nil {
+				return err
+			}
+			env["PS3DEV"] = filepath.Join(dest, "ps3dev")
+			env["PSL1GHT"] = env["PS3DEV"]
+			if !compileReady(env) {
+				return report.Fail("the ps3dev release did not unpack as expected in "+dest, "delete "+dest+" and run ps3 setup --profile compile again")
+			}
 		}
+	default:
+		return report.Usage("ps3 setup --profile prebuilt|compile|dev")
 	}
 	if err := guest.InstallGDIR(GDIRGuestDir(opts.Prefix)); err != nil {
 		return err
@@ -205,10 +192,7 @@ func (t *Tool) Env(opts platforms.CommonOptions) (platforms.EnvMap, error) {
 		return fresh, nil
 	}
 	for _, k := range envKeys {
-		if fresh[k] != "" && os.Getenv(k) != "" {
-			st.Env[k] = fresh[k]
-		}
-		if st.Env[k] == "" && fresh[k] != "" {
+		if fresh[k] != "" {
 			st.Env[k] = fresh[k]
 		}
 	}
@@ -220,15 +204,14 @@ func (t *Tool) Status(opts platforms.CommonOptions) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	comp := compileReady(env)
 	return map[string]any{
 		"platform":      ID,
 		"env":           env,
-		"compile_ready": comp,
-		"run_ready":     comp && fileExists(env["RPCS3_EXE"]),
-		"ready":         comp,
+		"compile_ready": true, // the bundled guest needs no SDK
+		"custom_guest":  compileReady(env),
+		"run_ready":     fileExists(env["RPCS3_EXE"]),
+		"ready":         true,
 		"product":       "pkg",
-		"wsl":           useWSL(env),
 		"guest_dir":     GDIRGuestDir(opts.Prefix),
 		"host_os":       runtime.GOOS,
 	}, nil
@@ -267,13 +250,6 @@ func outputs(out, titleID string) (pkg, folder string) {
 }
 
 func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
-	env, _ := t.Env(opts.CommonOptions)
-	if useWSL(env) {
-		env["WSL_READY"] = boolStr(t.wslReady(ctx, env))
-	}
-	if !compileReady(env) {
-		return report.Missing("ps3 compile tools not ready", "blazium-toolchain ps3 setup")
-	}
 	if strings.ToLower(strings.TrimSpace(opts.Sample)) != "gdir" {
 		return report.Usage("ps3 build needs --sample gdir (the GDIR guest with a PS2 export)")
 	}
@@ -291,6 +267,7 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	if title == "" {
 		title = strings.TrimSuffix(filepath.Base(opts.Out), filepath.Ext(opts.Out))
 	}
+	cid := contentID(titleID, title)
 	export, err := gdirExportDir(opts.PackDir, opts.Out)
 	if err != nil {
 		return err
@@ -299,33 +276,49 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	if _, err := stageGDIR(src, export, opts.Icon, opts.Stdout); err != nil {
 		return err
 	}
-	if ov := strings.TrimSpace(opts.Overlay); ov != "" {
-		if err := guest.Overlay(src, ov); err != nil {
+	pkgDir := filepath.Join(src, "pkg")
+
+	// the guest: the bundled one, or compiled with code of your own
+	elf, err := t.guestELF(ctx, opts, src)
+	if err != nil {
+		return err
+	}
+	eboot, err := MakeSelfNPDRM(elf, cid, "EBOOT.BIN")
+	if err != nil {
+		return report.Fail("EBOOT.BIN: "+err.Error(), "")
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "USRDIR", "EBOOT.BIN"), eboot, 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "PARAM.SFO"), paramSFO(title, titleID, "01.00"), 0o644); err != nil {
+		return err
+	}
+	icon := filepath.Join(pkgDir, "ICON0.PNG")
+	if !fileExists(icon) {
+		raw, err := guest.DefaultIcon()
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(icon, raw, 0o644); err != nil {
 			return err
 		}
 	}
-	vars := []string{
-		"TITLE=" + title,
-		"APPID=" + titleID,
-		"CONTENTID=" + contentID(titleID, title),
+	pkg, err := makePkg(pkgDir, cid)
+	if err != nil {
+		return report.Fail("pkg: "+err.Error(), "")
 	}
-	if v := os.Getenv("GDIR_EXTRA_FLAGS"); v != "" {
-		vars = append(vars, "GDIR_EXTRA_FLAGS="+v)
-	}
-	if err := t.make(ctx, env, src, append([]string{"package"}, vars...), opts.Stdout, opts.Stderr); err != nil {
-		return report.Fail("make: "+err.Error(), "")
-	}
+
 	pkgOut, folder := outputs(opts.Out, titleID)
 	if err := os.MkdirAll(filepath.Dir(pkgOut), 0o755); err != nil {
 		return err
 	}
-	if err := copyFile(filepath.Join(src, "gdir.pkg"), pkgOut); err != nil {
-		return report.Fail("no gdir.pkg was made: "+err.Error(), "")
+	if err := os.WriteFile(pkgOut, pkg, 0o644); err != nil {
+		return err
 	}
 	if err := os.RemoveAll(folder); err != nil {
 		return err
 	}
-	if err := copyTree(filepath.Join(src, "pkg"), folder); err != nil {
+	if err := copyTree(pkgDir, folder); err != nil {
 		return err
 	}
 	if opts.Stdout != nil {
@@ -342,40 +335,54 @@ func (t *Tool) Build(ctx context.Context, opts platforms.BuildOptions) error {
 	return nil
 }
 
-func boolStr(b bool) string {
-	if b {
-		return "1"
+// guestELF: the bundled guest, unless an overlay or GDIR_EXTRA_FLAGS asks
+// for one compiled here (with ps3dev).
+func (t *Tool) guestELF(ctx context.Context, opts platforms.BuildOptions, src string) ([]byte, error) {
+	ov := strings.TrimSpace(opts.Overlay)
+	flags := os.Getenv("GDIR_EXTRA_FLAGS")
+	if ov == "" && flags == "" {
+		if opts.Stdout != nil {
+			report.Line(opts.Stdout, report.Reusing, "the bundled PS3 guest ("+guest.PrebuiltVersion()+")")
+		}
+		return guest.PrebuiltELF()
 	}
-	return "0"
-}
-
-// make runs make -C src (natively, or in WSL) with ps3dev in the environment.
-func (t *Tool) make(ctx context.Context, env map[string]string, src string, args []string, stdout, stderr io.Writer) error {
-	if useWSL(env) {
-		dir, err := wslPath(src)
-		if err != nil {
-			return err
+	env, _ := t.Env(opts.CommonOptions)
+	if !compileReady(env) {
+		return nil, report.Missing("ps3dev, to compile the guest with --overlay or GDIR_EXTRA_FLAGS",
+			"blazium-toolchain ps3 setup --profile compile (Linux), or build without --overlay")
+	}
+	if ov != "" {
+		if err := guest.Overlay(src, ov); err != nil {
+			return nil, err
 		}
-		ps3dev := wslDir(env["PS3DEV_WSL"])
-		cmd := "PS3DEV=" + ps3dev + " PSL1GHT=" + ps3dev + " make -C " + shellQuote(dir)
-		for _, a := range args {
-			cmd += " " + shellQuote(a)
-		}
-		return t.wslRun(ctx, cmd, stdout, stderr)
 	}
 	makeProg := env["PS3_MAKE"]
 	if makeProg == "" {
 		makeProg = "make"
 	}
 	extra := map[string]string{"PS3DEV": env["PS3DEV"], "PSL1GHT": env["PSL1GHT"]}
-	full := append([]string{"-C", src}, args...)
+	args := []string{"-C", src}
+	if flags != "" {
+		args = append(args, "GDIR_EXTRA_FLAGS="+flags)
+	}
+	if err := t.runEnv(ctx, makeProg, args, extra, opts.Stdout, opts.Stderr); err != nil {
+		return nil, report.Fail("make: "+err.Error(), "")
+	}
+	raw, err := os.ReadFile(filepath.Join(src, "gdir.prx.elf"))
+	if err != nil {
+		return nil, report.Fail("no gdir.prx.elf was made", "")
+	}
+	return raw, nil
+}
+
+func (t *Tool) runEnv(ctx context.Context, name string, args []string, extraEnv map[string]string, stdout, stderr io.Writer) error {
 	type envRunner interface {
 		RunEnv(ctx context.Context, name string, args []string, extraPath []string, extraEnv map[string]string, stdout, stderr io.Writer) error
 	}
 	if er, ok := t.runner().(envRunner); ok {
-		return er.RunEnv(ctx, makeProg, full, nil, extra, writerOr(stdout), writerOr(stderr))
+		return er.RunEnv(ctx, name, args, nil, extraEnv, writerOr(stdout), writerOr(stderr))
 	}
-	return t.runner().Run(ctx, makeProg, full, writerOr(stdout), writerOr(stderr))
+	return t.runner().Run(ctx, name, args, writerOr(stdout), writerOr(stderr))
 }
 
 func writerOr(w io.Writer) io.Writer {

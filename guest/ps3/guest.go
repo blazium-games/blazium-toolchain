@@ -4,11 +4,14 @@
 package guest
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -93,4 +96,54 @@ var noticeFiles embed.FS
 // (the C library).
 func Notice(name string) ([]byte, error) {
 	return noticeFiles.ReadFile("notices/" + name)
+}
+
+//go:embed prebuilt
+var prebuiltFiles embed.FS
+
+// PrebuiltELF is the guest compiled with PSL1GHT (stripped, its PRX imports
+// linked): what ps3 build signs as EBOOT.BIN when the game adds no code of
+// its own. scripts/ps3-guest-prebuilt.sh rebuilds it.
+func PrebuiltELF() ([]byte, error) {
+	return prebuiltFiles.ReadFile("prebuilt/gdir.elf")
+}
+
+// PrebuiltVersion is SourcesHash as it was when gdir.elf was built.
+func PrebuiltVersion() string {
+	raw, err := prebuiltFiles.ReadFile("prebuilt/SOURCES")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
+}
+
+// DefaultIcon is the XMB icon (ICON0.PNG, 320x176) a game gets without one.
+func DefaultIcon() ([]byte, error) {
+	return prebuiltFiles.ReadFile("prebuilt/ICON0.PNG")
+}
+
+// SourcesHash identifies the guest's sources (gdir/runtime, line endings
+// aside): the first 16 hex digits of a SHA-256 over each file's path and bytes.
+func SourcesHash() (string, error) {
+	var names []string
+	err := fs.WalkDir(gdirFiles, "gdir/runtime", func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			names = append(names, path)
+		}
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(names)
+	h := sha256.New()
+	for _, n := range names {
+		raw, err := gdirFiles.ReadFile(n)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(h, "%s\n", n)
+		h.Write([]byte(strings.ReplaceAll(string(raw), "\r\n", "\n")))
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16], nil
 }

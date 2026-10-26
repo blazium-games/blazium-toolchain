@@ -932,6 +932,89 @@ static void parse_mesh_extras(const unsigned char *blob, unsigned sz, unsigned o
 	}
 }
 
+/* Coplanar layers. The PC scenes lay some surfaces exactly on others (the
+ * showroom's ring pattern on its floor). The GS draws them in order with
+ * GEQUAL, so the later one wins its exact ties; the RSX's float depth breaks
+ * those ties into stripes. So at load each triangle that lies in the plane
+ * of an earlier node's triangle gets a layer number (how many nodes before
+ * it share that plane), and its depth is pulled forward by that many steps. */
+#define LAYER_HASH 16384
+struct PlaneKey {
+	int k[4];  /* normal (1/1024) and distance (mm) */
+	unsigned short node; /* the latest node seen in it */
+	unsigned char n;     /* how many nodes so far */
+	unsigned char used;
+};
+static PlaneKey *g_planes;
+static unsigned char *g_tri_layer;
+static unsigned g_tri_layer_n;
+
+static void build_layers(void)
+{
+	const unsigned ntri = g_index_count / 3;
+	free(g_tri_layer);
+	g_tri_layer = (unsigned char *)calloc(ntri ? ntri : 1, 1);
+	g_tri_layer_n = g_tri_layer ? ntri : 0;
+	if (!g_planes) {
+		g_planes = (PlaneKey *)malloc(sizeof(PlaneKey) * LAYER_HASH);
+	}
+	if (!g_tri_layer || !g_planes) {
+		g_tri_layer_n = 0;
+		return;
+	}
+	memset(g_planes, 0, sizeof(PlaneKey) * LAYER_HASH);
+	for (unsigned t = 0; t < ntri; t++) {
+		const unsigned i0 = ru32(g_indices + t * 12), i1 = ru32(g_indices + t * 12 + 4), i2 = ru32(g_indices + t * 12 + 8);
+		if (i0 >= g_vert_count || i1 >= g_vert_count || i2 >= g_vert_count) {
+			continue;
+		}
+		CookVert a, b, c;
+		read_vert(g_verts + i0 * 28, &a);
+		read_vert(g_verts + i1 * 28, &b);
+		read_vert(g_verts + i2 * 28, &c);
+		const float ux = b.x - a.x, uy = b.y - a.y, uz = b.z - a.z;
+		const float vx = c.x - a.x, vy = c.y - a.y, vz = c.z - a.z;
+		float nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+		const float l = sqrtf(nx * nx + ny * ny + nz * nz);
+		if (l < 1e-6f) {
+			continue;
+		}
+		nx /= l;
+		ny /= l;
+		nz /= l;
+		/* one orientation per plane, whichever way it faces */
+		if (nx < -1e-4f || (nx < 1e-4f && (ny < -1e-4f || (ny < 1e-4f && nz < 0.0f)))) {
+			nx = -nx;
+			ny = -ny;
+			nz = -nz;
+		}
+		const float d = nx * a.x + ny * a.y + nz * a.z;
+		int k[4] = { (int)floorf(nx * 1024.0f + 0.5f), (int)floorf(ny * 1024.0f + 0.5f), (int)floorf(nz * 1024.0f + 0.5f),
+			(int)floorf(d * 1000.0f + 0.5f) };
+		unsigned h = (unsigned)(k[0] * 73856093) ^ (unsigned)(k[1] * 19349663) ^ (unsigned)(k[2] * 83492791) ^ (unsigned)(k[3] * 2654435761u);
+		for (unsigned probe = 0; probe < LAYER_HASH; probe++) {
+			PlaneKey *p = &g_planes[(h + probe) & (LAYER_HASH - 1)];
+			if (!p->used) {
+				p->used = 1;
+				memcpy(p->k, k, sizeof(k));
+				p->node = a.node;
+				p->n = 1;
+				break;
+			}
+			if (memcmp(p->k, k, sizeof(k)) == 0) {
+				if (p->node != a.node) {
+					p->node = a.node;
+					if (p->n < 255) {
+						p->n++;
+					}
+				}
+				g_tri_layer[t] = (unsigned char)(p->n - 1);
+				break;
+			}
+		}
+	}
+}
+
 static int parse_mesh(const unsigned char *blob, unsigned sz)
 {
 	if (!blob || sz < 16) {
@@ -983,6 +1066,7 @@ static int parse_mesh(const unsigned char *blob, unsigned sz)
 		frame_aabb();
 	}
 	build_chunks();
+	build_layers();
 	parse_mesh_extras(blob, sz, 16 + vert_bytes + g_index_count * 4);
 	g_mesh_dirty_vu = 1;
 	return 1;
@@ -1961,6 +2045,7 @@ struct DrawCtx {
 	unsigned drawn;
 	int tiny;
 	int nofog; /* this node keeps clear of fog */
+	int layer; /* the triangle's coplanar layer (build_layers) */
 };
 
 /* Clip-space vertex with its attributes, for Sutherland-Hodgman. */
@@ -2126,8 +2211,9 @@ static void emit_clipped(DrawCtx *c, const PV *a, const PV *b, const PV *d, int 
 			t = 1.0f;
 		}
 		/* the GS's step is exact in its integer Z; here the float divide
-		 * blurs the last bits, so a slot is 32 of the 24 bits' steps */
-		t -= (float)slot * (32.0f / 16777215.0f);
+		 * blurs the last bits, so a slot is 32 of the 24 bits' steps, and
+		 * a coplanar layer 64 */
+		t -= (float)(slot * 32 + c->layer * 64) * (1.0f / 16777215.0f);
 		/* NDC z: -1 at the near plane, towards 1 far off */
 		const float nz = 1.0f - 2.0f * t;
 		GVert *o = vb_put();
@@ -2198,7 +2284,9 @@ static void draw_range(DrawCtx *c, unsigned t0, unsigned t1)
 		read_vert(g_verts + i0 * 28, &v0);
 		read_vert(g_verts + i1 * 28, &v1);
 		read_vert(g_verts + i2 * 28, &v2);
+		c->layer = t < g_tri_layer_n ? g_tri_layer[t] : 0;
 		draw_tri(c, &v0, &v1, &v2);
+		c->layer = 0;
 		g_stat_tris++;
 	}
 }
